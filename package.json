@@ -1,0 +1,15 @@
+{
+  "name": "ebay-price-intelligence",
+  "private": true,
+  "workspaces": ["apps/*"],
+  "scripts": {
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm run dev -w @price-intel/api\" \"npm run dev -w @price-intel/web\"",
+    "build": "npm run build -w @price-intel/api && npm run build -w @price-intel/web",
+    "test": "npm run test -w @price-intel/api",
+    "db:generate": "npm run db:generate -w @price-intel/api",
+    "db:migrate": "npm run db:migrate -w @price-intel/api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0"
+  }
+}

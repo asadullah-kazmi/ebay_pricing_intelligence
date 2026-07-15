@@ -1,0 +1,53 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Part {
+  id       String   @id @default(cuid())
+  oem      String   @unique
+  brand    String?
+  searches Search[]
+  listings Listing[]
+  createdAt DateTime @default(now())
+}
+
+model Search {
+  id          String   @id @default(cuid())
+  oem         String
+  marketplace String
+  searchedAt  DateTime @default(now())
+  part        Part     @relation(fields: [oem], references: [oem])
+}
+
+model Listing {
+  id          String   @id
+  title       String
+  seller      String
+  price       Decimal  @db.Decimal(12, 2)
+  shipping    Decimal  @db.Decimal(12, 2)
+  currency    String
+  condition   String
+  marketplace String
+  url         String
+  oem         String
+  part        Part     @relation(fields: [oem], references: [oem])
+  prices      PriceHistory[]
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @updatedAt
+}
+
+model PriceHistory {
+  id         String   @id @default(cuid())
+  listingId  String
+  price      Decimal  @db.Decimal(12, 2)
+  shipping   Decimal  @db.Decimal(12, 2)
+  capturedAt DateTime @default(now())
+  listing    Listing  @relation(fields: [listingId], references: [id])
+
+  @@index([listingId, capturedAt])
+}
