@@ -16,6 +16,8 @@ Without eBay credentials, the API intentionally uses realistic demo listings. Se
 
 Check `GET http://localhost:4000/health` after startup. Its `ebay.mode` value is `demo` when credentials are absent and `live` when both credentials are configured. The persistence status reports whether PostgreSQL is reachable. It never returns credential values.
 
+Run `npm run db:check` to test the configured PostgreSQL connection without starting the applications.
+
 ## Applications
 
 - `apps/web`: Next.js search dashboard.

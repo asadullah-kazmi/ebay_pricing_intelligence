@@ -7,6 +7,7 @@
     "build": "npm run build -w @price-intel/api && npm run build -w @price-intel/web",
     "test": "npm run test -w @price-intel/api",
     "db:generate": "npm run db:generate -w @price-intel/api",
+    "db:check": "npm run db:check -w @price-intel/api",
     "db:migrate": "npm run db:migrate -w @price-intel/api"
   },
   "devDependencies": {
