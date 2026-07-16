@@ -5,7 +5,7 @@ import { getConfig } from "./config.js";
 import { databaseIsReachable } from "./db.js";
 import { calculateAnalytics } from "./domain/analytics.js";
 import { matchListing, normalizePartNumber } from "./domain/matching.js";
-import { searchEbay } from "./providers/ebay.js";
+import { EbayApiError, searchEbay } from "./providers/ebay.js";
 import { findLatestAnalytics, findListing, findSearchHistory, saveSearchResult } from "./repository.js";
 
 const searchSchema = z.object({
@@ -63,6 +63,7 @@ app.get("/api/history/:oem", async (req, res, next) => {
 
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   if (error instanceof z.ZodError) return res.status(400).json({ error: "Invalid search", issues: error.issues });
+  if (error instanceof EbayApiError) return res.status(502).json({ error: error.message, provider: "ebay" });
   console.error(error);
   res.status(500).json({ error: error instanceof Error ? error.message : "Unexpected error" });
 });

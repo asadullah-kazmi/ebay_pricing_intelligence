@@ -8,6 +8,7 @@
     "test": "npm run test -w @price-intel/api",
     "db:generate": "npm run db:generate -w @price-intel/api",
     "db:check": "npm run db:check -w @price-intel/api",
+    "ebay:check": "npm run ebay:check -w @price-intel/api",
     "db:migrate": "npm run db:migrate -w @price-intel/api"
   },
   "devDependencies": {

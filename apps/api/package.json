@@ -9,6 +9,7 @@
     "start": "node dist/server.js",
     "test": "vitest run",
     "db:check": "tsx src/scripts/check-database.ts",
+    "ebay:check": "tsx src/scripts/check-ebay.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev"
   },
