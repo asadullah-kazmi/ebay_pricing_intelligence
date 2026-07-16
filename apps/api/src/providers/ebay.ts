@@ -1,4 +1,5 @@
 import type { Marketplace, RawListing } from "../types.js";
+import { getConfig } from "../config.js";
 
 const marketplaceCurrency: Record<Marketplace, string> = {
   EBAY_US: "USD",
@@ -19,18 +20,18 @@ function demoListings(oem: string, marketplace: Marketplace): RawListing[] {
     condition: index === 4 ? "Used" : "New",
     marketplace,
     url: "https://www.ebay.com/",
-    aspects: index === 4
+    aspects: (index === 4
       ? { "Manufacturer Part Number": ["UNRELATED-123"] }
-      : { "Manufacturer Part Number": [oem], "OE/OEM Part Number": [oem] },
+      : { "Manufacturer Part Number": [oem], "OE/OEM Part Number": [oem] }) as Record<string, string[]>,
   }));
 }
 
 export async function searchEbay(oem: string, marketplace: Marketplace): Promise<RawListing[]> {
-  const clientId = process.env.EBAY_CLIENT_ID;
-  const clientSecret = process.env.EBAY_CLIENT_SECRET;
+  const { ebay } = getConfig();
+  const { clientId, clientSecret } = ebay;
   if (!clientId || !clientSecret) return demoListings(oem, marketplace);
 
-  const production = process.env.EBAY_ENVIRONMENT === "production";
+  const production = ebay.environment === "production";
   const identityBase = production ? "https://api.ebay.com" : "https://api.sandbox.ebay.com";
   const tokenResponse = await fetch(`${identityBase}/identity/v1/oauth2/token`, {
     method: "POST",

@@ -1,6 +1,7 @@
 import cors from "cors";
 import express from "express";
 import { z } from "zod";
+import { getConfig } from "./config.js";
 import { calculateAnalytics } from "./domain/analytics.js";
 import { matchListing, normalizePartNumber } from "./domain/matching.js";
 import { searchEbay } from "./providers/ebay.js";
@@ -14,13 +15,20 @@ const searchSchema = z.object({
 export const app = express();
 app.use(cors());
 app.use(express.json());
-app.get("/health", (_req, res) => res.json({ status: "ok" }));
+app.get("/health", (_req, res) => {
+  const config = getConfig();
+  res.json({
+    status: "ok",
+    ebay: { mode: config.ebay.mode, environment: config.ebay.environment },
+    persistence: "memory",
+  });
+});
 
 app.post("/api/search", async (req, res, next) => {
   try {
     const input = searchSchema.parse(req.body);
     const oem = normalizePartNumber(input.oem);
-    const ownSellers = new Set((process.env.OWN_SELLERS ?? "my-parts-store").split(",").map((v) => v.trim().toLowerCase()));
+    const ownSellers = getConfig().ownSellers;
     const candidates = await searchEbay(oem, input.marketplace);
     const listings = candidates.flatMap((item) => {
       const matchedOn = matchListing(item, oem);

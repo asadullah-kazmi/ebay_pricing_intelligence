@@ -4,12 +4,14 @@ MVP implementation of the supplied system design. Search an OEM/MPN, verify exac
 
 ## Run locally
 
-1. Copy `.env.example` to `.env` and set credentials when available.
+1. Copy `.env.example` to `.env` and set credentials when available. Never put secrets in `.env.example`.
 2. Install packages with `npm install`.
 3. Run both applications with `npm run dev`.
 4. Open http://localhost:3000. The API runs on http://localhost:4000.
 
 Without eBay credentials, the API intentionally uses realistic demo listings. This makes the complete search and analytics workflow testable locally. PostgreSQL persistence is represented by the Prisma schema and can be enabled after configuring `DATABASE_URL`.
+
+Check `GET http://localhost:4000/health` after startup. Its `ebay.mode` value is `demo` when credentials are absent and `live` when both credentials are configured. It never returns credential values.
 
 ## Applications
 
@@ -23,4 +25,3 @@ Without eBay credentials, the API intentionally uses realistic demo listings. Th
 - `GET /api/analytics/:oem`
 - `GET /api/history/:oem`
 - `GET /health`
-
