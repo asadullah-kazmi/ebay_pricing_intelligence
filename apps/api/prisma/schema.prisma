@@ -21,7 +21,17 @@ model Search {
   oem         String
   marketplace String
   searchedAt  DateTime @default(now())
+  competitorCount Int
+  lowest      Decimal? @db.Decimal(12, 2)
+  average     Decimal? @db.Decimal(12, 2)
+  median      Decimal? @db.Decimal(12, 2)
+  highest     Decimal? @db.Decimal(12, 2)
+  recommendedPrice Decimal? @db.Decimal(12, 2)
+  currency    String?
   part        Part     @relation(fields: [oem], references: [oem])
+  priceCaptures PriceHistory[]
+
+  @@index([oem, searchedAt])
 }
 
 model Listing {
@@ -34,6 +44,7 @@ model Listing {
   condition   String
   marketplace String
   url         String
+  matchedOn   String[]
   oem         String
   part        Part     @relation(fields: [oem], references: [oem])
   prices      PriceHistory[]
@@ -44,10 +55,13 @@ model Listing {
 model PriceHistory {
   id         String   @id @default(cuid())
   listingId  String
+  searchId   String
   price      Decimal  @db.Decimal(12, 2)
   shipping   Decimal  @db.Decimal(12, 2)
   capturedAt DateTime @default(now())
   listing    Listing  @relation(fields: [listingId], references: [id])
+  search     Search   @relation(fields: [searchId], references: [id], onDelete: Cascade)
 
   @@index([listingId, capturedAt])
+  @@index([searchId])
 }

@@ -2,10 +2,11 @@ import cors from "cors";
 import express from "express";
 import { z } from "zod";
 import { getConfig } from "./config.js";
+import { databaseIsReachable } from "./db.js";
 import { calculateAnalytics } from "./domain/analytics.js";
 import { matchListing, normalizePartNumber } from "./domain/matching.js";
 import { searchEbay } from "./providers/ebay.js";
-import { store } from "./store.js";
+import { findLatestAnalytics, findListing, findSearchHistory, saveSearchResult } from "./repository.js";
 
 const searchSchema = z.object({
   oem: z.string().trim().min(2).max(80),
@@ -15,12 +16,13 @@ const searchSchema = z.object({
 export const app = express();
 app.use(cors());
 app.use(express.json());
-app.get("/health", (_req, res) => {
+app.get("/health", async (_req, res) => {
   const config = getConfig();
-  res.json({
-    status: "ok",
+  const databaseConnected = await databaseIsReachable();
+  res.status(databaseConnected ? 200 : 503).json({
+    status: databaseConnected ? "ok" : "degraded",
     ebay: { mode: config.ebay.mode, environment: config.ebay.environment },
-    persistence: "memory",
+    persistence: { provider: "postgresql", connected: databaseConnected },
   });
 });
 
@@ -36,22 +38,27 @@ app.post("/api/search", async (req, res, next) => {
       return [{ ...item, matchedOn, landedPrice: Math.round((item.price + item.shipping) * 100) / 100 }];
     });
     const result = { oem, marketplace: input.marketplace, searchedAt: new Date().toISOString(), listings, analytics: calculateAnalytics(listings) };
-    store.save(result);
+    await saveSearchResult(result);
     res.json(result);
   } catch (error) { next(error); }
 });
 
-app.get("/api/listings/:id", (req, res) => {
-  const listing = store.listing(req.params.id);
+app.get("/api/listings/:id", async (req, res, next) => {
+  try {
+  const listing = await findListing(req.params.id);
   listing ? res.json(listing) : res.status(404).json({ error: "Listing not found" });
+  } catch (error) { next(error); }
 });
-app.get("/api/analytics/:oem", (req, res) => {
-  const result = store.get(normalizePartNumber(req.params.oem));
-  result ? res.json(result.analytics) : res.status(404).json({ error: "Search this OEM first" });
+app.get("/api/analytics/:oem", async (req, res, next) => {
+  try {
+  const analytics = await findLatestAnalytics(normalizePartNumber(req.params.oem));
+  analytics !== undefined ? res.json(analytics) : res.status(404).json({ error: "Search this OEM first" });
+  } catch (error) { next(error); }
 });
-app.get("/api/history/:oem", (req, res) => {
-  const result = store.get(normalizePartNumber(req.params.oem));
-  res.json(result ? [{ capturedAt: result.searchedAt, analytics: result.analytics }] : []);
+app.get("/api/history/:oem", async (req, res, next) => {
+  try {
+  res.json(await findSearchHistory(normalizePartNumber(req.params.oem)));
+  } catch (error) { next(error); }
 });
 
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

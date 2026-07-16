@@ -6,12 +6,15 @@ MVP implementation of the supplied system design. Search an OEM/MPN, verify exac
 
 1. Copy `.env.example` to `.env` and set credentials when available. Never put secrets in `.env.example`.
 2. Install packages with `npm install`.
-3. Run both applications with `npm run dev`.
-4. Open http://localhost:3000. The API runs on http://localhost:4000.
+3. Create the PostgreSQL database named in `DATABASE_URL`.
+4. Generate the client with `npm run db:generate`.
+5. Apply the schema with `npm run db:migrate`.
+6. Run both applications with `npm run dev`.
+7. Open http://localhost:3000. The API runs on http://localhost:4000.
 
-Without eBay credentials, the API intentionally uses realistic demo listings. This makes the complete search and analytics workflow testable locally. PostgreSQL persistence is represented by the Prisma schema and can be enabled after configuring `DATABASE_URL`.
+Without eBay credentials, the API intentionally uses realistic demo listings. Search results, listing snapshots, and price history are persisted in PostgreSQL through Prisma, so a valid `DATABASE_URL` and migrated database are required.
 
-Check `GET http://localhost:4000/health` after startup. Its `ebay.mode` value is `demo` when credentials are absent and `live` when both credentials are configured. It never returns credential values.
+Check `GET http://localhost:4000/health` after startup. Its `ebay.mode` value is `demo` when credentials are absent and `live` when both credentials are configured. The persistence status reports whether PostgreSQL is reachable. It never returns credential values.
 
 ## Applications
 
