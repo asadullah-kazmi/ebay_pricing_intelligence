@@ -32,12 +32,12 @@ async function errorMessage(response: Response, operation: string): Promise<stri
   return `${operation} failed (${response.status})${detail ? `: ${detail}` : ""}`;
 }
 
-async function getApplicationToken(): Promise<string> {
+export async function getEbayApplicationToken(): Promise<string> {
   const { ebay } = getConfig();
   if (!ebay.clientId || !ebay.clientSecret) throw new Error("eBay credentials are not configured");
   if (cachedToken && cachedToken.environment === ebay.environment && cachedToken.expiresAt > Date.now() + 60_000) {
-    return cachedToken.value;
-  }
+  return cachedToken.value;
+}
 
   const response = await fetch(`${apiBase()}/identity/v1/oauth2/token`, {
     method: "POST",
@@ -62,7 +62,7 @@ async function getApplicationToken(): Promise<string> {
 }
 
 async function ebayGet<T>(path: string, marketplace: Marketplace, operation: string): Promise<T> {
-  const token = await getApplicationToken();
+  const token = await getEbayApplicationToken();
   const response = await fetch(`${apiBase()}${path}`, {
     signal: AbortSignal.timeout(20_000),
     headers: {
@@ -122,7 +122,7 @@ function toListing(item: Record<string, unknown>, marketplace: Marketplace): Raw
 }
 
 export async function checkEbayConnection(): Promise<{ environment: string; authenticated: true }> {
-  await getApplicationToken();
+  await getEbayApplicationToken();
   return { environment: getConfig().ebay.environment, authenticated: true };
 }
 

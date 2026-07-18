@@ -19,6 +19,17 @@ Check `GET http://localhost:4000/health` after startup. Its `ebay.mode` value is
 Run `npm run db:check` to test the configured PostgreSQL connection without starting the applications.
 Run `npm run ebay:check` to verify the configured eBay credentials without performing a listing search.
 
+## eBay production notifications
+
+eBay requires production applications that persist eBay data to receive marketplace account-deletion notifications. Deploy the API at a public HTTPS URL, then configure the exact callback URL and a private 32-80 character token:
+
+```env
+EBAY_NOTIFICATION_ENDPOINT=https://your-api.example.com/api/ebay/account-deletion
+EBAY_NOTIFICATION_VERIFICATION_TOKEN=replace-with-a-private-random-token
+```
+
+Enter those same values in the eBay developer portal. The callback supports eBay's `GET` verification challenge and signed `POST` deletion notifications. If a notice contains a seller username, stored listings for that seller are deleted. If eBay omits the username, all stored listings are deleted so that unidentified account data cannot be retained.
+
 ## Applications
 
 - `apps/web`: Next.js search dashboard.

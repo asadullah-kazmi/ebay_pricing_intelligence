@@ -8,6 +8,10 @@ export interface AppConfig {
     clientSecret?: string;
     environment: EbayEnvironment;
     mode: "demo" | "live";
+    notifications: {
+      endpoint?: string;
+      verificationToken?: string;
+    };
   };
   ownSellers: Set<string>;
 }
@@ -33,6 +37,18 @@ export function getConfig(): AppConfig {
     throw new Error("EBAY_CLIENT_ID and EBAY_CLIENT_SECRET must be provided together");
   }
 
+  const notificationEndpoint = process.env.EBAY_NOTIFICATION_ENDPOINT?.trim() || undefined;
+  const notificationVerificationToken = process.env.EBAY_NOTIFICATION_VERIFICATION_TOKEN?.trim() || undefined;
+  if (Boolean(notificationEndpoint) !== Boolean(notificationVerificationToken)) {
+    throw new Error("EBAY_NOTIFICATION_ENDPOINT and EBAY_NOTIFICATION_VERIFICATION_TOKEN must be provided together");
+  }
+  if (notificationEndpoint && !/^https:\/\//i.test(notificationEndpoint)) {
+    throw new Error("EBAY_NOTIFICATION_ENDPOINT must be a public HTTPS URL");
+  }
+  if (notificationVerificationToken && !/^[A-Za-z0-9_-]{32,80}$/.test(notificationVerificationToken)) {
+    throw new Error("EBAY_NOTIFICATION_VERIFICATION_TOKEN must be 32-80 letters, numbers, underscores, or hyphens");
+  }
+
   cachedConfig = {
     port,
     databaseUrl: process.env.DATABASE_URL?.trim() || undefined,
@@ -41,6 +57,10 @@ export function getConfig(): AppConfig {
       clientSecret,
       environment,
       mode: clientId && clientSecret ? "live" : "demo",
+      notifications: {
+        endpoint: notificationEndpoint,
+        verificationToken: notificationVerificationToken,
+      },
     },
     ownSellers: new Set(
       (process.env.OWN_SELLERS ?? "")

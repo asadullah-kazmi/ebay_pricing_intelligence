@@ -127,3 +127,18 @@ export async function findSearchHistory(oem: string) {
     analytics: analyticsFromSearch(search),
   }));
 }
+
+export async function deleteListingsForClosedEbayAccount(username?: string): Promise<number> {
+  return prisma.$transaction(async (tx) => {
+    const listings = await tx.listing.findMany({
+      where: username ? { seller: { equals: username, mode: "insensitive" } } : undefined,
+      select: { id: true },
+    });
+    const listingIds = listings.map(({ id }) => id);
+    if (!listingIds.length) return 0;
+
+    await tx.priceHistory.deleteMany({ where: { listingId: { in: listingIds } } });
+    const deleted = await tx.listing.deleteMany({ where: { id: { in: listingIds } } });
+    return deleted.count;
+  });
+}

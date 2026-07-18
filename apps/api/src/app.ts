@@ -5,8 +5,9 @@ import { getConfig } from "./config.js";
 import { databaseIsReachable } from "./db.js";
 import { calculateAnalytics } from "./domain/analytics.js";
 import { matchListing, normalizePartNumber } from "./domain/matching.js";
+import { accountDeletionNotificationSchema, generateChallengeResponse, verifyEbayNotificationSignature } from "./ebay-notifications.js";
 import { EbayApiError, searchEbay } from "./providers/ebay.js";
-import { findLatestAnalytics, findListing, findSearchHistory, saveSearchResult } from "./repository.js";
+import { deleteListingsForClosedEbayAccount, findLatestAnalytics, findListing, findSearchHistory, saveSearchResult } from "./repository.js";
 
 const searchSchema = z.object({
   oem: z.string().trim().min(2).max(80),
@@ -24,6 +25,33 @@ app.get("/health", async (_req, res) => {
     ebay: { mode: config.ebay.mode, environment: config.ebay.environment },
     persistence: { provider: "postgresql", connected: databaseConnected },
   });
+});
+
+app.get("/api/ebay/account-deletion", (req, res) => {
+  const challengeCode = typeof req.query.challenge_code === "string" ? req.query.challenge_code : undefined;
+  const { endpoint, verificationToken } = getConfig().ebay.notifications;
+  if (!challengeCode) return res.status(400).json({ error: "Missing challenge_code" });
+  if (!endpoint || !verificationToken) return res.status(503).json({ error: "eBay notifications are not configured" });
+  res.json({ challengeResponse: generateChallengeResponse(challengeCode, verificationToken, endpoint) });
+});
+
+app.post("/api/ebay/account-deletion", async (req, res, next) => {
+  try {
+    const notification = accountDeletionNotificationSchema.parse(req.body);
+    const signature = req.get("x-ebay-signature");
+    if (!signature || !(await verifyEbayNotificationSignature(req.body, signature))) {
+      return res.status(412).json({ error: "Invalid eBay notification signature" });
+    }
+
+    const username = notification.notification.data.username?.trim() || undefined;
+    const deleted = await deleteListingsForClosedEbayAccount(username);
+    console.info("Processed eBay account deletion notification", {
+      notificationId: notification.notification.notificationId,
+      strategy: username ? "seller" : "all-listings",
+      deletedListings: deleted,
+    });
+    res.status(204).send();
+  } catch (error) { next(error); }
 });
 
 app.post("/api/search", async (req, res, next) => {
