@@ -93,5 +93,5 @@ app.use((error: unknown, _req: express.Request, res: express.Response, _next: ex
   if (error instanceof z.ZodError) return res.status(400).json({ error: "Invalid search", issues: error.issues });
   if (error instanceof EbayApiError) return res.status(502).json({ error: error.message, provider: "ebay" });
   console.error(error);
-  res.status(500).json({ error: error instanceof Error ? error.message : "Unexpected error" });
+  res.status(500).json({ error: "Unable to complete the request. Check the API logs for details." });
 });

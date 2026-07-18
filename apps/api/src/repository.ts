@@ -64,17 +64,20 @@ export async function saveSearchResult(result: SearchResult): Promise<void> {
           oem: result.oem,
         },
       });
-      await tx.priceHistory.create({
-        data: {
+    }
+
+    if (result.listings.length) {
+      await tx.priceHistory.createMany({
+        data: result.listings.map((listing) => ({
           listingId: listing.id,
           searchId: search.id,
           price: listing.price,
           shipping: listing.shipping,
           capturedAt: new Date(result.searchedAt),
-        },
+        })),
       });
     }
-  });
+  }, { maxWait: 10_000, timeout: 60_000 });
 }
 
 export async function findListing(id: string) {
