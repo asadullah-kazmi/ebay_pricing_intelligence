@@ -1,4 +1,5 @@
 export type Marketplace = "EBAY_US" | "EBAY_GB" | "EBAY_DE";
+export type ListingCondition = "ANY" | "NEW" | "USED";
 
 export interface RawListing {
   id: string;

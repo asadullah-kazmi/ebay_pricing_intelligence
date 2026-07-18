@@ -12,6 +12,7 @@ import { deleteListingsForClosedEbayAccount, findLatestAnalytics, findListing, f
 const searchSchema = z.object({
   oem: z.string().trim().min(2).max(80),
   marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).default("EBAY_US"),
+  condition: z.enum(["ANY", "NEW", "USED"]).default("ANY"),
 });
 
 export const app = express();
@@ -59,13 +60,13 @@ app.post("/api/search", async (req, res, next) => {
     const input = searchSchema.parse(req.body);
     const oem = normalizePartNumber(input.oem);
     const ownSellers = getConfig().ownSellers;
-    const candidates = await searchEbay(oem, input.marketplace);
+    const candidates = await searchEbay(oem, input.marketplace, input.condition);
     const listings = candidates.flatMap((item) => {
       const matchedOn = matchListing(item, oem);
       if (!matchedOn.length || ownSellers.has(item.seller.toLowerCase())) return [];
       return [{ ...item, matchedOn, landedPrice: Math.round((item.price + item.shipping) * 100) / 100 }];
     });
-    const result = { oem, marketplace: input.marketplace, searchedAt: new Date().toISOString(), listings, analytics: calculateAnalytics(listings) };
+    const result = { oem, marketplace: input.marketplace, conditionFilter: input.condition, searchedAt: new Date().toISOString(), listings, analytics: calculateAnalytics(listings) };
     await saveSearchResult(result);
     res.json(result);
   } catch (error) { next(error); }

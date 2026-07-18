@@ -37,7 +37,7 @@ Enter those same values in the eBay developer portal. The callback supports eBay
 
 ## API
 
-- `POST /api/search` — body: `{ "oem": "8K0615301M", "marketplace": "EBAY_US" }`
+- `POST /api/search` — body: `{ "oem": "8K0615301M", "marketplace": "EBAY_US", "condition": "NEW" }` (`condition`: `ANY`, `NEW`, or `USED`)
 - `GET /api/listings/:id`
 - `GET /api/analytics/:oem`
 - `GET /api/history/:oem`

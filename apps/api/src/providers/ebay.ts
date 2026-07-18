@@ -1,5 +1,5 @@
 import { getConfig } from "../config.js";
-import type { Marketplace, RawListing } from "../types.js";
+import type { ListingCondition, Marketplace, RawListing } from "../types.js";
 
 const marketplaceCurrency: Record<Marketplace, string> = {
   EBAY_US: "USD",
@@ -87,9 +87,9 @@ async function mapWithConcurrency<T, R>(values: T[], limit: number, mapper: (val
   return results;
 }
 
-function demoListings(oem: string, marketplace: Marketplace): RawListing[] {
+function demoListings(oem: string, marketplace: Marketplace, condition: ListingCondition): RawListing[] {
   const currency = marketplaceCurrency[marketplace];
-  return [82.5, 91, 97.49, 105, 118.25].map((price, index) => ({
+  const listings = [82.5, 91, 97.49, 105, 118.25].map((price, index) => ({
     id: `demo-${marketplace}-${index + 1}`,
     title: `${index % 2 ? "Genuine" : "OEM"} automotive part ${oem}`,
     seller: index === 3 ? "my-parts-store" : `competitor-${index + 1}`,
@@ -100,6 +100,9 @@ function demoListings(oem: string, marketplace: Marketplace): RawListing[] {
       ? { "Manufacturer Part Number": ["UNRELATED-123"] }
       : { "Manufacturer Part Number": [oem], "OE/OEM Part Number": [oem] }) as Record<string, string[]>,
   }));
+  return condition === "ANY"
+    ? listings
+    : listings.filter((listing) => condition === "NEW" ? listing.condition.startsWith("New") : listing.condition === "Used");
 }
 
 function toListing(item: Record<string, unknown>, marketplace: Marketplace): RawListing {
@@ -126,10 +129,11 @@ export async function checkEbayConnection(): Promise<{ environment: string; auth
   return { environment: getConfig().ebay.environment, authenticated: true };
 }
 
-export async function searchEbay(oem: string, marketplace: Marketplace): Promise<RawListing[]> {
-  if (getConfig().ebay.mode === "demo") return demoListings(oem, marketplace);
+export async function searchEbay(oem: string, marketplace: Marketplace, condition: ListingCondition = "ANY"): Promise<RawListing[]> {
+  if (getConfig().ebay.mode === "demo") return demoListings(oem, marketplace, condition);
 
   const query = new URLSearchParams({ q: oem, limit: "50" });
+  if (condition !== "ANY") query.set("filter", `conditions:{${condition}}`);
   const data = await ebayGet<{ itemSummaries?: Array<Record<string, unknown>> }>(
     `/buy/browse/v1/item_summary/search?${query}`,
     marketplace,
