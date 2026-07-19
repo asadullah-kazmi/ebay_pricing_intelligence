@@ -12,6 +12,16 @@ export interface AppConfig {
     refreshTtlSeconds: number;
   };
   webOrigin?: string;
+  storage?: {
+    bucket: string;
+    region: string;
+    endpoint?: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+    forcePathStyle: boolean;
+    uploadUrlTtlSeconds: number;
+    maxImageBytes: number;
+  };
   ebay: {
     clientId?: string;
     clientSecret?: string;
@@ -79,6 +89,27 @@ export function getConfig(): AppConfig {
     throw new Error("JWT_REFRESH_TTL_SECONDS must be an integer between 3600 and 7776000");
   }
 
+  const storageBucket = process.env.STORAGE_BUCKET?.trim() || undefined;
+  const storageRegion = process.env.STORAGE_REGION?.trim() || undefined;
+  const storageAccessKeyId = process.env.STORAGE_ACCESS_KEY_ID?.trim() || undefined;
+  const storageSecretAccessKey = process.env.STORAGE_SECRET_ACCESS_KEY?.trim() || undefined;
+  const storageEndpoint = process.env.STORAGE_ENDPOINT?.trim() || undefined;
+  const storageValues = [storageBucket, storageRegion, storageAccessKeyId, storageSecretAccessKey];
+  if (storageValues.some(Boolean) && !storageValues.every(Boolean)) {
+    throw new Error("STORAGE_BUCKET, STORAGE_REGION, STORAGE_ACCESS_KEY_ID, and STORAGE_SECRET_ACCESS_KEY must be provided together");
+  }
+  if (storageEndpoint && !/^https:\/\//i.test(storageEndpoint)) {
+    throw new Error("STORAGE_ENDPOINT must be an HTTPS URL");
+  }
+  const storageUploadUrlTtlSeconds = Number(process.env.STORAGE_UPLOAD_URL_TTL_SECONDS ?? 300);
+  if (!Number.isInteger(storageUploadUrlTtlSeconds) || storageUploadUrlTtlSeconds < 60 || storageUploadUrlTtlSeconds > 900) {
+    throw new Error("STORAGE_UPLOAD_URL_TTL_SECONDS must be an integer between 60 and 900");
+  }
+  const storageMaxImageBytes = Number(process.env.STORAGE_MAX_IMAGE_BYTES ?? 20_971_520);
+  if (!Number.isInteger(storageMaxImageBytes) || storageMaxImageBytes < 1_048_576 || storageMaxImageBytes > 52_428_800) {
+    throw new Error("STORAGE_MAX_IMAGE_BYTES must be an integer between 1048576 and 52428800");
+  }
+
   cachedConfig = {
     port,
     databaseUrl: process.env.DATABASE_URL?.trim() || undefined,
@@ -91,6 +122,16 @@ export function getConfig(): AppConfig {
       refreshTtlSeconds,
     },
     webOrigin: process.env.WEB_ORIGIN?.trim() || undefined,
+    storage: storageBucket && storageRegion && storageAccessKeyId && storageSecretAccessKey ? {
+      bucket: storageBucket,
+      region: storageRegion,
+      endpoint: storageEndpoint,
+      accessKeyId: storageAccessKeyId,
+      secretAccessKey: storageSecretAccessKey,
+      forcePathStyle: process.env.STORAGE_FORCE_PATH_STYLE === "true",
+      uploadUrlTtlSeconds: storageUploadUrlTtlSeconds,
+      maxImageBytes: storageMaxImageBytes,
+    } : undefined,
     ebay: {
       clientId,
       clientSecret,

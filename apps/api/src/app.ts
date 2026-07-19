@@ -10,13 +10,17 @@ import { matchListing, normalizePartNumber } from "./domain/matching.js";
 import { accountDeletionNotificationSchema, generateChallengeResponse, verifyEbayNotificationSignature } from "./ebay-notifications.js";
 import { EbayApiError, searchEbay } from "./providers/ebay.js";
 import { deleteListingsForClosedEbayAccount, findLatestAnalytics, findListing, findSearchHistory, saveSearchResult } from "./repository.js";
-import { getTenantContext, requireTenantContext } from "./tenant-context.js";
+import { findMediaStorageKey, saveConfirmedMediaAsset } from "./media-repository.js";
+import { getObjectStorage, ObjectStorageError } from "./object-storage.js";
+import { getTenantContext, requireOrganizationRoles, requireTenantContext } from "./tenant-context.js";
 
 const searchSchema = z.object({
   oem: z.string().trim().min(2).max(80),
   marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).default("EBAY_US"),
   condition: z.enum(["ANY", "NEW", "USED"]).default("ANY"),
 });
+const confirmMediaUploadSchema = z.object({ storageKey: z.string().min(1).max(1024) });
+const mediaUploadRoles = requireOrganizationRoles("OWNER", "ADMIN", "MANAGER", "CATALOG_OPERATOR");
 
 export const app = express();
 const webOrigin = getConfig().webOrigin;
@@ -62,6 +66,40 @@ app.post("/api/auth/logout", async (req, res, next) => {
     }
     next(error);
   }
+});
+
+app.post("/api/media/upload-url", requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+  try {
+    const storage = getObjectStorage();
+    if (!storage) return res.status(503).json({ error: "Object storage is not configured" });
+    const tenant = getTenantContext(res);
+    res.status(201).json(await storage.createImageUpload(tenant.organization.id, req.body));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/media/uploads/confirm", requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+  try {
+    const storage = getObjectStorage();
+    if (!storage) return res.status(503).json({ error: "Object storage is not configured" });
+    const tenant = getTenantContext(res);
+    const { storageKey } = confirmMediaUploadSchema.parse(req.body);
+    const image = await storage.confirmImageUpload(tenant.organization.id, storageKey);
+    const asset = await saveConfirmedMediaAsset(tenant.organization.id, image);
+    res.status(201).json(asset);
+  } catch (error) { next(error); }
+});
+
+app.get("/api/media/:id/download-url", requireTenantContext, async (req, res, next) => {
+  try {
+    const storage = getObjectStorage();
+    if (!storage) return res.status(503).json({ error: "Object storage is not configured" });
+    const tenant = getTenantContext(res);
+    const mediaAssetId = req.params.id;
+    if (typeof mediaAssetId !== "string") return res.status(400).json({ error: "Invalid media asset ID" });
+    const storageKey = await findMediaStorageKey(tenant.organization.id, mediaAssetId);
+    if (!storageKey) return res.status(404).json({ error: "Media asset not found" });
+    res.json({ downloadUrl: await storage.createDownloadUrl(tenant.organization.id, storageKey), expiresIn: 300 });
+  } catch (error) { next(error); }
 });
 
 app.get("/api/ebay/account-deletion", (req, res) => {
@@ -129,7 +167,8 @@ app.get("/api/history/:oem", async (req, res, next) => {
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   if (error instanceof AuthenticationError) return res.status(401).json({ error: error.message });
   if (error instanceof AuthorizationError) return res.status(403).json({ error: error.message });
-  if (error instanceof z.ZodError) return res.status(400).json({ error: "Invalid search", issues: error.issues });
+  if (error instanceof ObjectStorageError) return res.status(400).json({ error: error.message });
+  if (error instanceof z.ZodError) return res.status(400).json({ error: "Invalid request", issues: error.issues });
   if (error instanceof EbayApiError) return res.status(502).json({ error: error.message, provider: "ebay" });
   console.error(error);
   res.status(500).json({ error: "Unable to complete the request. Check the API logs for details." });

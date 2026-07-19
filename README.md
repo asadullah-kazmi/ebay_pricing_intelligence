@@ -65,6 +65,8 @@ Enter those same values in the eBay developer portal. The callback supports eBay
 
 See [Automotive Catalog and eBay Publishing SaaS Implementation Plan](docs/SAAS_IMPLEMENTATION_PLAN.md) for the complete multi-tenant catalog, image mapping, pricing, fitment, editing, publishing, administration, testing, and delivery plan.
 
+See [Object Storage Setup](docs/OBJECT_STORAGE_SETUP.md) for private AWS S3 or Cloudflare R2 configuration, Railway variables, bucket CORS, and the signed upload flow.
+
 ## API
 
 - `POST /api/search` — body: `{ "oem": "8K0615301M", "marketplace": "EBAY_US", "condition": "NEW" }` (`condition`: `ANY`, `NEW`, or `USED`)
@@ -74,4 +76,7 @@ See [Automotive Catalog and eBay Publishing SaaS Implementation Plan](docs/SAAS_
 - `GET /api/session` â€” authenticated user, organization, and role context
 - `POST /api/auth/refresh` â€” rotate refresh cookie and return a new access token
 - `POST /api/auth/logout` â€” revoke the current refresh session
+- `POST /api/media/upload-url` â€” create an organization-scoped signed image upload
+- `POST /api/media/uploads/confirm` â€” verify an upload and create its media record
+- `GET /api/media/:id/download-url` â€” create a short-lived private download URL
 - `GET /health`
