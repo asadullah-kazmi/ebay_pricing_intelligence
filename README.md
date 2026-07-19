@@ -37,6 +37,14 @@ WEB_ORIGIN=http://localhost:3000
 
 Set `WEB_ORIGIN` to the exact web application origin in Railway. Authentication cookie endpoints reject other origins. Use different access and refresh secrets in every environment and never commit them.
 
+Generate each secret independently from a terminal (run this command twice and use a different result for each variable):
+
+```powershell
+node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'))"
+```
+
+`JWT_ISSUER` and `JWT_AUDIENCE` are identifiers chosen by this application, not credentials supplied by another service. The TTL values are durations in seconds. In Railway, add the variables to the API service only; `WEB_ORIGIN` must be the public HTTPS domain of the web service without a trailing slash.
+
 ## eBay production notifications
 
 eBay requires production applications that persist eBay data to receive marketplace account-deletion notifications. Deploy the API at a public HTTPS URL, then configure the exact callback URL and a private 32-80 character token:

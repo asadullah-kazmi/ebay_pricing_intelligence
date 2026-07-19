@@ -14,7 +14,7 @@ const numberOrNull = (value: { toString(): string } | null): number | null =>
 
 export async function saveSearchResult(result: SearchResult): Promise<void> {
   await prisma.$transaction(async (tx) => {
-    await tx.part.upsert({
+    await tx.legacyPricingPart.upsert({
       where: { oem: result.oem },
       create: { oem: result.oem },
       update: {},
