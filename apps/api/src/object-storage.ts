@@ -182,6 +182,75 @@ export class ObjectStorage {
     }
   }
 
+  async storeImageArchive(input: {
+    organizationId: string;
+    importBatchId: string;
+    filename: string;
+    bytes: Buffer;
+    checksum: string;
+  }): Promise<string> {
+    if (input.bytes.length > this.config.maxImageArchiveBytes) {
+      throw new ObjectStorageError(`Image archive exceeds the ${this.config.maxImageArchiveBytes}-byte upload limit`);
+    }
+    const storageKey = `organizations/${safeSegment(input.organizationId)}/imports/${safeSegment(input.importBatchId)}/images/${randomUUID()}/${safeFilename(input.filename)}`;
+    try {
+      await this.client.send(new PutObjectCommand({
+        Bucket: this.config.bucket,
+        Key: storageKey,
+        Body: input.bytes,
+        ContentType: "application/zip",
+        ContentLength: input.bytes.length,
+        ChecksumSHA256: Buffer.from(input.checksum, "hex").toString("base64"),
+        Metadata: {
+          organizationid: input.organizationId,
+          importbatchid: input.importBatchId,
+          kind: "image-archive",
+          sha256: input.checksum,
+          originalfilename: encodeMetadataValue(input.filename),
+        },
+      }));
+      return storageKey;
+    } catch {
+      throw new ObjectStorageError("The image archive could not be stored");
+    }
+  }
+
+  async storeExtractedImage(input: {
+    organizationId: string;
+    filename: string;
+    mimeType: ConfirmedImageObject["mimeType"];
+    bytes: Buffer;
+    checksum: string;
+  }): Promise<ConfirmedImageObject> {
+    if (input.bytes.length > this.config.maxImageBytes) throw new ObjectStorageError("Extracted image exceeds the configured size limit");
+    const storageKey = createStorageKey(input.organizationId, input.filename);
+    try {
+      await this.client.send(new PutObjectCommand({
+        Bucket: this.config.bucket,
+        Key: storageKey,
+        Body: input.bytes,
+        ContentType: input.mimeType,
+        ContentLength: input.bytes.length,
+        ChecksumSHA256: Buffer.from(input.checksum, "hex").toString("base64"),
+        Metadata: {
+          organizationid: input.organizationId,
+          kind: "image",
+          sha256: input.checksum,
+          originalfilename: encodeMetadataValue(input.filename),
+        },
+      }));
+      return {
+        storageKey,
+        originalFilename: input.filename,
+        mimeType: input.mimeType,
+        byteSize: input.bytes.length,
+        checksum: input.checksum,
+      };
+    } catch {
+      throw new ObjectStorageError("An extracted image could not be stored");
+    }
+  }
+
   async confirmImageUpload(organizationId: string, storageKey: string): Promise<ConfirmedImageObject> {
     assertOwnedStorageKey(organizationId, storageKey);
     try {

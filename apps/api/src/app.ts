@@ -15,6 +15,7 @@ import { findMediaStorageKey, saveConfirmedMediaAsset } from "./media-repository
 import { catalogImportTemplate, catalogImportTemplateFilename, catalogImportTemplateVersion, createCatalogImportCsv } from "./import-template.js";
 import { findExistingNormalizedSkus, findImportByChecksum, stageParsedImport } from "./import-repository.js";
 import { applyExistingSkuConflicts, parseAndValidateImport } from "./import-parser.js";
+import { ImageImportError, importImageArchive } from "./image-import-service.js";
 import { getObjectStorage, ObjectStorageError } from "./object-storage.js";
 import { getTenantContext, requireOrganizationRoles, requireTenantContext } from "./tenant-context.js";
 
@@ -27,6 +28,8 @@ const confirmMediaUploadSchema = z.object({ storageKey: z.string().min(1).max(10
 const mediaUploadRoles = requireOrganizationRoles("OWNER", "ADMIN", "MANAGER", "CATALOG_OPERATOR");
 const importFilenameSchema = z.string().trim().min(1).max(255).regex(/\.(?:csv|xlsx)$/i, "Only .csv and .xlsx files are supported");
 const importBody = express.raw({ type: () => true, limit: getConfig().storage?.maxImportBytes ?? 10_485_760 });
+const imageArchiveBody = express.raw({ type: () => true, limit: getConfig().storage?.maxImageArchiveBytes ?? 104_857_600 });
+const imageArchiveFilenameSchema = z.string().trim().min(1).max(255).regex(/\.zip$/i, "Only .zip image archives are supported");
 
 export const app = express();
 const webOrigin = getConfig().webOrigin;
@@ -131,6 +134,28 @@ app.post("/api/imports/validate", requireTenantContext, mediaUploadRoles, import
   } catch (error) { next(error); }
 });
 
+app.post("/api/imports/:id/images", requireTenantContext, mediaUploadRoles, imageArchiveBody, async (req, res, next) => {
+  try {
+    const storage = getObjectStorage();
+    if (!storage) return res.status(503).json({ error: "Object storage is not configured" });
+    if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: "ZIP archive body is required" });
+    const importBatchId = req.params.id;
+    if (typeof importBatchId !== "string") return res.status(400).json({ error: "Invalid import batch ID" });
+    const filename = imageArchiveFilenameSchema.parse(req.get("x-file-name"));
+    const tenant = getTenantContext(res);
+    const storageConfig = getConfig().storage!;
+    const result = await importImageArchive({
+      organizationId: tenant.organization.id,
+      importBatchId,
+      filename,
+      bytes: req.body,
+      storage,
+      maxImageBytes: storageConfig.maxImageBytes,
+    });
+    res.status(result.reused ? 200 : 201).json(result);
+  } catch (error) { next(error); }
+});
+
 app.post("/api/media/uploads/confirm", requireTenantContext, mediaUploadRoles, async (req, res, next) => {
   try {
     const storage = getObjectStorage();
@@ -222,6 +247,7 @@ app.use((error: unknown, _req: express.Request, res: express.Response, _next: ex
   if (error instanceof AuthenticationError) return res.status(401).json({ error: error.message });
   if (error instanceof AuthorizationError) return res.status(403).json({ error: error.message });
   if (error instanceof ObjectStorageError) return res.status(400).json({ error: error.message });
+  if (error instanceof ImageImportError) return res.status(error.statusCode).json({ error: error.message });
   if (typeof error === "object" && error !== null && "type" in error && error.type === "entity.too.large") {
     return res.status(413).json({ error: "Spreadsheet exceeds the configured upload limit" });
   }

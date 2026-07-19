@@ -74,24 +74,40 @@ enum DimensionUnit {
   CM
 }
 
+enum ImageMatchStrategy {
+  MANIFEST
+  SKU_FOLDER
+  IMAGE_GROUP_FOLDER
+  SKU_FILENAME
+  UNMATCHED
+  AMBIGUOUS
+}
+
+enum ImageMatchStatus {
+  MATCHED
+  REVIEW_REQUIRED
+  UNMATCHED
+}
+
 model Organization {
-  id              String                   @id @default(cuid())
-  name            String
-  slug            String                   @unique
-  memberships     OrganizationMembership[]
-  refreshSessions RefreshSession[]
-  importBatches   ImportBatch[]
-  importRows      ImportRow[]
-  vehicles        Vehicle[]
-  parts           Part[]
-  partNumbers     PartNumber[]
-  inventoryItems  InventoryItem[]
-  warehouses      Warehouse[]
-  binLocations    BinLocation[]
-  mediaAssets     MediaAsset[]
-  partMedia       PartMedia[]
-  createdAt       DateTime                 @default(now())
-  updatedAt       DateTime                 @updatedAt
+  id                 String                   @id @default(cuid())
+  name               String
+  slug               String                   @unique
+  memberships        OrganizationMembership[]
+  refreshSessions    RefreshSession[]
+  importBatches      ImportBatch[]
+  importRows         ImportRow[]
+  vehicles           Vehicle[]
+  parts              Part[]
+  partNumbers        PartNumber[]
+  inventoryItems     InventoryItem[]
+  warehouses         Warehouse[]
+  binLocations       BinLocation[]
+  mediaAssets        MediaAsset[]
+  partMedia          PartMedia[]
+  importMediaMatches ImportMediaMatch[]
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
 }
 
 model User {
@@ -146,27 +162,33 @@ model LegacyPricingPart {
 }
 
 model ImportBatch {
-  id               String            @id @default(cuid())
-  organizationId   String
-  createdById      String
-  originalFilename String
-  templateVersion  String
-  checksum         String
-  sourceFileKey    String?
-  imageArchiveKey  String?
-  status           ImportBatchStatus @default(UPLOADED)
-  totalRows        Int               @default(0)
-  validRows        Int               @default(0)
-  warningRows      Int               @default(0)
-  invalidRows      Int               @default(0)
-  errors           Json?
-  warnings         Json?
-  confirmedAt      DateTime?
-  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy        User              @relation("ImportCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  rows             ImportRow[]
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  id                   String             @id @default(cuid())
+  organizationId       String
+  createdById          String
+  originalFilename     String
+  templateVersion      String
+  checksum             String
+  sourceFileKey        String?
+  imageArchiveKey      String?
+  imageArchiveChecksum String?
+  status               ImportBatchStatus  @default(UPLOADED)
+  totalRows            Int                @default(0)
+  validRows            Int                @default(0)
+  warningRows          Int                @default(0)
+  invalidRows          Int                @default(0)
+  imageMatchCount      Int                @default(0)
+  imageReviewCount     Int                @default(0)
+  imageUnmatchedCount  Int                @default(0)
+  errors               Json?
+  warnings             Json?
+  imageIssues          Json?
+  confirmedAt          DateTime?
+  organization         Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy            User               @relation("ImportCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  rows                 ImportRow[]
+  mediaMatches         ImportMediaMatch[]
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
 
   @@unique([organizationId, checksum])
   @@index([organizationId, status, createdAt])
@@ -174,21 +196,22 @@ model ImportBatch {
 }
 
 model ImportRow {
-  id              String          @id @default(cuid())
+  id              String             @id @default(cuid())
   organizationId  String
   importBatchId   String
   rowNumber       Int
   rawData         Json
   normalizedData  Json?
-  status          ImportRowStatus @default(PENDING)
+  status          ImportRowStatus    @default(PENDING)
   errors          Json?
   warnings        Json?
-  committedPartId String?         @unique
-  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  importBatch     ImportBatch     @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
-  committedPart   Part?           @relation("CommittedImportPart", fields: [committedPartId], references: [id], onDelete: SetNull)
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  committedPartId String?            @unique
+  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  importBatch     ImportBatch        @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+  committedPart   Part?              @relation("CommittedImportPart", fields: [committedPartId], references: [id], onDelete: SetNull)
+  mediaMatches    ImportMediaMatch[]
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
 
   @@unique([importBatchId, rowNumber])
   @@index([organizationId, status])
@@ -320,7 +343,7 @@ model InventoryItem {
 }
 
 model MediaAsset {
-  id               String       @id @default(cuid())
+  id               String             @id @default(cuid())
   organizationId   String
   storageKey       String
   originalFilename String
@@ -329,11 +352,12 @@ model MediaAsset {
   checksum         String
   width            Int?
   height           Int?
-  status           MediaStatus  @default(UPLOADED)
-  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  status           MediaStatus        @default(UPLOADED)
+  organization     Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   parts            PartMedia[]
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  importMatches    ImportMediaMatch[]
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
 
   @@unique([organizationId, storageKey])
   @@index([organizationId, checksum])
@@ -357,6 +381,29 @@ model PartMedia {
   @@unique([partId, mediaAssetId])
   @@unique([partId, displayOrder])
   @@index([organizationId, mediaAssetId])
+}
+
+model ImportMediaMatch {
+  id             String             @id @default(cuid())
+  organizationId String
+  importBatchId  String
+  importRowId    String?
+  mediaAssetId   String
+  sourcePath     String
+  strategy       ImageMatchStrategy
+  status         ImageMatchStatus
+  displayOrder   Int
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  importBatch    ImportBatch        @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+  importRow      ImportRow?         @relation(fields: [importRowId], references: [id], onDelete: SetNull)
+  mediaAsset     MediaAsset         @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@unique([importBatchId, sourcePath])
+  @@index([organizationId, status])
+  @@index([importRowId, displayOrder])
+  @@index([mediaAssetId])
 }
 
 model Search {

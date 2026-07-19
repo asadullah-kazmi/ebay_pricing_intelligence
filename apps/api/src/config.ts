@@ -22,6 +22,7 @@ export interface AppConfig {
     uploadUrlTtlSeconds: number;
     maxImageBytes: number;
     maxImportBytes: number;
+    maxImageArchiveBytes: number;
   };
   ebay: {
     clientId?: string;
@@ -114,6 +115,10 @@ export function getConfig(): AppConfig {
   if (!Number.isInteger(storageMaxImportBytes) || storageMaxImportBytes < 1_048_576 || storageMaxImportBytes > 52_428_800) {
     throw new Error("STORAGE_MAX_IMPORT_BYTES must be an integer between 1048576 and 52428800");
   }
+  const storageMaxImageArchiveBytes = Number(process.env.STORAGE_MAX_IMAGE_ARCHIVE_BYTES ?? 104_857_600);
+  if (!Number.isInteger(storageMaxImageArchiveBytes) || storageMaxImageArchiveBytes < 10_485_760 || storageMaxImageArchiveBytes > 524_288_000) {
+    throw new Error("STORAGE_MAX_IMAGE_ARCHIVE_BYTES must be an integer between 10485760 and 524288000");
+  }
 
   cachedConfig = {
     port,
@@ -137,6 +142,7 @@ export function getConfig(): AppConfig {
       uploadUrlTtlSeconds: storageUploadUrlTtlSeconds,
       maxImageBytes: storageMaxImageBytes,
       maxImportBytes: storageMaxImportBytes,
+      maxImageArchiveBytes: storageMaxImageArchiveBytes,
     } : undefined,
     ebay: {
       clientId,

@@ -69,6 +69,8 @@ See [Object Storage Setup](docs/OBJECT_STORAGE_SETUP.md) for private AWS S3 or C
 
 See [Catalog Intake Spreadsheet v1.0](docs/SPREADSHEET_TEMPLATE.md) for the versioned CSV template, column definitions, units, and data-entry rules.
 
+See [Image Archive Format](docs/IMAGE_ARCHIVE_FORMAT.md) for ZIP structure, manifest fields, deterministic mapping precedence, and safety limits.
+
 ## API
 
 - `POST /api/search` — body: `{ "oem": "8K0615301M", "marketplace": "EBAY_US", "condition": "NEW" }` (`condition`: `ANY`, `NEW`, or `USED`)
@@ -84,4 +86,5 @@ See [Catalog Intake Spreadsheet v1.0](docs/SPREADSHEET_TEMPLATE.md) for the vers
 - `GET /api/imports/template` â€” download the current catalog intake CSV
 - `GET /api/imports/template/schema` â€” retrieve the machine-readable field contract
 - `POST /api/imports/validate` â€” store, parse, normalize, and stage a CSV/XLSX import
+- `POST /api/imports/:id/images` â€” validate, store, and map an image ZIP to staged SKUs
 - `GET /health`

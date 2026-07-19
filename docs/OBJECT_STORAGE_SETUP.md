@@ -14,6 +14,7 @@ STORAGE_FORCE_PATH_STYLE=false
 STORAGE_UPLOAD_URL_TTL_SECONDS=300
 STORAGE_MAX_IMAGE_BYTES=20971520
 STORAGE_MAX_IMPORT_BYTES=10485760
+STORAGE_MAX_IMAGE_ARCHIVE_BYTES=104857600
 ```
 
 For AWS S3, use the bucket's AWS region and leave `STORAGE_ENDPOINT` empty. For a local S3-compatible service, an HTTPS endpoint is required by production configuration; path-style access can be enabled when the provider requires it.
@@ -62,3 +63,5 @@ Do not grant bucket administration or public-object permissions to the applicati
 Objects remain private. `GET /api/media/:id/download-url` returns a short-lived download URL only after an organization-scoped database lookup.
 
 Spreadsheet uploads received by `POST /api/imports/validate` are stored under an organization-specific `imports/` prefix before staging rows are written. `STORAGE_MAX_IMPORT_BYTES` limits the compressed CSV/XLSX request size; the XLSX parser separately limits expanded worksheet data.
+
+Image ZIP uploads use `STORAGE_MAX_IMAGE_ARCHIVE_BYTES`. The original archive is retained under the import prefix, while validated extracted images are stored under private media keys.

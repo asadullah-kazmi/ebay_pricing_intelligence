@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "./db.js";
 import type { ParsedImport } from "./import-parser.js";
+import type { ImageArchiveIssue, ImageMappingRow, MappedArchiveImage } from "./image-archive.js";
 
 export interface ImportBatchSummary {
   id: string;
@@ -119,4 +120,107 @@ export async function stageParsedImport(input: {
     }
     throw error;
   }
+}
+
+export interface ImageMappingBatch {
+  id: string;
+  status: string;
+  invalidRows: number;
+  imageArchiveKey: string | null;
+  imageArchiveChecksum: string | null;
+  imageMatchCount: number;
+  imageReviewCount: number;
+  imageUnmatchedCount: number;
+  rows: ImageMappingRow[];
+}
+
+export async function findImageMappingBatch(organizationId: string, importBatchId: string): Promise<ImageMappingBatch | null> {
+  const batch = await prisma.importBatch.findFirst({
+    where: { id: importBatchId, organizationId },
+    select: {
+      id: true,
+      status: true,
+      invalidRows: true,
+      imageArchiveKey: true,
+      imageArchiveChecksum: true,
+      imageMatchCount: true,
+      imageReviewCount: true,
+      imageUnmatchedCount: true,
+      rows: {
+        where: { status: { in: ["VALID", "WARNING"] } },
+        select: { id: true, rowNumber: true, normalizedData: true },
+      },
+    },
+  });
+  if (!batch) return null;
+  const rows = batch.rows.flatMap((row) => {
+    const data = row.normalizedData;
+    if (!data || typeof data !== "object" || Array.isArray(data)) return [];
+    const sku = data.sku;
+    const imageGroup = data.imageGroup;
+    const vin = data.vin;
+    if (typeof sku !== "string" || typeof imageGroup !== "string" || (vin !== null && typeof vin !== "string")) return [];
+    return [{ id: row.id, rowNumber: row.rowNumber, sku, imageGroup, vin }];
+  });
+  return { ...batch, rows };
+}
+
+export async function findReusableMediaAsset(organizationId: string, checksum: string) {
+  return prisma.mediaAsset.findFirst({
+    where: { organizationId, checksum, status: { not: "QUARANTINED" } },
+    select: { id: true },
+  });
+}
+
+export async function saveImageArchiveMappings(input: {
+  organizationId: string;
+  importBatchId: string;
+  archiveKey: string;
+  archiveChecksum: string;
+  invalidRows: number;
+  issues: ImageArchiveIssue[];
+  mappings: Array<MappedArchiveImage & { mediaAssetId: string }>;
+}) {
+  const imageMatchCount = input.mappings.filter(({ status }) => status === "MATCHED").length;
+  const imageReviewCount = input.mappings.filter(({ status }) => status === "REVIEW_REQUIRED").length;
+  const imageUnmatchedCount = input.mappings.filter(({ status }) => status === "UNMATCHED").length;
+  const status = input.invalidRows || imageReviewCount || imageUnmatchedCount || input.issues.some(({ severity }) => severity === "error")
+    ? "REVIEW_REQUIRED"
+    : "READY_TO_COMMIT";
+
+  return prisma.$transaction(async (tx) => {
+    if (input.mappings.length) {
+      await tx.importMediaMatch.createMany({
+        data: input.mappings.map((mapping) => ({
+          organizationId: input.organizationId,
+          importBatchId: input.importBatchId,
+          importRowId: mapping.importRowId,
+          mediaAssetId: mapping.mediaAssetId,
+          sourcePath: mapping.sourcePath,
+          strategy: mapping.strategy,
+          status: mapping.status,
+          displayOrder: mapping.displayOrder,
+        })),
+      });
+    }
+    return tx.importBatch.update({
+      where: { id: input.importBatchId },
+      data: {
+        imageArchiveKey: input.archiveKey,
+        imageArchiveChecksum: input.archiveChecksum,
+        imageMatchCount,
+        imageReviewCount,
+        imageUnmatchedCount,
+        imageIssues: input.issues as unknown as Prisma.InputJsonValue,
+        status,
+      },
+      select: {
+        id: true,
+        status: true,
+        imageMatchCount: true,
+        imageReviewCount: true,
+        imageUnmatchedCount: true,
+      },
+    });
+  });
 }
