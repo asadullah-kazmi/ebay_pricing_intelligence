@@ -3,6 +3,11 @@ export type EbayEnvironment = "sandbox" | "production";
 export interface AppConfig {
   port: number;
   databaseUrl?: string;
+  auth: {
+    secret?: string;
+    issuer: string;
+    audience: string;
+  };
   ebay: {
     clientId?: string;
     clientSecret?: string;
@@ -49,9 +54,19 @@ export function getConfig(): AppConfig {
     throw new Error("EBAY_NOTIFICATION_VERIFICATION_TOKEN must be 32-80 letters, numbers, underscores, or hyphens");
   }
 
+  const authSecret = process.env.APP_AUTH_SECRET?.trim() || undefined;
+  if (authSecret && authSecret.length < 32) {
+    throw new Error("APP_AUTH_SECRET must contain at least 32 characters");
+  }
+
   cachedConfig = {
     port,
     databaseUrl: process.env.DATABASE_URL?.trim() || undefined,
+    auth: {
+      secret: authSecret,
+      issuer: process.env.AUTH_ISSUER?.trim() || "partpulse-api",
+      audience: process.env.AUTH_AUDIENCE?.trim() || "partpulse-web",
+    },
     ebay: {
       clientId,
       clientSecret,

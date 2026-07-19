@@ -19,6 +19,18 @@ Check `GET http://localhost:4000/health` after startup. Its `ebay.mode` value is
 Run `npm run db:check` to test the configured PostgreSQL connection without starting the applications.
 Run `npm run ebay:check` to verify the configured eBay credentials without performing a listing search.
 
+## SaaS authentication foundation
+
+New tenant-owned API routes use a short-lived HS256 bearer token and resolve the user's current organization membership from PostgreSQL on every request. Configure a private random secret of at least 32 characters as `APP_AUTH_SECRET`; keep the default issuer and audience unless the web authentication service is configured with different values.
+
+```env
+APP_AUTH_SECRET=
+AUTH_ISSUER=partpulse-api
+AUTH_AUDIENCE=partpulse-web
+```
+
+`GET /api/session` is the first protected route. Its token must contain `sub` (user ID) and `organizationId`; a valid signature alone is insufficient because the API also verifies the corresponding `OrganizationMembership`. The existing competitor-pricing endpoints remain available during the schema transition and will move behind tenant authentication when their data becomes organization-owned.
+
 ## eBay production notifications
 
 eBay requires production applications that persist eBay data to receive marketplace account-deletion notifications. Deploy the API at a public HTTPS URL, then configure the exact callback URL and a private 32-80 character token:
@@ -45,4 +57,5 @@ See [Automotive Catalog and eBay Publishing SaaS Implementation Plan](docs/SAAS_
 - `GET /api/listings/:id`
 - `GET /api/analytics/:oem`
 - `GET /api/history/:oem`
+- `GET /api/session` â€” authenticated user, organization, and role context
 - `GET /health`

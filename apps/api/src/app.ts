@@ -8,6 +8,7 @@ import { matchListing, normalizePartNumber } from "./domain/matching.js";
 import { accountDeletionNotificationSchema, generateChallengeResponse, verifyEbayNotificationSignature } from "./ebay-notifications.js";
 import { EbayApiError, searchEbay } from "./providers/ebay.js";
 import { deleteListingsForClosedEbayAccount, findLatestAnalytics, findListing, findSearchHistory, saveSearchResult } from "./repository.js";
+import { getTenantContext, requireTenantContext } from "./tenant-context.js";
 
 const searchSchema = z.object({
   oem: z.string().trim().min(2).max(80),
@@ -26,6 +27,11 @@ app.get("/health", async (_req, res) => {
     ebay: { mode: config.ebay.mode, environment: config.ebay.environment },
     persistence: { provider: "postgresql", connected: databaseConnected },
   });
+});
+
+app.get("/api/session", requireTenantContext, (_req, res) => {
+  const tenant = getTenantContext(res);
+  res.json(tenant);
 });
 
 app.get("/api/ebay/account-deletion", (req, res) => {
