@@ -1,6 +1,6 @@
 # Catalog intake spreadsheet v1.0
 
-Use [partpulse-catalog-import-v1.csv](../templates/partpulse-catalog-import-v1.csv) as the authoritative import template. Keep the header names unchanged and save the completed file as UTF-8 CSV. One row represents one catalog part/SKU.
+Use [partpulse-catalog-import-v1.csv](../templates/partpulse-catalog-import-v1.csv) as the authoritative import template. Keep the header names unchanged and save the completed file as UTF-8 CSV or `.xlsx`. One row represents one catalog part/SKU. A single v1 import supports up to 5,000 non-empty rows.
 
 ## Required columns
 
@@ -50,3 +50,5 @@ Use [partpulse-catalog-import-v1.csv](../templates/partpulse-catalog-import-v1.c
 ## Download API
 
 Authenticated users can retrieve the current template from `GET /api/imports/template` and its machine-readable field contract from `GET /api/imports/template/schema`. The CSV response includes `X-Template-Version: 1.0`.
+
+Submit a completed file to `POST /api/imports/validate` as the raw request body. Set `Content-Type` to the file MIME type and `X-File-Name` to a `.csv` or `.xlsx` filename. The API stores the original file privately, creates staging rows, and returns batch counts. Repeating the same file returns the existing batch instead of duplicating it. This endpoint does not create catalog parts.

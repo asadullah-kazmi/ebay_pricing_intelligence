@@ -1,4 +1,5 @@
 import cors from "cors";
+import { createHash } from "node:crypto";
 import express from "express";
 import { z } from "zod";
 import { AuthenticationError, AuthorizationError } from "./auth.js";
@@ -12,6 +13,8 @@ import { EbayApiError, searchEbay } from "./providers/ebay.js";
 import { deleteListingsForClosedEbayAccount, findLatestAnalytics, findListing, findSearchHistory, saveSearchResult } from "./repository.js";
 import { findMediaStorageKey, saveConfirmedMediaAsset } from "./media-repository.js";
 import { catalogImportTemplate, catalogImportTemplateFilename, catalogImportTemplateVersion, createCatalogImportCsv } from "./import-template.js";
+import { findExistingNormalizedSkus, findImportByChecksum, stageParsedImport } from "./import-repository.js";
+import { applyExistingSkuConflicts, parseAndValidateImport } from "./import-parser.js";
 import { getObjectStorage, ObjectStorageError } from "./object-storage.js";
 import { getTenantContext, requireOrganizationRoles, requireTenantContext } from "./tenant-context.js";
 
@@ -22,6 +25,8 @@ const searchSchema = z.object({
 });
 const confirmMediaUploadSchema = z.object({ storageKey: z.string().min(1).max(1024) });
 const mediaUploadRoles = requireOrganizationRoles("OWNER", "ADMIN", "MANAGER", "CATALOG_OPERATOR");
+const importFilenameSchema = z.string().trim().min(1).max(255).regex(/\.(?:csv|xlsx)$/i, "Only .csv and .xlsx files are supported");
+const importBody = express.raw({ type: () => true, limit: getConfig().storage?.maxImportBytes ?? 10_485_760 });
 
 export const app = express();
 const webOrigin = getConfig().webOrigin;
@@ -91,6 +96,39 @@ app.get("/api/imports/template", requireTenantContext, (_req, res) => {
 app.get("/api/imports/template/schema", requireTenantContext, (_req, res) => {
   res.set("Cache-Control", "private, max-age=3600");
   res.json(catalogImportTemplate);
+});
+
+app.post("/api/imports/validate", requireTenantContext, mediaUploadRoles, importBody, async (req, res, next) => {
+  try {
+    const storage = getObjectStorage();
+    if (!storage) return res.status(503).json({ error: "Object storage is not configured" });
+    if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: "Spreadsheet file body is required" });
+    const filename = importFilenameSchema.parse(req.get("x-file-name"));
+    const tenant = getTenantContext(res);
+    const checksum = createHash("sha256").update(req.body).digest("hex");
+    const existing = await findImportByChecksum(tenant.organization.id, checksum);
+    if (existing) return res.json(existing);
+
+    const parsed = await parseAndValidateImport(filename, req.body);
+    const candidateSkus = parsed.rows.flatMap(({ normalizedData }) => normalizedData ? [normalizedData.normalizedSku] : []);
+    applyExistingSkuConflicts(parsed, await findExistingNormalizedSkus(tenant.organization.id, candidateSkus));
+    const sourceFileKey = await storage.storeImportFile({
+      organizationId: tenant.organization.id,
+      filename,
+      mimeType: req.get("content-type")?.split(";")[0] ?? "application/octet-stream",
+      bytes: req.body,
+      checksum,
+    });
+    const batch = await stageParsedImport({
+      organizationId: tenant.organization.id,
+      createdById: tenant.user.id,
+      originalFilename: filename,
+      checksum,
+      sourceFileKey,
+      parsed,
+    });
+    res.status(201).json(batch);
+  } catch (error) { next(error); }
 });
 
 app.post("/api/media/uploads/confirm", requireTenantContext, mediaUploadRoles, async (req, res, next) => {
@@ -184,6 +222,9 @@ app.use((error: unknown, _req: express.Request, res: express.Response, _next: ex
   if (error instanceof AuthenticationError) return res.status(401).json({ error: error.message });
   if (error instanceof AuthorizationError) return res.status(403).json({ error: error.message });
   if (error instanceof ObjectStorageError) return res.status(400).json({ error: error.message });
+  if (typeof error === "object" && error !== null && "type" in error && error.type === "entity.too.large") {
+    return res.status(413).json({ error: "Spreadsheet exceeds the configured upload limit" });
+  }
   if (error instanceof z.ZodError) return res.status(400).json({ error: "Invalid request", issues: error.issues });
   if (error instanceof EbayApiError) return res.status(502).json({ error: error.message, provider: "ebay" });
   console.error(error);

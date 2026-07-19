@@ -21,6 +21,7 @@ export interface AppConfig {
     forcePathStyle: boolean;
     uploadUrlTtlSeconds: number;
     maxImageBytes: number;
+    maxImportBytes: number;
   };
   ebay: {
     clientId?: string;
@@ -109,6 +110,10 @@ export function getConfig(): AppConfig {
   if (!Number.isInteger(storageMaxImageBytes) || storageMaxImageBytes < 1_048_576 || storageMaxImageBytes > 52_428_800) {
     throw new Error("STORAGE_MAX_IMAGE_BYTES must be an integer between 1048576 and 52428800");
   }
+  const storageMaxImportBytes = Number(process.env.STORAGE_MAX_IMPORT_BYTES ?? 10_485_760);
+  if (!Number.isInteger(storageMaxImportBytes) || storageMaxImportBytes < 1_048_576 || storageMaxImportBytes > 52_428_800) {
+    throw new Error("STORAGE_MAX_IMPORT_BYTES must be an integer between 1048576 and 52428800");
+  }
 
   cachedConfig = {
     port,
@@ -131,6 +136,7 @@ export function getConfig(): AppConfig {
       forcePathStyle: process.env.STORAGE_FORCE_PATH_STYLE === "true",
       uploadUrlTtlSeconds: storageUploadUrlTtlSeconds,
       maxImageBytes: storageMaxImageBytes,
+      maxImportBytes: storageMaxImportBytes,
     } : undefined,
     ebay: {
       clientId,

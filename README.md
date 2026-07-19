@@ -83,4 +83,5 @@ See [Catalog Intake Spreadsheet v1.0](docs/SPREADSHEET_TEMPLATE.md) for the vers
 - `GET /api/media/:id/download-url` â€” create a short-lived private download URL
 - `GET /api/imports/template` â€” download the current catalog intake CSV
 - `GET /api/imports/template/schema` â€” retrieve the machine-readable field contract
+- `POST /api/imports/validate` â€” store, parse, normalize, and stage a CSV/XLSX import
 - `GET /health`

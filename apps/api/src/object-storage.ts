@@ -49,6 +49,10 @@ export function createStorageKey(organizationId: string, filename: string, id: s
   return `organizations/${safeSegment(organizationId)}/media/${safeSegment(id)}/${safeFilename(filename)}`;
 }
 
+export function createImportStorageKey(organizationId: string, filename: string, id: string = randomUUID()): string {
+  return `organizations/${safeSegment(organizationId)}/imports/${safeSegment(id)}/${safeFilename(filename)}`;
+}
+
 export function assertOwnedStorageKey(organizationId: string, storageKey: string): void {
   const prefix = `organizations/${safeSegment(organizationId)}/media/`;
   if (!storageKey.startsWith(prefix) || storageKey.includes("..")) {
@@ -144,6 +148,38 @@ export class ObjectStorage {
         "x-amz-meta-originalfilename": metadata.originalfilename,
       },
     };
+  }
+
+  async storeImportFile(input: {
+    organizationId: string;
+    filename: string;
+    mimeType: string;
+    bytes: Buffer;
+    checksum: string;
+  }): Promise<string> {
+    if (input.bytes.length > this.config.maxImportBytes) {
+      throw new ObjectStorageError(`Spreadsheet exceeds the ${this.config.maxImportBytes}-byte upload limit`);
+    }
+    const storageKey = createImportStorageKey(input.organizationId, input.filename);
+    try {
+      await this.client.send(new PutObjectCommand({
+        Bucket: this.config.bucket,
+        Key: storageKey,
+        Body: input.bytes,
+        ContentType: input.mimeType,
+        ContentLength: input.bytes.length,
+        ChecksumSHA256: Buffer.from(input.checksum, "hex").toString("base64"),
+        Metadata: {
+          organizationid: input.organizationId,
+          kind: "spreadsheet",
+          sha256: input.checksum,
+          originalfilename: encodeMetadataValue(input.filename),
+        },
+      }));
+      return storageKey;
+    } catch {
+      throw new ObjectStorageError("The source spreadsheet could not be stored");
+    }
   }
 
   async confirmImageUpload(organizationId: string, storageKey: string): Promise<ConfirmedImageObject> {

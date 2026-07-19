@@ -21,6 +21,7 @@ enum ImportBatchStatus {
   UPLOADED
   PARSING
   VALIDATING
+  REVIEW_REQUIRED
   READY_TO_COMMIT
   COMMITTING
   COMPLETED
@@ -158,6 +159,8 @@ model ImportBatch {
   validRows        Int               @default(0)
   warningRows      Int               @default(0)
   invalidRows      Int               @default(0)
+  errors           Json?
+  warnings         Json?
   confirmedAt      DateTime?
   organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdBy        User              @relation("ImportCreator", fields: [createdById], references: [id], onDelete: Restrict)
@@ -214,6 +217,7 @@ model Part {
   id                   String            @id @default(cuid())
   organizationId       String
   sku                  String
+  normalizedSku        String
   primaryPartNumber    String
   normalizedPartNumber String
   brand                String?
@@ -223,6 +227,10 @@ model Part {
   imageGroup           String?
   status               CatalogPartStatus @default(IMPORTED)
   donorVehicleId       String?
+  donorMileage         Int?
+  donorColor           String?
+  placement            String?
+  notes                String?
   createdById          String
   organization         Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   donorVehicle         Vehicle?          @relation(fields: [donorVehicleId], references: [id], onDelete: SetNull)
@@ -234,7 +242,7 @@ model Part {
   createdAt            DateTime          @default(now())
   updatedAt            DateTime          @updatedAt
 
-  @@unique([organizationId, sku])
+  @@unique([organizationId, normalizedSku])
   @@index([organizationId, normalizedPartNumber])
   @@index([organizationId, status, createdAt])
   @@index([donorVehicleId])

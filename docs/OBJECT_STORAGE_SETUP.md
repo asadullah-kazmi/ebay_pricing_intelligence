@@ -13,6 +13,7 @@ STORAGE_SECRET_ACCESS_KEY=<private-secret-access-key>
 STORAGE_FORCE_PATH_STYLE=false
 STORAGE_UPLOAD_URL_TTL_SECONDS=300
 STORAGE_MAX_IMAGE_BYTES=20971520
+STORAGE_MAX_IMPORT_BYTES=10485760
 ```
 
 For AWS S3, use the bucket's AWS region and leave `STORAGE_ENDPOINT` empty. For a local S3-compatible service, an HTTPS endpoint is required by production configuration; path-style access can be enabled when the provider requires it.
@@ -59,3 +60,5 @@ Do not grant bucket administration or public-object permissions to the applicati
 5. The API checks organization ownership, content length, MIME type, signed metadata, and the storage-provider SHA-256 checksum before creating the `MediaAsset` row.
 
 Objects remain private. `GET /api/media/:id/download-url` returns a short-lived download URL only after an organization-scoped database lookup.
+
+Spreadsheet uploads received by `POST /api/imports/validate` are stored under an organization-specific `imports/` prefix before staging rows are written. `STORAGE_MAX_IMPORT_BYTES` limits the compressed CSV/XLSX request size; the XLSX parser separately limits expanded worksheet data.
