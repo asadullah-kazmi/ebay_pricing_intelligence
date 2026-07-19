@@ -1,4 +1,5 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { jwtVerify, SignJWT } from "jose";
 import { z } from "zod";
 
 export const organizationRoles = [
@@ -12,18 +13,33 @@ export const organizationRoles = [
 ] as const;
 
 export type OrganizationRole = (typeof organizationRoles)[number];
+export type TokenType = "access" | "refresh";
 
-const tokenHeaderSchema = z.object({ alg: z.literal("HS256"), typ: z.literal("JWT") });
-const tokenClaimsSchema = z.object({
+export interface JwtConfiguration {
+  accessSecret: string;
+  refreshSecret: string;
+  issuer: string;
+  audience: string;
+  accessTtlSeconds: number;
+  refreshTtlSeconds: number;
+}
+
+const baseClaimsSchema = z.object({
   sub: z.string().min(1),
   organizationId: z.string().min(1),
   iss: z.string().min(1),
-  aud: z.string().min(1),
+  aud: z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]),
   iat: z.number().int().nonnegative(),
   exp: z.number().int().positive(),
 });
+const accessClaimsSchema = baseClaimsSchema.extend({ tokenType: z.literal("access") });
+const refreshClaimsSchema = baseClaimsSchema.extend({
+  tokenType: z.literal("refresh"),
+  jti: z.string().uuid(),
+});
 
-export type ApplicationTokenClaims = z.infer<typeof tokenClaimsSchema>;
+export type AccessTokenClaims = z.infer<typeof accessClaimsSchema>;
+export type RefreshTokenClaims = z.infer<typeof refreshClaimsSchema>;
 
 export class AuthenticationError extends Error {
   constructor(message = "Invalid or expired access token") {
@@ -39,83 +55,97 @@ export class AuthorizationError extends Error {
   }
 }
 
-function encodeJson(value: unknown): string {
-  return Buffer.from(JSON.stringify(value)).toString("base64url");
+function key(secret: string): Uint8Array {
+  if (secret.length < 32) throw new Error("JWT signing secrets must contain at least 32 characters");
+  return new TextEncoder().encode(secret);
 }
 
-function decodeJson(value: string): unknown {
-  try {
-    return JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
-  } catch {
-    throw new AuthenticationError();
-  }
-}
-
-function signatureFor(unsignedToken: string, secret: string): Buffer {
-  return createHmac("sha256", secret).update(unsignedToken).digest();
-}
-
-function assertStrongSecret(secret: string): void {
-  if (secret.length < 32) throw new Error("The application authentication secret must contain at least 32 characters");
-}
-
-export function createApplicationToken(
-  input: { userId: string; organizationId: string },
-  options: { secret: string; issuer: string; audience: string; lifetimeSeconds?: number; now?: Date },
-): string {
-  assertStrongSecret(options.secret);
+async function signToken(
+  input: { userId: string; organizationId: string; tokenType: TokenType; sessionId?: string },
+  secret: string,
+  options: { issuer: string; audience: string; ttlSeconds: number; now?: Date },
+): Promise<string> {
   const issuedAt = Math.floor((options.now ?? new Date()).getTime() / 1000);
-  const lifetimeSeconds = options.lifetimeSeconds ?? 15 * 60;
-  if (!Number.isInteger(lifetimeSeconds) || lifetimeSeconds < 1) throw new Error("Token lifetime must be a positive integer");
-
-  const header = encodeJson({ alg: "HS256", typ: "JWT" });
-  const payload = encodeJson({
-    sub: input.userId,
-    organizationId: input.organizationId,
-    iss: options.issuer,
-    aud: options.audience,
-    iat: issuedAt,
-    exp: issuedAt + lifetimeSeconds,
-  });
-  const unsignedToken = `${header}.${payload}`;
-  return `${unsignedToken}.${signatureFor(unsignedToken, options.secret).toString("base64url")}`;
+  if (!Number.isInteger(options.ttlSeconds) || options.ttlSeconds < 1) throw new Error("Token lifetime must be a positive integer");
+  let token = new SignJWT({ organizationId: input.organizationId, tokenType: input.tokenType })
+    .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+    .setSubject(input.userId)
+    .setIssuer(options.issuer)
+    .setAudience(options.audience)
+    .setIssuedAt(issuedAt)
+    .setExpirationTime(issuedAt + options.ttlSeconds);
+  if (input.sessionId) token = token.setJti(input.sessionId);
+  return token.sign(key(secret));
 }
 
-export function verifyApplicationToken(
+async function verifyToken<T>(
   token: string,
-  options: { secret: string; issuer: string; audience: string; now?: Date },
-): ApplicationTokenClaims {
-  assertStrongSecret(options.secret);
-  const segments = token.split(".");
-  if (segments.length !== 3) throw new AuthenticationError();
-  const [encodedHeader, encodedPayload, encodedSignature] = segments;
-  if (!encodedHeader || !encodedPayload || !encodedSignature) throw new AuthenticationError();
-
-  const unsignedToken = `${encodedHeader}.${encodedPayload}`;
-  const expectedSignature = signatureFor(unsignedToken, options.secret);
-  let suppliedSignature: Buffer;
+  tokenType: TokenType,
+  secret: string,
+  schema: z.ZodType<T>,
+  options: { issuer: string; audience: string; now?: Date },
+): Promise<T> {
   try {
-    suppliedSignature = Buffer.from(encodedSignature, "base64url");
-  } catch {
-    throw new AuthenticationError();
+    const { payload, protectedHeader } = await jwtVerify(token, key(secret), {
+      algorithms: ["HS256"],
+      issuer: options.issuer,
+      audience: options.audience,
+      currentDate: options.now,
+    });
+    if (protectedHeader.typ !== "JWT" || payload.tokenType !== tokenType) throw new AuthenticationError();
+    const parsed = schema.safeParse(payload);
+    if (!parsed.success) throw new AuthenticationError();
+    return parsed.data;
+  } catch (error) {
+    if (error instanceof AuthenticationError) throw error;
+    throw new AuthenticationError(tokenType === "refresh" ? "Invalid or expired refresh token" : undefined);
   }
-  if (suppliedSignature.length !== expectedSignature.length || !timingSafeEqual(suppliedSignature, expectedSignature)) {
-    throw new AuthenticationError();
-  }
+}
 
-  const header = tokenHeaderSchema.safeParse(decodeJson(encodedHeader));
-  const claims = tokenClaimsSchema.safeParse(decodeJson(encodedPayload));
-  if (!header.success || !claims.success) throw new AuthenticationError();
+export function createAccessToken(
+  input: { userId: string; organizationId: string },
+  config: JwtConfiguration,
+  now?: Date,
+): Promise<string> {
+  return signToken({ ...input, tokenType: "access" }, config.accessSecret, {
+    issuer: config.issuer,
+    audience: config.audience,
+    ttlSeconds: config.accessTtlSeconds,
+    now,
+  });
+}
 
-  const now = Math.floor((options.now ?? new Date()).getTime() / 1000);
-  if (
-    claims.data.iss !== options.issuer
-    || claims.data.aud !== options.audience
-    || claims.data.iat > now
-    || claims.data.exp <= now
-    || claims.data.exp <= claims.data.iat
-  ) {
-    throw new AuthenticationError();
-  }
-  return claims.data;
+export async function createRefreshToken(
+  input: { userId: string; organizationId: string; sessionId?: string },
+  config: JwtConfiguration,
+  now?: Date,
+): Promise<{ token: string; sessionId: string }> {
+  const sessionId = input.sessionId ?? randomUUID();
+  const token = await signToken({ ...input, tokenType: "refresh", sessionId }, config.refreshSecret, {
+    issuer: config.issuer,
+    audience: config.audience,
+    ttlSeconds: config.refreshTtlSeconds,
+    now,
+  });
+  return { token, sessionId };
+}
+
+export function verifyAccessToken(token: string, config: JwtConfiguration, now?: Date): Promise<AccessTokenClaims> {
+  return verifyToken(token, "access", config.accessSecret, accessClaimsSchema, {
+    issuer: config.issuer,
+    audience: config.audience,
+    now,
+  });
+}
+
+export function verifyRefreshToken(token: string, config: JwtConfiguration, now?: Date): Promise<RefreshTokenClaims> {
+  return verifyToken(token, "refresh", config.refreshSecret, refreshClaimsSchema, {
+    issuer: config.issuer,
+    audience: config.audience,
+    now,
+  });
+}
+
+export function hashRefreshToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
 }

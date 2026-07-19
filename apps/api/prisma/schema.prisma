@@ -18,21 +18,23 @@ enum OrganizationRole {
 }
 
 model Organization {
-  id          String                   @id @default(cuid())
-  name        String
-  slug        String                   @unique
-  memberships OrganizationMembership[]
-  createdAt   DateTime                 @default(now())
-  updatedAt   DateTime                 @updatedAt
+  id              String                   @id @default(cuid())
+  name            String
+  slug            String                   @unique
+  memberships     OrganizationMembership[]
+  refreshSessions RefreshSession[]
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
 }
 
 model User {
-  id          String                   @id @default(cuid())
-  email       String                   @unique
-  name        String?
-  memberships OrganizationMembership[]
-  createdAt   DateTime                 @default(now())
-  updatedAt   DateTime                 @updatedAt
+  id              String                   @id @default(cuid())
+  email           String                   @unique
+  name            String?
+  memberships     OrganizationMembership[]
+  refreshSessions RefreshSession[]
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
 }
 
 model OrganizationMembership {
@@ -50,49 +52,64 @@ model OrganizationMembership {
   @@index([organizationId, role])
 }
 
+model RefreshSession {
+  id             String       @id
+  userId         String
+  organizationId String
+  tokenHash      String       @unique
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@index([userId, organizationId])
+  @@index([expiresAt])
+}
+
 model Part {
-  id       String   @id @default(cuid())
-  oem      String   @unique
-  brand    String?
-  searches Search[]
-  listings Listing[]
-  createdAt DateTime @default(now())
+  id        String    @id @default(cuid())
+  oem       String    @unique
+  brand     String?
+  searches  Search[]
+  listings  Listing[]
+  createdAt DateTime  @default(now())
 }
 
 model Search {
-  id          String   @id @default(cuid())
-  oem         String
-  marketplace String
-  searchedAt  DateTime @default(now())
-  competitorCount Int
-  lowest      Decimal? @db.Decimal(12, 2)
-  average     Decimal? @db.Decimal(12, 2)
-  median      Decimal? @db.Decimal(12, 2)
-  highest     Decimal? @db.Decimal(12, 2)
-  recommendedPrice Decimal? @db.Decimal(12, 2)
-  currency    String?
-  part        Part     @relation(fields: [oem], references: [oem])
-  priceCaptures PriceHistory[]
+  id               String         @id @default(cuid())
+  oem              String
+  marketplace      String
+  searchedAt       DateTime       @default(now())
+  competitorCount  Int
+  lowest           Decimal?       @db.Decimal(12, 2)
+  average          Decimal?       @db.Decimal(12, 2)
+  median           Decimal?       @db.Decimal(12, 2)
+  highest          Decimal?       @db.Decimal(12, 2)
+  recommendedPrice Decimal?       @db.Decimal(12, 2)
+  currency         String?
+  part             Part           @relation(fields: [oem], references: [oem])
+  priceCaptures    PriceHistory[]
 
   @@index([oem, searchedAt])
 }
 
 model Listing {
-  id          String   @id
+  id          String         @id
   title       String
   seller      String
-  price       Decimal  @db.Decimal(12, 2)
-  shipping    Decimal  @db.Decimal(12, 2)
+  price       Decimal        @db.Decimal(12, 2)
+  shipping    Decimal        @db.Decimal(12, 2)
   currency    String
   condition   String
   marketplace String
   url         String
   matchedOn   String[]
   oem         String
-  part        Part     @relation(fields: [oem], references: [oem])
+  part        Part           @relation(fields: [oem], references: [oem])
   prices      PriceHistory[]
-  firstSeenAt DateTime @default(now())
-  lastSeenAt  DateTime @updatedAt
+  firstSeenAt DateTime       @default(now())
+  lastSeenAt  DateTime       @updatedAt
 }
 
 model PriceHistory {

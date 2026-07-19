@@ -21,15 +21,21 @@ Run `npm run ebay:check` to verify the configured eBay credentials without perfo
 
 ## SaaS authentication foundation
 
-New tenant-owned API routes use a short-lived HS256 bearer token and resolve the user's current organization membership from PostgreSQL on every request. Configure a private random secret of at least 32 characters as `APP_AUTH_SECRET`; keep the default issuer and audience unless the web authentication service is configured with different values.
+New tenant-owned API routes use short-lived HS256 JWT access tokens and resolve the user's current organization membership from PostgreSQL on every request. Refresh JWTs use a separate signing secret, are stored only as SHA-256 hashes, and rotate after every successful refresh. Configure two different private random secrets of at least 32 characters:
 
 ```env
-APP_AUTH_SECRET=
-AUTH_ISSUER=partpulse-api
-AUTH_AUDIENCE=partpulse-web
+JWT_ACCESS_SECRET=
+JWT_REFRESH_SECRET=
+JWT_ISSUER=partpulse-api
+JWT_AUDIENCE=partpulse-web
+JWT_ACCESS_TTL_SECONDS=900
+JWT_REFRESH_TTL_SECONDS=2592000
+WEB_ORIGIN=http://localhost:3000
 ```
 
-`GET /api/session` is the first protected route. Its token must contain `sub` (user ID) and `organizationId`; a valid signature alone is insufficient because the API also verifies the corresponding `OrganizationMembership`. The existing competitor-pricing endpoints remain available during the schema transition and will move behind tenant authentication when their data becomes organization-owned.
+`GET /api/session` accepts an access token in `Authorization: Bearer <token>`. Its token must contain `sub` (user ID) and `organizationId`; a valid signature alone is insufficient because the API also verifies the corresponding `OrganizationMembership`. `POST /api/auth/refresh` rotates the secure, HTTP-only `partpulse_refresh` cookie and returns a new access token. `POST /api/auth/logout` revokes and clears that refresh token. Initial token issuance is exposed as a server-side service for the login/onboarding flow; refresh tokens are never returned to browser JavaScript by these endpoints.
+
+Set `WEB_ORIGIN` to the exact web application origin in Railway. Authentication cookie endpoints reject other origins. Use different access and refresh secrets in every environment and never commit them.
 
 ## eBay production notifications
 
@@ -58,4 +64,6 @@ See [Automotive Catalog and eBay Publishing SaaS Implementation Plan](docs/SAAS_
 - `GET /api/analytics/:oem`
 - `GET /api/history/:oem`
 - `GET /api/session` â€” authenticated user, organization, and role context
+- `POST /api/auth/refresh` â€” rotate refresh cookie and return a new access token
+- `POST /api/auth/logout` â€” revoke the current refresh session
 - `GET /health`

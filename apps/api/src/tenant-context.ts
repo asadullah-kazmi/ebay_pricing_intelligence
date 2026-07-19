@@ -1,6 +1,6 @@
 import type { RequestHandler, Response } from "express";
-import { AuthenticationError, AuthorizationError, type OrganizationRole, verifyApplicationToken } from "./auth.js";
-import { getConfig } from "./config.js";
+import { AuthenticationError, AuthorizationError, type OrganizationRole, verifyAccessToken } from "./auth.js";
+import { getJwtConfiguration } from "./auth-sessions.js";
 import { prisma } from "./db.js";
 
 export interface TenantContext {
@@ -33,32 +33,23 @@ function readBearerToken(authorization: string | undefined): string {
 
 export async function resolveTenantContext(input: {
   authorization?: string;
-  secret: string;
-  issuer: string;
-  audience: string;
+  jwt: Parameters<typeof verifyAccessToken>[1];
   membershipLookup?: MembershipLookup;
   now?: Date;
 }): Promise<TenantContext> {
-  const claims = verifyApplicationToken(readBearerToken(input.authorization), {
-    secret: input.secret,
-    issuer: input.issuer,
-    audience: input.audience,
-    now: input.now,
-  });
+  const claims = await verifyAccessToken(readBearerToken(input.authorization), input.jwt, input.now);
   const membership = await (input.membershipLookup ?? findMembership)(claims.sub, claims.organizationId);
   if (!membership) throw new AuthorizationError("You do not belong to this organization");
   return membership;
 }
 
 export const requireTenantContext: RequestHandler = async (req, res, next) => {
-  const auth = getConfig().auth;
-  if (!auth.secret) return res.status(503).json({ error: "Application authentication is not configured" });
+  const jwt = getJwtConfiguration();
+  if (!jwt) return res.status(503).json({ error: "JWT authentication is not configured" });
   try {
     res.locals.tenant = await resolveTenantContext({
       authorization: req.get("authorization"),
-      secret: auth.secret,
-      issuer: auth.issuer,
-      audience: auth.audience,
+      jwt,
     });
     next();
   } catch (error) {

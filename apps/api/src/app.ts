@@ -1,6 +1,8 @@
 import cors from "cors";
 import express from "express";
 import { z } from "zod";
+import { AuthenticationError, AuthorizationError } from "./auth.js";
+import { assertTrustedAuthOrigin, clearRefreshCookie, getJwtConfiguration, readRefreshCookie, revokeRefreshToken, rotateTokenPair, setRefreshCookie } from "./auth-sessions.js";
 import { getConfig } from "./config.js";
 import { databaseIsReachable } from "./db.js";
 import { calculateAnalytics } from "./domain/analytics.js";
@@ -17,7 +19,8 @@ const searchSchema = z.object({
 });
 
 export const app = express();
-app.use(cors());
+const webOrigin = getConfig().webOrigin;
+app.use(cors(webOrigin ? { origin: webOrigin, credentials: true } : undefined));
 app.use(express.json());
 app.get("/health", async (_req, res) => {
   const config = getConfig();
@@ -32,6 +35,33 @@ app.get("/health", async (_req, res) => {
 app.get("/api/session", requireTenantContext, (_req, res) => {
   const tenant = getTenantContext(res);
   res.json(tenant);
+});
+
+app.post("/api/auth/refresh", async (req, res, next) => {
+  try {
+    assertTrustedAuthOrigin(req);
+    const jwt = getJwtConfiguration();
+    if (!jwt) return res.status(503).json({ error: "JWT authentication is not configured" });
+    const pair = await rotateTokenPair(readRefreshCookie(req), jwt);
+    setRefreshCookie(res, pair);
+    res.json({ accessToken: pair.accessToken, expiresIn: pair.accessTokenExpiresIn });
+  } catch (error) { next(error); }
+});
+
+app.post("/api/auth/logout", async (req, res, next) => {
+  try {
+    assertTrustedAuthOrigin(req);
+    const jwt = getJwtConfiguration();
+    if (jwt) await revokeRefreshToken(readRefreshCookie(req), jwt);
+    clearRefreshCookie(res);
+    res.status(204).send();
+  } catch (error) {
+    if (error instanceof AuthenticationError) {
+      clearRefreshCookie(res);
+      return res.status(204).send();
+    }
+    next(error);
+  }
 });
 
 app.get("/api/ebay/account-deletion", (req, res) => {
@@ -97,6 +127,8 @@ app.get("/api/history/:oem", async (req, res, next) => {
 });
 
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  if (error instanceof AuthenticationError) return res.status(401).json({ error: error.message });
+  if (error instanceof AuthorizationError) return res.status(403).json({ error: error.message });
   if (error instanceof z.ZodError) return res.status(400).json({ error: "Invalid search", issues: error.issues });
   if (error instanceof EbayApiError) return res.status(502).json({ error: error.message, provider: "ebay" });
   console.error(error);

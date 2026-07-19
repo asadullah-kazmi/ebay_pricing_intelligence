@@ -3,11 +3,15 @@ export type EbayEnvironment = "sandbox" | "production";
 export interface AppConfig {
   port: number;
   databaseUrl?: string;
-  auth: {
-    secret?: string;
+  jwt: {
+    accessSecret?: string;
+    refreshSecret?: string;
     issuer: string;
     audience: string;
+    accessTtlSeconds: number;
+    refreshTtlSeconds: number;
   };
+  webOrigin?: string;
   ebay: {
     clientId?: string;
     clientSecret?: string;
@@ -54,19 +58,39 @@ export function getConfig(): AppConfig {
     throw new Error("EBAY_NOTIFICATION_VERIFICATION_TOKEN must be 32-80 letters, numbers, underscores, or hyphens");
   }
 
-  const authSecret = process.env.APP_AUTH_SECRET?.trim() || undefined;
-  if (authSecret && authSecret.length < 32) {
-    throw new Error("APP_AUTH_SECRET must contain at least 32 characters");
+  const accessSecret = process.env.JWT_ACCESS_SECRET?.trim() || undefined;
+  const refreshSecret = process.env.JWT_REFRESH_SECRET?.trim() || undefined;
+  if (Boolean(accessSecret) !== Boolean(refreshSecret)) {
+    throw new Error("JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be provided together");
+  }
+  if (accessSecret && accessSecret.length < 32) {
+    throw new Error("JWT_ACCESS_SECRET must contain at least 32 characters");
+  }
+  if (refreshSecret && refreshSecret.length < 32) {
+    throw new Error("JWT_REFRESH_SECRET must contain at least 32 characters");
+  }
+
+  const accessTtlSeconds = Number(process.env.JWT_ACCESS_TTL_SECONDS ?? 900);
+  const refreshTtlSeconds = Number(process.env.JWT_REFRESH_TTL_SECONDS ?? 2_592_000);
+  if (!Number.isInteger(accessTtlSeconds) || accessTtlSeconds < 60 || accessTtlSeconds > 3_600) {
+    throw new Error("JWT_ACCESS_TTL_SECONDS must be an integer between 60 and 3600");
+  }
+  if (!Number.isInteger(refreshTtlSeconds) || refreshTtlSeconds < 3_600 || refreshTtlSeconds > 7_776_000) {
+    throw new Error("JWT_REFRESH_TTL_SECONDS must be an integer between 3600 and 7776000");
   }
 
   cachedConfig = {
     port,
     databaseUrl: process.env.DATABASE_URL?.trim() || undefined,
-    auth: {
-      secret: authSecret,
-      issuer: process.env.AUTH_ISSUER?.trim() || "partpulse-api",
-      audience: process.env.AUTH_AUDIENCE?.trim() || "partpulse-web",
+    jwt: {
+      accessSecret,
+      refreshSecret,
+      issuer: process.env.JWT_ISSUER?.trim() || "partpulse-api",
+      audience: process.env.JWT_AUDIENCE?.trim() || "partpulse-web",
+      accessTtlSeconds,
+      refreshTtlSeconds,
     },
+    webOrigin: process.env.WEB_ORIGIN?.trim() || undefined,
     ebay: {
       clientId,
       clientSecret,
