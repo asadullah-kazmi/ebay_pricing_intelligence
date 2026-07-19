@@ -35,6 +35,10 @@ Enter those same values in the eBay developer portal. The callback supports eBay
 - `apps/web`: Next.js search dashboard.
 - `apps/api`: Express API, matching engine, analytics, eBay provider boundary, and Prisma schema.
 
+## Product roadmap
+
+See [Automotive Catalog and eBay Publishing SaaS Implementation Plan](docs/SAAS_IMPLEMENTATION_PLAN.md) for the complete multi-tenant catalog, image mapping, pricing, fitment, editing, publishing, administration, testing, and delivery plan.
+
 ## API
 
 - `POST /api/search` — body: `{ "oem": "8K0615301M", "marketplace": "EBAY_US", "condition": "NEW" }` (`condition`: `ANY`, `NEW`, or `USED`)
