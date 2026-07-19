@@ -11,6 +11,7 @@ import { accountDeletionNotificationSchema, generateChallengeResponse, verifyEba
 import { EbayApiError, searchEbay } from "./providers/ebay.js";
 import { deleteListingsForClosedEbayAccount, findLatestAnalytics, findListing, findSearchHistory, saveSearchResult } from "./repository.js";
 import { findMediaStorageKey, saveConfirmedMediaAsset } from "./media-repository.js";
+import { catalogImportTemplate, catalogImportTemplateFilename, catalogImportTemplateVersion, createCatalogImportCsv } from "./import-template.js";
 import { getObjectStorage, ObjectStorageError } from "./object-storage.js";
 import { getTenantContext, requireOrganizationRoles, requireTenantContext } from "./tenant-context.js";
 
@@ -75,6 +76,21 @@ app.post("/api/media/upload-url", requireTenantContext, mediaUploadRoles, async 
     const tenant = getTenantContext(res);
     res.status(201).json(await storage.createImageUpload(tenant.organization.id, req.body));
   } catch (error) { next(error); }
+});
+
+app.get("/api/imports/template", requireTenantContext, (_req, res) => {
+  res.set({
+    "Content-Type": "text/csv; charset=utf-8",
+    "Content-Disposition": `attachment; filename="${catalogImportTemplateFilename}"`,
+    "Cache-Control": "private, max-age=3600",
+    "X-Template-Version": catalogImportTemplateVersion,
+  });
+  res.send(createCatalogImportCsv());
+});
+
+app.get("/api/imports/template/schema", requireTenantContext, (_req, res) => {
+  res.set("Cache-Control", "private, max-age=3600");
+  res.json(catalogImportTemplate);
 });
 
 app.post("/api/media/uploads/confirm", requireTenantContext, mediaUploadRoles, async (req, res, next) => {
