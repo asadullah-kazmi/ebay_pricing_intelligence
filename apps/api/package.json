@@ -10,6 +10,7 @@
     "test": "vitest run",
     "db:check": "tsx src/scripts/check-database.ts",
     "ebay:check": "tsx src/scripts/check-ebay.ts",
+    "smoke:production": "tsx src/scripts/smoke-production.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev"
   },

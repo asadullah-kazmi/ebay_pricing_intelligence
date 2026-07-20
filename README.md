@@ -16,6 +16,8 @@ Without eBay credentials, the API intentionally uses realistic demo listings. Se
 
 Check `GET http://localhost:4000/health` after startup. Its `ebay.mode` value is `demo` when credentials are absent and `live` when both credentials are configured. The persistence status reports whether PostgreSQL is reachable. It never returns credential values.
 
+Use `GET /health/live` for process liveness and `GET /health/ready` for Railway readiness. Readiness returns HTTP 503 when PostgreSQL is unavailable.
+
 Run `npm run db:check` to test the configured PostgreSQL connection without starting the applications.
 Run `npm run ebay:check` to verify the configured eBay credentials without performing a listing search.
 
@@ -75,6 +77,8 @@ See [Import Review and Confirmation](docs/IMPORT_REVIEW.md) for preview paginati
 
 See [Catalog Workspace](docs/CATALOG_WORKSPACE.md) for catalog filters, editing, bulk status changes, export, and frontend session behavior.
 
+See [Production Release Checklist](docs/PRODUCTION_RELEASE.md) before deploying. It contains the Railway service commands, required variables, health checks, smoke test, rollback process, and current release limitations.
+
 ## API
 
 - `POST /api/search` — body: `{ "oem": "8K0615301M", "marketplace": "EBAY_US", "condition": "NEW" }` (`condition`: `ANY`, `NEW`, or `USED`)
@@ -101,3 +105,5 @@ See [Catalog Workspace](docs/CATALOG_WORKSPACE.md) for catalog filters, editing,
 - `PATCH /api/parts/:id` - update core part and inventory fields
 - `PATCH /api/parts/bulk-status` - update the status of up to 500 selected parts
 - `GET /health`
+- `GET /health/live`
+- `GET /health/ready`

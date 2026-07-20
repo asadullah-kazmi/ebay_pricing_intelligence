@@ -19,6 +19,7 @@ import { applyExistingSkuConflicts, parseAndValidateImport } from "./import-pars
 import { ImageImportError, importImageArchive } from "./image-import-service.js";
 import { confirmImportBatch, correctImportMediaMatch, discardImportMediaMatch, getImportPreview, ImportReviewError } from "./import-review-service.js";
 import { getObjectStorage, ObjectStorageError } from "./object-storage.js";
+import { createRateLimitMiddleware, requestLogMiddleware, requestSecurityMiddleware } from "./http-hardening.js";
 import { getTenantContext, requireOrganizationRoles, requireTenantContext } from "./tenant-context.js";
 
 const searchSchema = z.object({
@@ -81,12 +82,23 @@ const catalogPartUpdateSchema = z.object({
   }).strict().optional(),
 }).strict().refine((value) => Object.keys(value).length > 0, "At least one field is required");
 const catalogBulkStatusSchema = z.object({ partIds: z.array(z.string().min(1)).min(1).max(500).transform((ids) => [...new Set(ids)]), status: catalogStatusSchema });
+const generalRateLimit = createRateLimitMiddleware({ scope: "general", limit: 600, windowMs: 15 * 60_000 });
+const authRateLimit = createRateLimitMiddleware({ scope: "auth", limit: 30, windowMs: 15 * 60_000 });
+const searchRateLimit = createRateLimitMiddleware({ scope: "search", limit: 120, windowMs: 60_000 });
+const importRateLimit = createRateLimitMiddleware({ scope: "import", limit: 30, windowMs: 60 * 60_000 });
+const writeRateLimit = createRateLimitMiddleware({ scope: "write", limit: 240, windowMs: 15 * 60_000 });
 
 export const app = express();
+app.disable("x-powered-by");
+if (process.env.NODE_ENV === "production") app.set("trust proxy", 1);
 const webOrigin = getConfig().webOrigin;
+app.use(requestSecurityMiddleware);
 app.use(cors(webOrigin ? { origin: webOrigin, credentials: true } : undefined));
-app.use(express.json());
-app.get("/health", async (_req, res) => {
+app.use(requestLogMiddleware);
+app.use(generalRateLimit);
+app.use(express.json({ limit: "1mb" }));
+app.get("/health/live", (_req, res) => res.json({ status: "ok" }));
+const readinessHandler: express.RequestHandler = async (_req, res) => {
   const config = getConfig();
   const databaseConnected = await databaseIsReachable();
   res.status(databaseConnected ? 200 : 503).json({
@@ -94,14 +106,16 @@ app.get("/health", async (_req, res) => {
     ebay: { mode: config.ebay.mode, environment: config.ebay.environment },
     persistence: { provider: "postgresql", connected: databaseConnected },
   });
-});
+};
+app.get("/health", readinessHandler);
+app.get("/health/ready", readinessHandler);
 
 app.get("/api/session", requireTenantContext, (_req, res) => {
   const tenant = getTenantContext(res);
   res.json(tenant);
 });
 
-app.post("/api/auth/refresh", async (req, res, next) => {
+app.post("/api/auth/refresh", authRateLimit, async (req, res, next) => {
   try {
     assertTrustedAuthOrigin(req);
     const jwt = getJwtConfiguration();
@@ -152,7 +166,7 @@ app.get("/api/imports/template/schema", requireTenantContext, (_req, res) => {
   res.json(catalogImportTemplate);
 });
 
-app.post("/api/imports/validate", requireTenantContext, mediaUploadRoles, importBody, async (req, res, next) => {
+app.post("/api/imports/validate", importRateLimit, requireTenantContext, mediaUploadRoles, importBody, async (req, res, next) => {
   try {
     const storage = getObjectStorage();
     if (!storage) return res.status(503).json({ error: "Object storage is not configured" });
@@ -185,7 +199,7 @@ app.post("/api/imports/validate", requireTenantContext, mediaUploadRoles, import
   } catch (error) { next(error); }
 });
 
-app.post("/api/imports/:id/images", requireTenantContext, mediaUploadRoles, imageArchiveBody, async (req, res, next) => {
+app.post("/api/imports/:id/images", importRateLimit, requireTenantContext, mediaUploadRoles, imageArchiveBody, async (req, res, next) => {
   try {
     const storage = getObjectStorage();
     if (!storage) return res.status(503).json({ error: "Object storage is not configured" });
@@ -217,7 +231,7 @@ app.get("/api/imports/:id/preview", requireTenantContext, async (req, res, next)
   } catch (error) { next(error); }
 });
 
-app.patch("/api/imports/:id/media-matches/:matchId", requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+app.patch("/api/imports/:id/media-matches/:matchId", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
   try {
     const importBatchId = req.params.id;
     const mediaMatchId = req.params.matchId;
@@ -235,7 +249,7 @@ app.patch("/api/imports/:id/media-matches/:matchId", requireTenantContext, media
   } catch (error) { next(error); }
 });
 
-app.delete("/api/imports/:id/media-matches/:matchId", requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+app.delete("/api/imports/:id/media-matches/:matchId", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
   try {
     const importBatchId = req.params.id;
     const mediaMatchId = req.params.matchId;
@@ -247,7 +261,7 @@ app.delete("/api/imports/:id/media-matches/:matchId", requireTenantContext, medi
   } catch (error) { next(error); }
 });
 
-app.post("/api/imports/:id/confirm", requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+app.post("/api/imports/:id/confirm", importRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
   try {
     const importBatchId = req.params.id;
     if (typeof importBatchId !== "string") return res.status(400).json({ error: "Invalid import batch ID" });
@@ -274,7 +288,7 @@ app.get("/api/parts/export", requireTenantContext, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-app.patch("/api/parts/bulk-status", requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+app.patch("/api/parts/bulk-status", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
     const input = catalogBulkStatusSchema.parse(req.body);
@@ -290,7 +304,7 @@ app.get("/api/parts/:id", requireTenantContext, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-app.patch("/api/parts/:id", requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+app.patch("/api/parts/:id", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
   try {
     const partId = req.params.id;
     if (typeof partId !== "string") return res.status(400).json({ error: "Invalid catalog part ID" });
@@ -350,7 +364,7 @@ app.post("/api/ebay/account-deletion", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-app.post("/api/search", async (req, res, next) => {
+app.post("/api/search", searchRateLimit, async (req, res, next) => {
   try {
     const input = searchSchema.parse(req.body);
     const oem = normalizePartNumber(input.oem);
@@ -385,18 +399,21 @@ app.get("/api/history/:oem", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  if (error instanceof AuthenticationError) return res.status(401).json({ error: error.message });
-  if (error instanceof AuthorizationError) return res.status(403).json({ error: error.message });
-  if (error instanceof ObjectStorageError) return res.status(400).json({ error: error.message });
-  if (error instanceof ImageImportError) return res.status(error.statusCode).json({ error: error.message });
-  if (error instanceof ImportReviewError) return res.status(error.statusCode).json({ error: error.message, ...(error.details ? { details: error.details } : {}) });
-  if (error instanceof CatalogError) return res.status(error.statusCode).json({ error: error.message });
+app.use((_req, res) => res.status(404).json({ error: "Route not found", requestId: res.locals.requestId }));
+
+app.use((error: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const response = (status: number, body: Record<string, unknown>) => res.status(status).json({ ...body, requestId: res.locals.requestId });
+  if (error instanceof AuthenticationError) return response(401, { error: error.message });
+  if (error instanceof AuthorizationError) return response(403, { error: error.message });
+  if (error instanceof ObjectStorageError) return response(400, { error: error.message });
+  if (error instanceof ImageImportError) return response(error.statusCode, { error: error.message });
+  if (error instanceof ImportReviewError) return response(error.statusCode, { error: error.message, ...(error.details ? { details: error.details } : {}) });
+  if (error instanceof CatalogError) return response(error.statusCode, { error: error.message });
   if (typeof error === "object" && error !== null && "type" in error && error.type === "entity.too.large") {
-    return res.status(413).json({ error: "Spreadsheet exceeds the configured upload limit" });
+    return response(413, { error: "Request body exceeds the configured upload limit" });
   }
-  if (error instanceof z.ZodError) return res.status(400).json({ error: "Invalid request", issues: error.issues });
-  if (error instanceof EbayApiError) return res.status(502).json({ error: error.message, provider: "ebay" });
-  console.error(error);
-  res.status(500).json({ error: "Unable to complete the request. Check the API logs for details." });
+  if (error instanceof z.ZodError) return response(400, { error: "Invalid request", issues: error.issues });
+  if (error instanceof EbayApiError) return response(502, { error: error.message, provider: "ebay" });
+  console.error(JSON.stringify({ type: "unhandled_request_error", requestId: res.locals.requestId, method: req.method, path: req.path, error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : { name: "UnknownError" } }));
+  response(500, { error: "Unable to complete the request. Check the API logs for details." });
 });

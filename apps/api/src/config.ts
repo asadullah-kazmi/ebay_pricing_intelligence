@@ -3,6 +3,7 @@ export type EbayEnvironment = "sandbox" | "production";
 export interface AppConfig {
   port: number;
   databaseUrl?: string;
+  shutdownTimeoutMs: number;
   jwt: {
     accessSecret?: string;
     refreshSecret?: string;
@@ -91,6 +92,11 @@ export function getConfig(): AppConfig {
     throw new Error("JWT_REFRESH_TTL_SECONDS must be an integer between 3600 and 7776000");
   }
 
+  const shutdownTimeoutMs = Number(process.env.API_SHUTDOWN_TIMEOUT_MS ?? 10_000);
+  if (!Number.isInteger(shutdownTimeoutMs) || shutdownTimeoutMs < 1_000 || shutdownTimeoutMs > 30_000) {
+    throw new Error("API_SHUTDOWN_TIMEOUT_MS must be an integer between 1000 and 30000");
+  }
+
   const storageBucket = process.env.STORAGE_BUCKET?.trim() || undefined;
   const storageRegion = process.env.STORAGE_REGION?.trim() || undefined;
   const storageAccessKeyId = process.env.STORAGE_ACCESS_KEY_ID?.trim() || undefined;
@@ -120,9 +126,38 @@ export function getConfig(): AppConfig {
     throw new Error("STORAGE_MAX_IMAGE_ARCHIVE_BYTES must be an integer between 10485760 and 524288000");
   }
 
+  const databaseUrl = process.env.DATABASE_URL?.trim() || undefined;
+  const webOrigin = process.env.WEB_ORIGIN?.trim() || undefined;
+  if (webOrigin) {
+    let parsedOrigin: URL;
+    try { parsedOrigin = new URL(webOrigin); } catch { throw new Error("WEB_ORIGIN must be a valid absolute URL"); }
+    if (parsedOrigin.protocol !== "http:" && parsedOrigin.protocol !== "https:") throw new Error("WEB_ORIGIN must use HTTP or HTTPS");
+    if (parsedOrigin.origin !== webOrigin.replace(/\/$/, "")) throw new Error("WEB_ORIGIN must contain only the scheme and host");
+  }
+  if (process.env.NODE_ENV === "production") {
+    const missing = [
+      !databaseUrl && "DATABASE_URL",
+      !accessSecret && "JWT_ACCESS_SECRET",
+      !refreshSecret && "JWT_REFRESH_SECRET",
+      !webOrigin && "WEB_ORIGIN",
+      !storageBucket && "STORAGE_BUCKET",
+      !storageRegion && "STORAGE_REGION",
+      !storageAccessKeyId && "STORAGE_ACCESS_KEY_ID",
+      !storageSecretAccessKey && "STORAGE_SECRET_ACCESS_KEY",
+      !clientId && "EBAY_CLIENT_ID",
+      !clientSecret && "EBAY_CLIENT_SECRET",
+      !notificationEndpoint && "EBAY_NOTIFICATION_ENDPOINT",
+      !notificationVerificationToken && "EBAY_NOTIFICATION_VERIFICATION_TOKEN",
+    ].filter(Boolean);
+    if (missing.length) throw new Error(`Production configuration is missing: ${missing.join(", ")}`);
+    if (environment !== "production") throw new Error("EBAY_ENVIRONMENT must be production when NODE_ENV=production");
+    if (webOrigin && !webOrigin.startsWith("https://")) throw new Error("WEB_ORIGIN must use HTTPS in production");
+  }
+
   cachedConfig = {
     port,
-    databaseUrl: process.env.DATABASE_URL?.trim() || undefined,
+    databaseUrl,
+    shutdownTimeoutMs,
     jwt: {
       accessSecret,
       refreshSecret,
@@ -131,7 +166,7 @@ export function getConfig(): AppConfig {
       accessTtlSeconds,
       refreshTtlSeconds,
     },
-    webOrigin: process.env.WEB_ORIGIN?.trim() || undefined,
+    webOrigin,
     storage: storageBucket && storageRegion && storageAccessKeyId && storageSecretAccessKey ? {
       bucket: storageBucket,
       region: storageRegion,

@@ -6,9 +6,11 @@
     "dev": "concurrently -n api,web -c cyan,magenta \"npm run dev -w @price-intel/api\" \"npm run dev -w @price-intel/web\"",
     "build": "npm run build -w @price-intel/api && npm run build -w @price-intel/web",
     "test": "npm run test -w @price-intel/api",
+    "release:check": "npm test && npm run build",
     "db:generate": "npm run db:generate -w @price-intel/api",
     "db:check": "npm run db:check -w @price-intel/api",
     "ebay:check": "npm run ebay:check -w @price-intel/api",
+    "smoke:production": "npm run smoke:production -w @price-intel/api",
     "db:migrate": "npm run db:migrate -w @price-intel/api"
   },
   "devDependencies": {
