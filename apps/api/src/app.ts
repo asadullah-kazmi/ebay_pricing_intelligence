@@ -20,6 +20,7 @@ import { ImageImportError, importImageArchive } from "./image-import-service.js"
 import { confirmImportBatch, correctImportMediaMatch, discardImportMediaMatch, getImportPreview, ImportReviewError } from "./import-review-service.js";
 import { getObjectStorage, ObjectStorageError } from "./object-storage.js";
 import { createRateLimitMiddleware, requestLogMiddleware, requestSecurityMiddleware } from "./http-hardening.js";
+import { createPricingJob, getPricingJob, listPricingJobs, PricingJobError, startPricingJob } from "./pricing-service.js";
 import { getTenantContext, requireOrganizationRoles, requireTenantContext } from "./tenant-context.js";
 
 const searchSchema = z.object({
@@ -82,6 +83,13 @@ const catalogPartUpdateSchema = z.object({
   }).strict().optional(),
 }).strict().refine((value) => Object.keys(value).length > 0, "At least one field is required");
 const catalogBulkStatusSchema = z.object({ partIds: z.array(z.string().min(1)).min(1).max(500).transform((ids) => [...new Set(ids)]), status: catalogStatusSchema });
+const createPricingJobSchema = z.object({
+  partIds: z.array(z.string().min(1)).min(1).max(25).transform((ids) => [...new Set(ids)]),
+  marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).default("EBAY_US"),
+  conditionMode: z.enum(["MATCH_PART", "ANY", "NEW", "USED"]).default("MATCH_PART"),
+}).strict();
+const pricingJobListSchema = z.object({ limit: z.coerce.number().int().min(1).max(50).default(10) });
+const pricingRoles = requireOrganizationRoles("OWNER", "ADMIN", "MANAGER", "PRICING_OPERATOR");
 const generalRateLimit = createRateLimitMiddleware({ scope: "general", limit: 600, windowMs: 15 * 60_000 });
 const authRateLimit = createRateLimitMiddleware({ scope: "auth", limit: 30, windowMs: 15 * 60_000 });
 const searchRateLimit = createRateLimitMiddleware({ scope: "search", limit: 120, windowMs: 60_000 });
@@ -312,6 +320,30 @@ app.patch("/api/parts/:id", writeRateLimit, requireTenantContext, mediaUploadRol
   } catch (error) { next(error); }
 });
 
+app.post("/api/pricing/jobs", searchRateLimit, requireTenantContext, pricingRoles, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const job = await createPricingJob(tenant.organization.id, tenant.user.id, createPricingJobSchema.parse(req.body));
+    res.status(202).json(job);
+    startPricingJob(job.id);
+  } catch (error) { next(error); }
+});
+
+app.get("/api/pricing/jobs", requireTenantContext, async (req, res, next) => {
+  try {
+    const { limit } = pricingJobListSchema.parse(req.query);
+    res.json(await listPricingJobs(getTenantContext(res).organization.id, limit));
+  } catch (error) { next(error); }
+});
+
+app.get("/api/pricing/jobs/:id", requireTenantContext, async (req, res, next) => {
+  try {
+    const jobId = req.params.id;
+    if (typeof jobId !== "string") return res.status(400).json({ error: "Invalid pricing job ID" });
+    res.json(await getPricingJob(getTenantContext(res).organization.id, jobId));
+  } catch (error) { next(error); }
+});
+
 app.post("/api/media/uploads/confirm", requireTenantContext, mediaUploadRoles, async (req, res, next) => {
   try {
     const storage = getObjectStorage();
@@ -409,6 +441,7 @@ app.use((error: unknown, req: express.Request, res: express.Response, _next: exp
   if (error instanceof ImageImportError) return response(error.statusCode, { error: error.message });
   if (error instanceof ImportReviewError) return response(error.statusCode, { error: error.message, ...(error.details ? { details: error.details } : {}) });
   if (error instanceof CatalogError) return response(error.statusCode, { error: error.message });
+  if (error instanceof PricingJobError) return response(error.statusCode, { error: error.message });
   if (typeof error === "object" && error !== null && "type" in error && error.type === "entity.too.large") {
     return response(413, { error: "Request body exceeds the configured upload limit" });
   }

@@ -90,10 +90,33 @@ enum ImageMatchStatus {
   UNMATCHED
 }
 
+enum PricingJobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  PARTIAL
+  FAILED
+}
+
+enum PricingJobItemStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  NO_MATCHES
+  FAILED
+}
+
+enum PricingConditionMode {
+  MATCH_PART
+  ANY
+  NEW
+  USED
+}
+
 model Organization {
-  id                 String                   @id @default(cuid())
+  id                 String                      @id @default(cuid())
   name               String
-  slug               String                   @unique
+  slug               String                      @unique
   memberships        OrganizationMembership[]
   refreshSessions    RefreshSession[]
   importBatches      ImportBatch[]
@@ -107,20 +130,24 @@ model Organization {
   mediaAssets        MediaAsset[]
   partMedia          PartMedia[]
   importMediaMatches ImportMediaMatch[]
-  createdAt          DateTime                 @default(now())
-  updatedAt          DateTime                 @updatedAt
+  pricingJobs        PricingJob[]
+  pricingJobItems    PricingJobItem[]
+  competitorListings CompetitorListingSnapshot[]
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
 }
 
 model User {
-  id              String                   @id @default(cuid())
-  email           String                   @unique
-  name            String?
-  memberships     OrganizationMembership[]
-  refreshSessions RefreshSession[]
-  createdImports  ImportBatch[]            @relation("ImportCreator")
-  createdParts    Part[]                   @relation("PartCreator")
-  createdAt       DateTime                 @default(now())
-  updatedAt       DateTime                 @updatedAt
+  id                 String                   @id @default(cuid())
+  email              String                   @unique
+  name               String?
+  memberships        OrganizationMembership[]
+  refreshSessions    RefreshSession[]
+  createdImports     ImportBatch[]            @relation("ImportCreator")
+  createdParts       Part[]                   @relation("PartCreator")
+  createdPricingJobs PricingJob[]             @relation("PricingJobCreator")
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
 }
 
 model OrganizationMembership {
@@ -263,6 +290,7 @@ model Part {
   partNumbers          PartNumber[]
   inventoryItem        InventoryItem?
   media                PartMedia[]
+  pricingJobItems      PricingJobItem[]
   createdAt            DateTime          @default(now())
   updatedAt            DateTime          @updatedAt
 
@@ -405,6 +433,84 @@ model ImportMediaMatch {
   @@index([organizationId, status])
   @@index([importRowId, displayOrder])
   @@index([mediaAssetId])
+}
+
+model PricingJob {
+  id             String               @id @default(cuid())
+  organizationId String
+  createdById    String
+  marketplace    String
+  conditionMode  PricingConditionMode @default(MATCH_PART)
+  status         PricingJobStatus     @default(QUEUED)
+  totalItems     Int
+  completedItems Int                  @default(0)
+  noMatchItems   Int                  @default(0)
+  failedItems    Int                  @default(0)
+  startedAt      DateTime?
+  completedAt    DateTime?
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy      User                 @relation("PricingJobCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  items          PricingJobItem[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, status])
+  @@index([createdById])
+}
+
+model PricingJobItem {
+  id               String                      @id @default(cuid())
+  organizationId   String
+  pricingJobId     String
+  partId           String
+  queryPartNumber  String
+  condition        String
+  status           PricingJobItemStatus        @default(QUEUED)
+  competitorCount  Int                         @default(0)
+  lowest           Decimal?                    @db.Decimal(12, 2)
+  average          Decimal?                    @db.Decimal(12, 2)
+  median           Decimal?                    @db.Decimal(12, 2)
+  highest          Decimal?                    @db.Decimal(12, 2)
+  recommendedPrice Decimal?                    @db.Decimal(12, 2)
+  currency         String?
+  error            String?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  organization     Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  pricingJob       PricingJob                  @relation(fields: [pricingJobId], references: [id], onDelete: Cascade)
+  part             Part                        @relation(fields: [partId], references: [id], onDelete: Cascade)
+  listings         CompetitorListingSnapshot[]
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
+
+  @@unique([pricingJobId, partId])
+  @@index([organizationId, status])
+  @@index([partId, completedAt])
+}
+
+model CompetitorListingSnapshot {
+  id               String         @id @default(cuid())
+  organizationId   String
+  pricingJobItemId String
+  listingId        String
+  title            String
+  seller           String
+  price            Decimal        @db.Decimal(12, 2)
+  shipping         Decimal        @db.Decimal(12, 2)
+  landedPrice      Decimal        @db.Decimal(12, 2)
+  currency         String
+  condition        String
+  marketplace      String
+  url              String
+  matchedOn        String[]
+  organization     Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  pricingJobItem   PricingJobItem @relation(fields: [pricingJobItemId], references: [id], onDelete: Cascade)
+  capturedAt       DateTime       @default(now())
+
+  @@unique([pricingJobItemId, listingId])
+  @@index([organizationId, listingId])
+  @@index([pricingJobItemId, landedPrice])
 }
 
 model Search {

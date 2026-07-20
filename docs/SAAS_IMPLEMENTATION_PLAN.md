@@ -858,6 +858,8 @@ Acceptance criteria:
 
 **Estimate:** 2–4 weeks
 
+Step 11 implements the first production slice of this phase: tenant-scoped jobs for up to 25 selected parts, marketplace and condition controls, exact item-specific matching, owned-seller exclusion, persisted competitor snapshots, polling, and catalog recommendations. Durable queue workers, company rules, floors, approval/override flows, and 100-part capacity remain in this phase.
+
 Implementation:
 
 - Refactor current synchronous search into queued pricing jobs.
@@ -972,4 +974,3 @@ Only after this milestone is accepted should implementation proceed to queued bu
 - eBay image management: https://developer.ebay.com/api-docs/sell/static/inventory/managing-image-media.html
 - eBay Inventory API overview: https://developer.ebay.com/api-docs/sell/inventory/static/overview.html
 - Legacy Product API decommission notice: https://developer.ebay.com/devzone/product/CallRef/getProductCompatibilities.html
-

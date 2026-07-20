@@ -77,6 +77,15 @@ const catalogCardSelect = {
     take: 1,
     select: { mediaAsset: { select: { id: true, mimeType: true, width: true, height: true } } },
   },
+  pricingJobItems: {
+    where: { status: { in: ["COMPLETED" as const, "NO_MATCHES" as const] } },
+    orderBy: { completedAt: "desc" as const },
+    take: 1,
+    select: {
+      id: true, status: true, competitorCount: true, recommendedPrice: true, currency: true, completedAt: true,
+      pricingJob: { select: { marketplace: true } },
+    },
+  },
   _count: { select: { media: true } },
 } satisfies Prisma.PartSelect;
 

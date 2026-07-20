@@ -1,5 +1,6 @@
 import type { Analytics, MatchedListing, Marketplace } from "./types.js";
 import { prisma } from "./db.js";
+import { calculateAnalyticsFromPrices } from "./domain/analytics.js";
 
 export interface SearchResult {
   oem: string;
@@ -133,15 +134,55 @@ export async function findSearchHistory(oem: string) {
 
 export async function deleteListingsForClosedEbayAccount(username?: string): Promise<number> {
   return prisma.$transaction(async (tx) => {
+    const affectedPricingItems = await tx.competitorListingSnapshot.findMany({
+      where: username ? { seller: { equals: username, mode: "insensitive" } } : undefined,
+      distinct: ["pricingJobItemId"],
+      select: { pricingJobItemId: true, pricingJobItem: { select: { pricingJobId: true } } },
+    });
+    const deletedSnapshots = await tx.competitorListingSnapshot.deleteMany({
+      where: username ? { seller: { equals: username, mode: "insensitive" } } : undefined,
+    });
+    for (const affected of affectedPricingItems) {
+      const remaining = await tx.competitorListingSnapshot.findMany({
+        where: { pricingJobItemId: affected.pricingJobItemId },
+        orderBy: { landedPrice: "asc" },
+        select: { landedPrice: true, currency: true },
+      });
+      const prices = remaining.map(({ landedPrice }) => Number(landedPrice));
+      const analytics = calculateAnalyticsFromPrices(prices, remaining[0]?.currency ?? "USD");
+      await tx.pricingJobItem.update({
+        where: { id: affected.pricingJobItemId },
+        data: analytics ? {
+          status: "COMPLETED",
+          competitorCount: analytics.count,
+          lowest: analytics.lowest,
+          average: analytics.average,
+          median: analytics.median,
+          highest: analytics.highest,
+          recommendedPrice: analytics.recommendedPrice,
+          currency: analytics.currency,
+        } : {
+          status: "NO_MATCHES",
+          competitorCount: 0,
+          lowest: null, average: null, median: null, highest: null, recommendedPrice: null, currency: null,
+        },
+      });
+    }
+    const affectedJobIds = [...new Set(affectedPricingItems.map(({ pricingJobItem }) => pricingJobItem.pricingJobId))];
+    for (const pricingJobId of affectedJobIds) {
+      const items = await tx.pricingJobItem.groupBy({ by: ["status"], where: { pricingJobId }, _count: { _all: true } });
+      const count = (status: "COMPLETED" | "NO_MATCHES" | "FAILED") => items.find((item) => item.status === status)?._count._all ?? 0;
+      await tx.pricingJob.update({ where: { id: pricingJobId }, data: { completedItems: count("COMPLETED"), noMatchItems: count("NO_MATCHES"), failedItems: count("FAILED") } });
+    }
     const listings = await tx.listing.findMany({
       where: username ? { seller: { equals: username, mode: "insensitive" } } : undefined,
       select: { id: true },
     });
     const listingIds = listings.map(({ id }) => id);
-    if (!listingIds.length) return 0;
+    if (!listingIds.length) return deletedSnapshots.count;
 
     await tx.priceHistory.deleteMany({ where: { listingId: { in: listingIds } } });
     const deleted = await tx.listing.deleteMany({ where: { id: { in: listingIds } } });
-    return deleted.count;
+    return deleted.count + deletedSnapshots.count;
   });
 }

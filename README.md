@@ -77,6 +77,8 @@ See [Import Review and Confirmation](docs/IMPORT_REVIEW.md) for preview paginati
 
 See [Catalog Workspace](docs/CATALOG_WORKSPACE.md) for catalog filters, editing, bulk status changes, export, and frontend session behavior.
 
+See [Bulk Pricing Jobs](docs/BULK_PRICING.md) for selected-part eBay pricing, condition controls, job polling, exact-match evidence, and competitor listing snapshots.
+
 See [Production Release Checklist](docs/PRODUCTION_RELEASE.md) before deploying. It contains the Railway service commands, required variables, health checks, smoke test, rollback process, and current release limitations.
 
 ## API
@@ -104,6 +106,9 @@ See [Production Release Checklist](docs/PRODUCTION_RELEASE.md) before deploying.
 - `GET /api/parts/:id` - retrieve a complete editable catalog record
 - `PATCH /api/parts/:id` - update core part and inventory fields
 - `PATCH /api/parts/bulk-status` - update the status of up to 500 selected parts
+- `POST /api/pricing/jobs` - create a tenant-scoped pricing job for up to 25 selected parts
+- `GET /api/pricing/jobs` - list recent pricing jobs for the organization
+- `GET /api/pricing/jobs/:id` - poll job progress and inspect competitor listing snapshots
 - `GET /health`
 - `GET /health/live`
 - `GET /health/ready`

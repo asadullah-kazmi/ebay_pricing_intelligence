@@ -2,16 +2,16 @@
 
 import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import styles from "./catalog.module.css";
-import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogStatus, PartCondition } from "./types";
+import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogStatus, PartCondition, PricingConditionMode, PricingJob, PricingJobSummary } from "./types";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const statuses: CatalogStatus[] = ["IMPORTED", "NEEDS_IMAGES", "IMPORT_ERROR", "READY_FOR_ENRICHMENT", "ARCHIVED"];
 const emptyCatalog: CatalogResponse = { parts: [], pagination: { page: 1, pageSize: 25, total: 0, totalPages: 0 }, summary: { total: 0, byStatus: {} }, warehouses: [] };
 
 const demoParts: CatalogPartCard[] = [
-  { id: "demo-1", sku: "GM-84178783-A", primaryPartNumber: "84178783", brand: "ACDelco", partName: "HVAC Blower Motor Control Module", condition: "USED", status: "READY_FOR_ENRICHMENT", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), donorVehicle: { vin: "1GNEK13Z43R000001", year: 2021, make: "Chevrolet", model: "Traverse" }, inventoryItem: { quantity: 1, cost: 28, currency: "USD", warehouse: { id: "w1", code: "MAIN", name: "Main" }, binLocation: { id: "b1", code: "A-14" } }, media: [], _count: { media: 4 } },
-  { id: "demo-2", sku: "AUD-8K0615301M", primaryPartNumber: "8K0615301M", brand: "Audi", partName: "Rear Brake Caliper", condition: "USED", status: "NEEDS_IMAGES", createdAt: new Date(Date.now() - 86400000).toISOString(), updatedAt: new Date().toISOString(), donorVehicle: { vin: "WAUZZZ8K9DA000001", year: 2013, make: "Audi", model: "A4" }, inventoryItem: { quantity: 2, cost: 46.5, currency: "USD", warehouse: { id: "w1", code: "MAIN", name: "Main" }, binLocation: { id: "b2", code: "C-08" } }, media: [], _count: { media: 0 } },
-  { id: "demo-3", sku: "BMW-64119355981", primaryPartNumber: "64119355981", brand: "BMW", partName: "Air Conditioning Control Panel", condition: "USED", status: "IMPORTED", createdAt: new Date(Date.now() - 172800000).toISOString(), updatedAt: new Date().toISOString(), donorVehicle: null, inventoryItem: { quantity: 1, cost: 65, currency: "USD", warehouse: null, binLocation: null }, media: [], _count: { media: 2 } },
+  { id: "demo-1", sku: "GM-84178783-A", primaryPartNumber: "84178783", brand: "ACDelco", partName: "HVAC Blower Motor Control Module", condition: "USED", status: "READY_FOR_ENRICHMENT", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), donorVehicle: { vin: "1GNEK13Z43R000001", year: 2021, make: "Chevrolet", model: "Traverse" }, inventoryItem: { quantity: 1, cost: 28, currency: "USD", warehouse: { id: "w1", code: "MAIN", name: "Main" }, binLocation: { id: "b1", code: "A-14" } }, media: [], pricingJobItems: [], _count: { media: 4 } },
+  { id: "demo-2", sku: "AUD-8K0615301M", primaryPartNumber: "8K0615301M", brand: "Audi", partName: "Rear Brake Caliper", condition: "USED", status: "NEEDS_IMAGES", createdAt: new Date(Date.now() - 86400000).toISOString(), updatedAt: new Date().toISOString(), donorVehicle: { vin: "WAUZZZ8K9DA000001", year: 2013, make: "Audi", model: "A4" }, inventoryItem: { quantity: 2, cost: 46.5, currency: "USD", warehouse: { id: "w1", code: "MAIN", name: "Main" }, binLocation: { id: "b2", code: "C-08" } }, media: [], pricingJobItems: [], _count: { media: 0 } },
+  { id: "demo-3", sku: "BMW-64119355981", primaryPartNumber: "64119355981", brand: "BMW", partName: "Air Conditioning Control Panel", condition: "USED", status: "IMPORTED", createdAt: new Date(Date.now() - 172800000).toISOString(), updatedAt: new Date().toISOString(), donorVehicle: null, inventoryItem: { quantity: 1, cost: 65, currency: "USD", warehouse: null, binLocation: null }, media: [], pricingJobItems: [], _count: { media: 2 } },
 ];
 
 function demoCatalog(): CatalogResponse {
@@ -62,6 +62,11 @@ export default function CatalogWorkspace() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detail, setDetail] = useState<CatalogPartDetail | null>(null);
   const [saving, setSaving] = useState(false);
+  const [pricingMarketplace, setPricingMarketplace] = useState("EBAY_US");
+  const [pricingCondition, setPricingCondition] = useState<PricingConditionMode>("MATCH_PART");
+  const [pricingJob, setPricingJob] = useState<PricingJob | null>(null);
+  const [pricingBusy, setPricingBusy] = useState(false);
+  const [latestPricingLoaded, setLatestPricingLoaded] = useState(false);
 
   useEffect(() => {
     const localDemo = process.env.NODE_ENV !== "production" && new URLSearchParams(window.location.search).get("demo") === "1";
@@ -112,6 +117,31 @@ export default function CatalogWorkspace() {
   }, [authState, demo, queryString, request]);
 
   useEffect(() => { void loadCatalog(); }, [loadCatalog]);
+
+  useEffect(() => {
+    if (authState !== "ready" || demo || latestPricingLoaded) return;
+    setLatestPricingLoaded(true);
+    request("/api/pricing/jobs?limit=1")
+      .then(async (jobs) => {
+        const latest = (jobs as PricingJobSummary[])[0];
+        if (latest) setPricingJob(await request(`/api/pricing/jobs/${latest.id}`) as PricingJob);
+      })
+      .catch(() => undefined);
+  }, [authState, demo, latestPricingLoaded, request]);
+
+  useEffect(() => {
+    if (!pricingJob || !["QUEUED", "RUNNING"].includes(pricingJob.status) || demo) return;
+    const timer = window.setTimeout(() => {
+      request(`/api/pricing/jobs/${pricingJob.id}`)
+        .then((job) => {
+          const updated = job as PricingJob;
+          setPricingJob(updated);
+          if (!["QUEUED", "RUNNING"].includes(updated.status)) void loadCatalog();
+        })
+        .catch((caught) => setError(caught instanceof Error ? caught.message : "Unable to refresh pricing job"));
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [demo, loadCatalog, pricingJob, request]);
 
   async function connectToken(event: FormEvent) {
     event.preventDefault();
@@ -172,6 +202,21 @@ export default function CatalogWorkspace() {
     finally { setLoading(false); }
   }
 
+  async function priceSelected() {
+    if (!selected.size || selected.size > 25 || demo || pricingBusy) return;
+    setPricingBusy(true);
+    setError("");
+    try {
+      const job = await request("/api/pricing/jobs", {
+        method: "POST",
+        body: JSON.stringify({ partIds: [...selected], marketplace: pricingMarketplace, conditionMode: pricingCondition }),
+      }) as PricingJob;
+      setPricingJob(job);
+      setSelected(new Set());
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to start pricing"); }
+    finally { setPricingBusy(false); }
+  }
+
   async function downloadCsv() {
     if (demo) return;
     try {
@@ -202,6 +247,14 @@ export default function CatalogWorkspace() {
         <article><span>Needs images</span><b>{needsImages}</b><small>Action required</small></article>
         <article><span>Newly imported</span><b>{imported}</b><small>Awaiting review</small></article>
       </section>
+      {pricingJob && <section className={styles.pricingPanel}>
+        <header><div><span className={styles.eyebrow}>BULK MARKET PRICING</span><h2>Job {pricingJob.id.slice(-8)}</h2></div><div><span className={`${styles.jobStatus} ${styles[`job_${pricingJob.status.toLowerCase()}`]}`}>{humanStatus(pricingJob.status)}</span><button onClick={() => setPricingJob(null)} aria-label="Hide pricing job">×</button></div></header>
+        <div className={styles.jobProgress}><div><i style={{ width: `${Math.round(((pricingJob.completedItems + pricingJob.noMatchItems + pricingJob.failedItems) / pricingJob.totalItems) * 100)}%` }}/></div><span>{pricingJob.completedItems + pricingJob.noMatchItems + pricingJob.failedItems} of {pricingJob.totalItems} processed · {pricingJob.marketplace} · {humanStatus(pricingJob.conditionMode)}</span></div>
+        <div className={styles.pricingItems}>{pricingJob.items.map((item) => <article key={item.id}>
+          <div className={styles.pricingItemHead}><div><b>{item.part.sku}</b><span>{item.part.partName || item.queryPartNumber} · {item.condition}</span></div><span className={styles.jobStatus}>{humanStatus(item.status)}</span></div>
+          {item.status === "COMPLETED" ? <><div className={styles.priceMetrics}><span>Matches <b>{item.competitorCount}</b></span><span>Lowest <b>{money(item.lowest!, item.currency!)}</b></span><span>Median <b>{money(item.median!, item.currency!)}</b></span><span>Recommended <b>{money(item.recommendedPrice!, item.currency!)}</b></span></div><details><summary>View {item.listings.length} competitor listings</summary><div className={styles.competitors}>{item.listings.map((listing) => <a key={listing.id} href={listing.url} target="_blank" rel="noreferrer"><span><b>{listing.title}</b><small>Listing ID: {listing.listingId} · {listing.seller} · {listing.condition}</small></span><strong>{money(listing.landedPrice, listing.currency)}</strong></a>)}</div></details></> : item.status === "NO_MATCHES" ? <p>No exact item-specific competitor matches found.</p> : item.status === "FAILED" ? <p className={styles.itemError}>{item.error || "Pricing failed"}</p> : <p>Searching eBay and verifying exact item specifics...</p>}
+        </article>)}</div>
+      </section>}
       <section className={styles.catalogPanel}>
         <div className={styles.panelTitle}><div><span className={styles.eyebrow}>CATALOG RECORDS</span><h2>{catalog.pagination.total} matching parts</h2></div><div className={styles.viewToggle}><button className={view === "table" ? styles.viewActive : ""} onClick={() => setView("table")}>Table</button><button className={view === "gallery" ? styles.viewActive : ""} onClick={() => setView("gallery")}>Gallery</button></div></div>
         <div className={styles.filters}>
@@ -214,9 +267,9 @@ export default function CatalogWorkspace() {
           <label><span>Created to</span><input type="date" value={createdTo} onChange={(event) => { setCreatedTo(event.target.value); resetPage(); }}/></label>
           <label><span>Sort</span><select value={sort} onChange={(event) => { setSort(event.target.value); resetPage(); }}><option value="newest">Newest first</option><option value="updated">Recently updated</option><option value="sku">SKU A-Z</option><option value="oldest">Oldest first</option></select></label>
         </div>
-        {selected.size > 0 && <div className={styles.bulkBar}><b>{selected.size} selected</b><span>Selection can continue across result pages.</span><button onClick={() => void archiveSelected()}>Archive selected</button><button onClick={() => setSelected(new Set())}>Clear</button></div>}
+        {selected.size > 0 && <div className={styles.bulkBar}><b>{selected.size} selected</b><span>{selected.size > 25 ? "Pricing supports up to 25 parts per job." : "Selection can continue across result pages."}</span><select aria-label="Pricing marketplace" value={pricingMarketplace} onChange={(event) => setPricingMarketplace(event.target.value)}><option value="EBAY_US">eBay US</option><option value="EBAY_GB">eBay UK</option><option value="EBAY_DE">eBay Germany</option></select><select aria-label="Pricing condition" value={pricingCondition} onChange={(event) => setPricingCondition(event.target.value as PricingConditionMode)}><option value="MATCH_PART">Match each part</option><option value="ANY">Any condition</option><option value="NEW">New only</option><option value="USED">Used only</option></select><button className={styles.priceButton} disabled={selected.size > 25 || pricingBusy || Boolean(pricingJob && ["QUEUED", "RUNNING"].includes(pricingJob.status))} onClick={() => void priceSelected()}>{selected.size > 25 ? "Maximum 25" : pricingBusy ? "Starting..." : "Price selected"}</button><button onClick={() => void archiveSelected()}>Archive</button><button onClick={() => setSelected(new Set())}>Clear</button></div>}
         {loading ? <div className={styles.loadingRows}>Refreshing catalog...</div> : catalog.parts.length === 0 ? <div className={styles.empty}><b>No parts found</b><span>Adjust your filters or confirm a catalog import.</span></div> : view === "table" ?
-          <div className={styles.tableWrap}><table><thead><tr><th><input aria-label="Select current page" type="checkbox" checked={allPageSelected} onChange={togglePage}/></th><th>Part</th><th>SKU / OEM</th><th>Status</th><th>Condition</th><th>Location</th><th>Qty</th><th>Cost</th><th/></tr></thead><tbody>{catalog.parts.map((part) => <tr key={part.id}><td><input aria-label={`Select ${part.sku}`} type="checkbox" checked={selected.has(part.id)} onChange={() => togglePart(part.id)}/></td><td><div className={styles.partCell}><CatalogImage mediaId={part.media[0]?.mediaAsset.id} token={token} demo={demo}/><div><b>{part.partName || "Unnamed automotive part"}</b><span>{part.brand || "Brand not set"} · {part._count.media} image{part._count.media === 1 ? "" : "s"}</span></div></div></td><td><b className={styles.mono}>{part.sku}</b><span className={styles.subtle}>{part.primaryPartNumber}</span></td><td><span className={`${styles.statusPill} ${styles[part.status.toLowerCase()]}`}>{humanStatus(part.status)}</span></td><td><span className={styles.condition}>{part.condition}</span></td><td>{part.inventoryItem?.warehouse?.code || "—"}<span className={styles.subtle}>{part.inventoryItem?.binLocation?.code || "Unassigned"}</span></td><td>{part.inventoryItem?.quantity ?? 0}</td><td>{part.inventoryItem ? money(part.inventoryItem.cost, part.inventoryItem.currency) : "—"}</td><td><button className={styles.editButton} onClick={() => void openPart(part.id)}>Edit</button></td></tr>)}</tbody></table></div> :
+          <div className={styles.tableWrap}><table><thead><tr><th><input aria-label="Select current page" type="checkbox" checked={allPageSelected} onChange={togglePage}/></th><th>Part</th><th>SKU / OEM</th><th>Status</th><th>Condition</th><th>Market</th><th>Location</th><th>Qty</th><th>Cost</th><th/></tr></thead><tbody>{catalog.parts.map((part) => { const latestPrice = part.pricingJobItems[0]; return <tr key={part.id}><td><input aria-label={`Select ${part.sku}`} type="checkbox" checked={selected.has(part.id)} onChange={() => togglePart(part.id)}/></td><td><div className={styles.partCell}><CatalogImage mediaId={part.media[0]?.mediaAsset.id} token={token} demo={demo}/><div><b>{part.partName || "Unnamed automotive part"}</b><span>{part.brand || "Brand not set"} · {part._count.media} image{part._count.media === 1 ? "" : "s"}</span></div></div></td><td><b className={styles.mono}>{part.sku}</b><span className={styles.subtle}>{part.primaryPartNumber}</span></td><td><span className={`${styles.statusPill} ${styles[part.status.toLowerCase()]}`}>{humanStatus(part.status)}</span></td><td><span className={styles.condition}>{part.condition}</span></td><td>{latestPrice?.recommendedPrice != null ? <><b>{money(latestPrice.recommendedPrice, latestPrice.currency!)}</b><span className={styles.subtle}>{latestPrice.competitorCount} matches</span></> : <span className={styles.subtle}>{latestPrice ? "No matches" : "Not priced"}</span>}</td><td>{part.inventoryItem?.warehouse?.code || "—"}<span className={styles.subtle}>{part.inventoryItem?.binLocation?.code || "Unassigned"}</span></td><td>{part.inventoryItem?.quantity ?? 0}</td><td>{part.inventoryItem ? money(part.inventoryItem.cost, part.inventoryItem.currency) : "—"}</td><td><button className={styles.editButton} onClick={() => void openPart(part.id)}>Edit</button></td></tr>; })}</tbody></table></div> :
           <div className={styles.gallery}>{catalog.parts.map((part) => <article key={part.id} className={styles.partCard}><button className={styles.cardSelect} aria-label={`Select ${part.sku}`} onClick={() => togglePart(part.id)}>{selected.has(part.id) ? "✓" : "+"}</button><CatalogImage mediaId={part.media[0]?.mediaAsset.id} token={token} demo={demo}/><span className={`${styles.statusPill} ${styles[part.status.toLowerCase()]}`}>{humanStatus(part.status)}</span><h3>{part.partName || "Unnamed automotive part"}</h3><p>{part.brand || "Brand not set"} · {part.condition}</p><div><b>{part.sku}</b><span>{part.primaryPartNumber}</span></div><footer><span>{part.inventoryItem?.quantity ?? 0} in stock</span><button onClick={() => void openPart(part.id)}>Edit part</button></footer></article>)}</div>}
         <div className={styles.pagination}><span>Page {catalog.pagination.page} of {Math.max(catalog.pagination.totalPages, 1)}</span><div><button disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>Previous</button><button disabled={page >= catalog.pagination.totalPages} onClick={() => setPage((value) => value + 1)}>Next</button></div></div>
       </section>
