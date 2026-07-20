@@ -5,6 +5,7 @@ import { z } from "zod";
 import { AuthenticationError, AuthorizationError } from "./auth.js";
 import { assertTrustedAuthOrigin, clearRefreshCookie, getJwtConfiguration, readRefreshCookie, revokeRefreshToken, rotateTokenPair, setRefreshCookie } from "./auth-sessions.js";
 import { getConfig } from "./config.js";
+import { bulkUpdateCatalogStatus, CatalogError, exportCatalogCsv, getCatalogPart, listCatalogParts, updateCatalogPart } from "./catalog-service.js";
 import { databaseIsReachable } from "./db.js";
 import { calculateAnalytics } from "./domain/analytics.js";
 import { matchListing, normalizePartNumber } from "./domain/matching.js";
@@ -39,6 +40,47 @@ const imageMatchCorrectionSchema = z.object({
   importRowId: z.string().min(1).nullable(),
   displayOrder: z.number().int().min(0).optional(),
 });
+const catalogStatusSchema = z.enum(["IMPORTED", "NEEDS_IMAGES", "IMPORT_ERROR", "READY_FOR_ENRICHMENT", "ARCHIVED"]);
+const catalogQuerySchema = z.object({
+  q: z.string().trim().max(100).optional(),
+  status: catalogStatusSchema.optional(),
+  condition: z.enum(["NEW", "USED"]).optional(),
+  hasImages: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
+  warehouseId: z.string().min(1).optional(),
+  createdFrom: z.coerce.date().optional(),
+  createdTo: z.coerce.date().optional(),
+  sort: z.enum(["newest", "oldest", "updated", "sku"]).default("newest"),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+});
+const optionalCatalogText = z.string().trim().max(5_000).nullable();
+const catalogPartUpdateSchema = z.object({
+  sku: z.string().trim().min(1).max(100).optional(),
+  primaryPartNumber: z.string().trim().min(1).max(100).refine((value) => Boolean(normalizePartNumber(value)), "Part number must contain a letter or number").optional(),
+  brand: z.string().trim().max(100).nullable().optional(),
+  partName: z.string().trim().max(200).nullable().optional(),
+  description: optionalCatalogText.optional(),
+  condition: z.enum(["NEW", "USED"]).optional(),
+  status: catalogStatusSchema.optional(),
+  donorMileage: z.number().int().nonnegative().nullable().optional(),
+  donorColor: z.string().trim().max(100).nullable().optional(),
+  placement: z.string().trim().max(100).nullable().optional(),
+  notes: optionalCatalogText.optional(),
+  inventory: z.object({
+    quantity: z.number().int().nonnegative().optional(),
+    cost: z.number().nonnegative().optional(),
+    currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).optional(),
+    warehouseCode: z.string().trim().max(50).nullable().optional(),
+    binLocation: z.string().trim().max(100).nullable().optional(),
+    weight: z.number().nonnegative().nullable().optional(),
+    weightUnit: z.enum(["LB", "KG"]).nullable().optional(),
+    length: z.number().nonnegative().nullable().optional(),
+    width: z.number().nonnegative().nullable().optional(),
+    height: z.number().nonnegative().nullable().optional(),
+    dimensionUnit: z.enum(["IN", "CM"]).nullable().optional(),
+  }).strict().optional(),
+}).strict().refine((value) => Object.keys(value).length > 0, "At least one field is required");
+const catalogBulkStatusSchema = z.object({ partIds: z.array(z.string().min(1)).min(1).max(500).transform((ids) => [...new Set(ids)]), status: catalogStatusSchema });
 
 export const app = express();
 const webOrigin = getConfig().webOrigin;
@@ -215,6 +257,47 @@ app.post("/api/imports/:id/confirm", requireTenantContext, mediaUploadRoles, asy
   } catch (error) { next(error); }
 });
 
+app.get("/api/parts", requireTenantContext, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    res.json(await listCatalogParts(tenant.organization.id, catalogQuerySchema.parse(req.query)));
+  } catch (error) { next(error); }
+});
+
+app.get("/api/parts/export", requireTenantContext, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const { page: _page, pageSize: _pageSize, ...query } = catalogQuerySchema.parse(req.query);
+    const csv = await exportCatalogCsv(tenant.organization.id, query);
+    res.set({ "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="partpulse-catalog-${new Date().toISOString().slice(0, 10)}.csv"`, "Cache-Control": "private, no-store" });
+    res.send(csv);
+  } catch (error) { next(error); }
+});
+
+app.patch("/api/parts/bulk-status", requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const input = catalogBulkStatusSchema.parse(req.body);
+    res.json(await bulkUpdateCatalogStatus(tenant.organization.id, input.partIds, input.status));
+  } catch (error) { next(error); }
+});
+
+app.get("/api/parts/:id", requireTenantContext, async (req, res, next) => {
+  try {
+    const partId = req.params.id;
+    if (typeof partId !== "string") return res.status(400).json({ error: "Invalid catalog part ID" });
+    res.json(await getCatalogPart(getTenantContext(res).organization.id, partId));
+  } catch (error) { next(error); }
+});
+
+app.patch("/api/parts/:id", requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+  try {
+    const partId = req.params.id;
+    if (typeof partId !== "string") return res.status(400).json({ error: "Invalid catalog part ID" });
+    res.json(await updateCatalogPart(getTenantContext(res).organization.id, partId, catalogPartUpdateSchema.parse(req.body)));
+  } catch (error) { next(error); }
+});
+
 app.post("/api/media/uploads/confirm", requireTenantContext, mediaUploadRoles, async (req, res, next) => {
   try {
     const storage = getObjectStorage();
@@ -308,6 +391,7 @@ app.use((error: unknown, _req: express.Request, res: express.Response, _next: ex
   if (error instanceof ObjectStorageError) return res.status(400).json({ error: error.message });
   if (error instanceof ImageImportError) return res.status(error.statusCode).json({ error: error.message });
   if (error instanceof ImportReviewError) return res.status(error.statusCode).json({ error: error.message, ...(error.details ? { details: error.details } : {}) });
+  if (error instanceof CatalogError) return res.status(error.statusCode).json({ error: error.message });
   if (typeof error === "object" && error !== null && "type" in error && error.type === "entity.too.large") {
     return res.status(413).json({ error: "Spreadsheet exceeds the configured upload limit" });
   }

@@ -73,6 +73,8 @@ See [Image Archive Format](docs/IMAGE_ARCHIVE_FORMAT.md) for ZIP structure, mani
 
 See [Import Review and Confirmation](docs/IMPORT_REVIEW.md) for preview pagination, manual image corrections, readiness blockers, and atomic catalog creation.
 
+See [Catalog Workspace](docs/CATALOG_WORKSPACE.md) for catalog filters, editing, bulk status changes, export, and frontend session behavior.
+
 ## API
 
 - `POST /api/search` — body: `{ "oem": "8K0615301M", "marketplace": "EBAY_US", "condition": "NEW" }` (`condition`: `ANY`, `NEW`, or `USED`)
@@ -93,4 +95,9 @@ See [Import Review and Confirmation](docs/IMPORT_REVIEW.md) for preview paginati
 - `PATCH /api/imports/:id/media-matches/:matchId` - assign or reorder a staged image
 - `DELETE /api/imports/:id/media-matches/:matchId` - discard an irrelevant image from the import
 - `POST /api/imports/:id/confirm` - atomically create catalog, vehicle, inventory, number, and media records
+- `GET /api/parts` - search and filter the organization catalog
+- `GET /api/parts/export` - export up to 5,000 filtered parts as CSV
+- `GET /api/parts/:id` - retrieve a complete editable catalog record
+- `PATCH /api/parts/:id` - update core part and inventory fields
+- `PATCH /api/parts/bulk-status` - update the status of up to 500 selected parts
 - `GET /health`

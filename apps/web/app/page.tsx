@@ -11,7 +11,7 @@ export default function Home() {
   const money=(value:number,currency:string)=>new Intl.NumberFormat("en",{style:"currency",currency}).format(value);
   const ebayListingId=(id:string)=>id.startsWith("v1|")?(id.split("|")[1]??id):id;
   return <main>
-    <header><div><span className="eyebrow">AUTOMOTIVE INTELLIGENCE</span><h1>Part<span>Pulse</span></h1></div><div className="status"><i/> MARKET DATA ONLINE</div></header>
+    <header><div><span className="eyebrow">AUTOMOTIVE INTELLIGENCE</span><h1>Part<span>Pulse</span></h1></div><div className="headerRight"><a href="/catalog">Open catalog</a><div className="status"><i/> MARKET DATA ONLINE</div></div></header>
     <section className="hero"><div><p className="kicker">COMPETITOR PRICE SEARCH</p><h2>Know the market.<br/><em>Price with confidence.</em></h2><p>Validate exact automotive part matches and turn active eBay listings into a clear pricing decision.</p></div>
       <form onSubmit={search}><label>OEM / MPN / INTERCHANGE NUMBER</label><div className="search"><input value={oem} onChange={e=>setOem(e.target.value)} placeholder="e.g. 8K0615301M"/><select value={marketplace} onChange={e=>setMarketplace(e.target.value)}><option value="EBAY_US">eBay US</option><option value="EBAY_GB">eBay UK</option><option value="EBAY_DE">eBay DE</option></select><select value={condition} onChange={e=>setCondition(e.target.value as "ANY"|"NEW"|"USED")} aria-label="Listing condition"><option value="ANY">Any condition</option><option value="NEW">New only</option><option value="USED">Used only</option></select><button disabled={loading}>{loading?"Searching…":"Analyze market →"}</button></div><small>Exact item-specific verification · Own sellers excluded · Shipping included</small></form>
     </section>
