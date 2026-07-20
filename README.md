@@ -71,6 +71,8 @@ See [Catalog Intake Spreadsheet v1.0](docs/SPREADSHEET_TEMPLATE.md) for the vers
 
 See [Image Archive Format](docs/IMAGE_ARCHIVE_FORMAT.md) for ZIP structure, manifest fields, deterministic mapping precedence, and safety limits.
 
+See [Import Review and Confirmation](docs/IMPORT_REVIEW.md) for preview pagination, manual image corrections, readiness blockers, and atomic catalog creation.
+
 ## API
 
 - `POST /api/search` — body: `{ "oem": "8K0615301M", "marketplace": "EBAY_US", "condition": "NEW" }` (`condition`: `ANY`, `NEW`, or `USED`)
@@ -87,4 +89,8 @@ See [Image Archive Format](docs/IMAGE_ARCHIVE_FORMAT.md) for ZIP structure, mani
 - `GET /api/imports/template/schema` â€” retrieve the machine-readable field contract
 - `POST /api/imports/validate` â€” store, parse, normalize, and stage a CSV/XLSX import
 - `POST /api/imports/:id/images` â€” validate, store, and map an image ZIP to staged SKUs
+- `GET /api/imports/:id/preview` - preview staged rows, issues, image matches, and confirmation readiness
+- `PATCH /api/imports/:id/media-matches/:matchId` - assign or reorder a staged image
+- `DELETE /api/imports/:id/media-matches/:matchId` - discard an irrelevant image from the import
+- `POST /api/imports/:id/confirm` - atomically create catalog, vehicle, inventory, number, and media records
 - `GET /health`

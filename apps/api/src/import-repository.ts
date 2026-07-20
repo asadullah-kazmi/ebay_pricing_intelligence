@@ -3,6 +3,13 @@ import { prisma } from "./db.js";
 import type { ParsedImport } from "./import-parser.js";
 import type { ImageArchiveIssue, ImageMappingRow, MappedArchiveImage } from "./image-archive.js";
 
+export class ImportBatchStateError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ImportBatchStateError";
+  }
+}
+
 export interface ImportBatchSummary {
   id: string;
   status: string;
@@ -189,6 +196,31 @@ export async function saveImageArchiveMappings(input: {
     : "READY_TO_COMMIT";
 
   return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "ImportBatch" WHERE "id" = ${input.importBatchId} AND "organizationId" = ${input.organizationId} FOR UPDATE`;
+    const batch = await tx.importBatch.findFirst({
+      where: { id: input.importBatchId, organizationId: input.organizationId },
+      select: {
+        id: true,
+        status: true,
+        imageArchiveChecksum: true,
+        imageMatchCount: true,
+        imageReviewCount: true,
+        imageUnmatchedCount: true,
+      },
+    });
+    if (!batch) throw new ImportBatchStateError("Import batch not found");
+    if (["FAILED", "COMMITTING", "COMPLETED"].includes(batch.status)) {
+      throw new ImportBatchStateError("This import can no longer accept an image archive");
+    }
+    if (batch.imageArchiveChecksum === input.archiveChecksum) return {
+      id: batch.id,
+      status: batch.status,
+      imageMatchCount: batch.imageMatchCount,
+      imageReviewCount: batch.imageReviewCount,
+      imageUnmatchedCount: batch.imageUnmatchedCount,
+      reused: true,
+    };
+    if (batch.imageArchiveChecksum) throw new ImportBatchStateError("This import already has a different image archive");
     if (input.mappings.length) {
       await tx.importMediaMatch.createMany({
         data: input.mappings.map((mapping) => ({
@@ -203,7 +235,7 @@ export async function saveImageArchiveMappings(input: {
         })),
       });
     }
-    return tx.importBatch.update({
+    const saved = await tx.importBatch.update({
       where: { id: input.importBatchId },
       data: {
         imageArchiveKey: input.archiveKey,
@@ -222,5 +254,6 @@ export async function saveImageArchiveMappings(input: {
         imageUnmatchedCount: true,
       },
     });
+    return { ...saved, reused: false };
   });
 }

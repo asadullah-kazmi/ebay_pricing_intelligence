@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { findImageMappingBatch, findReusableMediaAsset, saveImageArchiveMappings } from "./import-repository.js";
+import { findImageMappingBatch, findReusableMediaAsset, ImportBatchStateError, saveImageArchiveMappings } from "./import-repository.js";
 import { ImageArchiveError, parseAndMapImageArchive } from "./image-archive.js";
 import { saveConfirmedMediaAsset } from "./media-repository.js";
 import type { ObjectStorage } from "./object-storage.js";
@@ -21,7 +21,9 @@ export async function importImageArchive(input: {
 }) {
   const batch = await findImageMappingBatch(input.organizationId, input.importBatchId);
   if (!batch) throw new ImageImportError("Import batch not found", 404);
-  if (batch.status === "FAILED") throw new ImageImportError("Images cannot be attached to a failed spreadsheet import", 409);
+  if (["FAILED", "COMMITTING", "COMPLETED"].includes(batch.status)) {
+    throw new ImageImportError("Images cannot be attached to this import in its current state", 409);
+  }
   const archiveChecksum = createHash("sha256").update(input.bytes).digest("hex");
   if (batch.imageArchiveChecksum === archiveChecksum) {
     return {
@@ -75,14 +77,20 @@ export async function importImageArchive(input: {
     }));
   }
 
-  const saved = await saveImageArchiveMappings({
-    organizationId: input.organizationId,
-    importBatchId: input.importBatchId,
-    archiveKey,
-    archiveChecksum,
-    invalidRows: batch.invalidRows,
-    issues: parsed.issues,
-    mappings: parsed.images.map((image) => ({ ...image, mediaAssetId: mediaIds.get(image.checksum)! })),
-  });
-  return { ...saved, reused: false, issues: parsed.issues };
+  let saved;
+  try {
+    saved = await saveImageArchiveMappings({
+      organizationId: input.organizationId,
+      importBatchId: input.importBatchId,
+      archiveKey,
+      archiveChecksum,
+      invalidRows: batch.invalidRows,
+      issues: parsed.issues,
+      mappings: parsed.images.map((image) => ({ ...image, mediaAssetId: mediaIds.get(image.checksum)! })),
+    });
+  } catch (error) {
+    if (error instanceof ImportBatchStateError) throw new ImageImportError(error.message, 409);
+    throw error;
+  }
+  return { ...saved, issues: parsed.issues };
 }

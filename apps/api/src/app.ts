@@ -16,6 +16,7 @@ import { catalogImportTemplate, catalogImportTemplateFilename, catalogImportTemp
 import { findExistingNormalizedSkus, findImportByChecksum, stageParsedImport } from "./import-repository.js";
 import { applyExistingSkuConflicts, parseAndValidateImport } from "./import-parser.js";
 import { ImageImportError, importImageArchive } from "./image-import-service.js";
+import { confirmImportBatch, correctImportMediaMatch, discardImportMediaMatch, getImportPreview, ImportReviewError } from "./import-review-service.js";
 import { getObjectStorage, ObjectStorageError } from "./object-storage.js";
 import { getTenantContext, requireOrganizationRoles, requireTenantContext } from "./tenant-context.js";
 
@@ -30,6 +31,14 @@ const importFilenameSchema = z.string().trim().min(1).max(255).regex(/\.(?:csv|x
 const importBody = express.raw({ type: () => true, limit: getConfig().storage?.maxImportBytes ?? 10_485_760 });
 const imageArchiveBody = express.raw({ type: () => true, limit: getConfig().storage?.maxImageArchiveBytes ?? 104_857_600 });
 const imageArchiveFilenameSchema = z.string().trim().min(1).max(255).regex(/\.zip$/i, "Only .zip image archives are supported");
+const importPreviewQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(50),
+});
+const imageMatchCorrectionSchema = z.object({
+  importRowId: z.string().min(1).nullable(),
+  displayOrder: z.number().int().min(0).optional(),
+});
 
 export const app = express();
 const webOrigin = getConfig().webOrigin;
@@ -156,6 +165,56 @@ app.post("/api/imports/:id/images", requireTenantContext, mediaUploadRoles, imag
   } catch (error) { next(error); }
 });
 
+app.get("/api/imports/:id/preview", requireTenantContext, async (req, res, next) => {
+  try {
+    const importBatchId = req.params.id;
+    if (typeof importBatchId !== "string") return res.status(400).json({ error: "Invalid import batch ID" });
+    const tenant = getTenantContext(res);
+    const query = importPreviewQuerySchema.parse(req.query);
+    res.json(await getImportPreview({ organizationId: tenant.organization.id, importBatchId, ...query }));
+  } catch (error) { next(error); }
+});
+
+app.patch("/api/imports/:id/media-matches/:matchId", requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+  try {
+    const importBatchId = req.params.id;
+    const mediaMatchId = req.params.matchId;
+    if (typeof importBatchId !== "string" || typeof mediaMatchId !== "string") {
+      return res.status(400).json({ error: "Invalid import or image match ID" });
+    }
+    const tenant = getTenantContext(res);
+    const correction = imageMatchCorrectionSchema.parse(req.body);
+    res.json(await correctImportMediaMatch({
+      organizationId: tenant.organization.id,
+      importBatchId,
+      mediaMatchId,
+      ...correction,
+    }));
+  } catch (error) { next(error); }
+});
+
+app.delete("/api/imports/:id/media-matches/:matchId", requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+  try {
+    const importBatchId = req.params.id;
+    const mediaMatchId = req.params.matchId;
+    if (typeof importBatchId !== "string" || typeof mediaMatchId !== "string") {
+      return res.status(400).json({ error: "Invalid import or image match ID" });
+    }
+    const tenant = getTenantContext(res);
+    res.json(await discardImportMediaMatch({ organizationId: tenant.organization.id, importBatchId, mediaMatchId }));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/imports/:id/confirm", requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+  try {
+    const importBatchId = req.params.id;
+    if (typeof importBatchId !== "string") return res.status(400).json({ error: "Invalid import batch ID" });
+    const tenant = getTenantContext(res);
+    const result = await confirmImportBatch({ organizationId: tenant.organization.id, importBatchId, userId: tenant.user.id });
+    res.status(result.reused ? 200 : 201).json(result);
+  } catch (error) { next(error); }
+});
+
 app.post("/api/media/uploads/confirm", requireTenantContext, mediaUploadRoles, async (req, res, next) => {
   try {
     const storage = getObjectStorage();
@@ -248,6 +307,7 @@ app.use((error: unknown, _req: express.Request, res: express.Response, _next: ex
   if (error instanceof AuthorizationError) return res.status(403).json({ error: error.message });
   if (error instanceof ObjectStorageError) return res.status(400).json({ error: error.message });
   if (error instanceof ImageImportError) return res.status(error.statusCode).json({ error: error.message });
+  if (error instanceof ImportReviewError) return res.status(error.statusCode).json({ error: error.message, ...(error.details ? { details: error.details } : {}) });
   if (typeof error === "object" && error !== null && "type" in error && error.type === "entity.too.large") {
     return res.status(413).json({ error: "Spreadsheet exceeds the configured upload limit" });
   }
