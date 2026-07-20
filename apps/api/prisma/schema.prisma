@@ -131,46 +131,57 @@ enum FitmentJobItemStatus {
   FAILED
 }
 
+enum EbayConnectionStatus {
+  ACTIVE
+  ERROR
+  EXPIRED
+  DISCONNECTED
+}
+
 model Organization {
-  id                  String                      @id @default(cuid())
-  name                String
-  slug                String                      @unique
-  memberships         OrganizationMembership[]
-  refreshSessions     RefreshSession[]
-  importBatches       ImportBatch[]
-  importRows          ImportRow[]
-  vehicles            Vehicle[]
-  parts               Part[]
-  partNumbers         PartNumber[]
-  inventoryItems      InventoryItem[]
-  warehouses          Warehouse[]
-  binLocations        BinLocation[]
-  mediaAssets         MediaAsset[]
-  partMedia           PartMedia[]
-  importMediaMatches  ImportMediaMatch[]
-  pricingJobs         PricingJob[]
-  pricingJobItems     PricingJobItem[]
-  competitorListings  CompetitorListingSnapshot[]
-  fitmentJobs         FitmentJob[]
-  fitmentJobItems     FitmentJobItem[]
-  fitmentCandidates   FitmentCandidate[]
-  fitmentApplications FitmentApplication[]
-  createdAt           DateTime                    @default(now())
-  updatedAt           DateTime                    @updatedAt
+  id                   String                      @id @default(cuid())
+  name                 String
+  slug                 String                      @unique
+  memberships          OrganizationMembership[]
+  refreshSessions      RefreshSession[]
+  importBatches        ImportBatch[]
+  importRows           ImportRow[]
+  vehicles             Vehicle[]
+  parts                Part[]
+  partNumbers          PartNumber[]
+  inventoryItems       InventoryItem[]
+  warehouses           Warehouse[]
+  binLocations         BinLocation[]
+  mediaAssets          MediaAsset[]
+  partMedia            PartMedia[]
+  importMediaMatches   ImportMediaMatch[]
+  pricingJobs          PricingJob[]
+  pricingJobItems      PricingJobItem[]
+  competitorListings   CompetitorListingSnapshot[]
+  fitmentJobs          FitmentJob[]
+  fitmentJobItems      FitmentJobItem[]
+  fitmentCandidates    FitmentCandidate[]
+  fitmentApplications  FitmentApplication[]
+  ebaySellerConnection EbaySellerConnection?
+  ebayOAuthStates      EbayOAuthState[]
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @updatedAt
 }
 
 model User {
-  id                 String                   @id @default(cuid())
-  email              String                   @unique
-  name               String?
-  memberships        OrganizationMembership[]
-  refreshSessions    RefreshSession[]
-  createdImports     ImportBatch[]            @relation("ImportCreator")
-  createdParts       Part[]                   @relation("PartCreator")
-  createdPricingJobs PricingJob[]             @relation("PricingJobCreator")
-  createdFitmentJobs FitmentJob[]             @relation("FitmentJobCreator")
-  createdAt          DateTime                 @default(now())
-  updatedAt          DateTime                 @updatedAt
+  id                  String                   @id @default(cuid())
+  email               String                   @unique
+  name                String?
+  memberships         OrganizationMembership[]
+  refreshSessions     RefreshSession[]
+  createdImports      ImportBatch[]            @relation("ImportCreator")
+  createdParts        Part[]                   @relation("PartCreator")
+  createdPricingJobs  PricingJob[]             @relation("PricingJobCreator")
+  createdFitmentJobs  FitmentJob[]             @relation("FitmentJobCreator")
+  connectedEbayStores EbaySellerConnection[]   @relation("EbayConnectionCreator")
+  ebayOAuthStates     EbayOAuthState[]
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
 }
 
 model OrganizationMembership {
@@ -200,6 +211,52 @@ model RefreshSession {
   createdAt      DateTime     @default(now())
 
   @@index([userId, organizationId])
+  @@index([expiresAt])
+}
+
+model EbaySellerConnection {
+  id                      String               @id @default(cuid())
+  organizationId          String               @unique
+  connectedById           String
+  environment             String
+  status                  EbayConnectionStatus @default(ACTIVE)
+  ebayUserId              String?
+  username                String?
+  accountType             String?
+  registrationMarketplace String?
+  scopes                  String[]
+  accessTokenCiphertext   Bytes?
+  accessTokenIv           Bytes?
+  accessTokenTag          Bytes?
+  refreshTokenCiphertext  Bytes?
+  refreshTokenIv          Bytes?
+  refreshTokenTag         Bytes?
+  accessTokenExpiresAt    DateTime?
+  refreshTokenExpiresAt   DateTime?
+  lastRefreshedAt         DateTime?
+  lastError               String?
+  disconnectedAt          DateTime?
+  organization            Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  connectedBy             User                 @relation("EbayConnectionCreator", fields: [connectedById], references: [id], onDelete: Restrict)
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+
+  @@index([status])
+  @@index([ebayUserId])
+}
+
+model EbayOAuthState {
+  id             String       @id @default(cuid())
+  stateHash      String       @unique
+  organizationId String
+  userId         String
+  expiresAt      DateTime
+  consumedAt     DateTime?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, expiresAt])
   @@index([expiresAt])
 }
 

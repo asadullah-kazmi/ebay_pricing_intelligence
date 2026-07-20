@@ -22,6 +22,7 @@ import { getObjectStorage, ObjectStorageError } from "./object-storage.js";
 import { createRateLimitMiddleware, requestLogMiddleware, requestSecurityMiddleware } from "./http-hardening.js";
 import { createPricingJob, getPricingJob, listPricingJobs, PricingJobError, startPricingJob } from "./pricing-service.js";
 import { approveFitmentCandidate, createFitmentJob, FitmentJobError, getFitmentJob, listFitmentJobs, startFitmentJob } from "./fitment-service.js";
+import { completeEbayAuthorization, createEbayAuthorization, disconnectEbayConnection, EbaySellerOAuthError, getEbayConnection } from "./ebay-seller-oauth.js";
 import { getTenantContext, requireOrganizationRoles, requireTenantContext } from "./tenant-context.js";
 
 const searchSchema = z.object({
@@ -97,6 +98,12 @@ const createFitmentJobSchema = z.object({
 }).strict();
 const approveFitmentSchema = z.object({ candidateId: z.string().min(1) }).strict();
 const fitmentRoles = requireOrganizationRoles("OWNER", "ADMIN", "MANAGER", "CATALOG_OPERATOR");
+const ebayConnectionRoles = requireOrganizationRoles("OWNER", "ADMIN");
+const ebayOAuthCallbackSchema = z.object({
+  state: z.string().min(1).max(200),
+  code: z.string().min(1).max(2_000).optional(),
+  error: z.string().max(200).optional(),
+});
 const generalRateLimit = createRateLimitMiddleware({ scope: "general", limit: 600, windowMs: 15 * 60_000 });
 const authRateLimit = createRateLimitMiddleware({ scope: "auth", limit: 30, windowMs: 15 * 60_000 });
 const searchRateLimit = createRateLimitMiddleware({ scope: "search", limit: 120, windowMs: 60_000 });
@@ -125,9 +132,45 @@ const readinessHandler: express.RequestHandler = async (_req, res) => {
 app.get("/health", readinessHandler);
 app.get("/health/ready", readinessHandler);
 
+app.get("/api/ebay/oauth/callback", authRateLimit, async (req, res) => {
+  const redirect = (result: "connected" | "declined" | "error") => {
+    const target = getConfig().webOrigin;
+    if (target) return res.redirect(303, `${target}/catalog?ebay=${result}`);
+    return res.status(result === "connected" ? 200 : 400).json({ status: result });
+  };
+  try {
+    const input = ebayOAuthCallbackSchema.parse(req.query);
+    await completeEbayAuthorization({ state: input.state, code: input.code, providerError: input.error });
+    return redirect("connected");
+  } catch (error) {
+    console.warn(JSON.stringify({ type: "ebay_oauth_callback_failed", error: error instanceof Error ? { name: error.name, message: error.message } : { name: "UnknownError" } }));
+    return redirect(error instanceof EbaySellerOAuthError && error.message.includes("declined") ? "declined" : "error");
+  }
+});
+
 app.get("/api/session", requireTenantContext, (_req, res) => {
   const tenant = getTenantContext(res);
   res.json(tenant);
+});
+
+app.get("/api/ebay/connection", requireTenantContext, async (_req, res, next) => {
+  try { res.json(await getEbayConnection(getTenantContext(res).organization.id)); }
+  catch (error) { next(error); }
+});
+
+app.post("/api/ebay/connection/authorize", authRateLimit, requireTenantContext, ebayConnectionRoles, async (req, res, next) => {
+  try {
+    assertTrustedAuthOrigin(req);
+    const tenant = getTenantContext(res);
+    res.status(201).json(await createEbayAuthorization(tenant.organization.id, tenant.user.id));
+  } catch (error) { next(error); }
+});
+
+app.delete("/api/ebay/connection", writeRateLimit, requireTenantContext, ebayConnectionRoles, async (req, res, next) => {
+  try {
+    assertTrustedAuthOrigin(req);
+    res.json(await disconnectEbayConnection(getTenantContext(res).organization.id));
+  } catch (error) { next(error); }
 });
 
 app.post("/api/auth/refresh", authRateLimit, async (req, res, next) => {
@@ -483,6 +526,7 @@ app.use((error: unknown, req: express.Request, res: express.Response, _next: exp
   if (error instanceof CatalogError) return response(error.statusCode, { error: error.message });
   if (error instanceof PricingJobError) return response(error.statusCode, { error: error.message });
   if (error instanceof FitmentJobError) return response(error.statusCode, { error: error.message });
+  if (error instanceof EbaySellerOAuthError) return response(error.statusCode, { error: error.message });
   if (typeof error === "object" && error !== null && "type" in error && error.type === "entity.too.large") {
     return response(413, { error: "Request body exceeds the configured upload limit" });
   }

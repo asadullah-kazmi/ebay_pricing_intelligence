@@ -1,6 +1,22 @@
 export type CatalogStatus = "IMPORTED" | "NEEDS_IMAGES" | "IMPORT_ERROR" | "READY_FOR_ENRICHMENT" | "ARCHIVED";
 export type PartCondition = "NEW" | "USED";
 
+export interface EbayConnection {
+  connected: boolean;
+  status: "NOT_CONNECTED" | "ACTIVE" | "ERROR" | "EXPIRED" | "DISCONNECTED";
+  id?: string;
+  environment?: string;
+  ebayUserId?: string | null;
+  username?: string | null;
+  accountType?: string | null;
+  registrationMarketplace?: string | null;
+  scopes?: string[];
+  accessTokenExpiresAt?: string | null;
+  refreshTokenExpiresAt?: string | null;
+  lastRefreshedAt?: string | null;
+  lastError?: string | null;
+}
+
 export interface CatalogPartCard {
   id: string;
   sku: string;

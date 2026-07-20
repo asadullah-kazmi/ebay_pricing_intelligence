@@ -902,6 +902,8 @@ Acceptance criteria:
 
 **Estimate:** 4–7 weeks
 
+**Step 13 delivered:** the seller-connection foundation now provides one production or sandbox eBay connection per organization, owner/admin consent controls, one-use hashed OAuth state, server-side authorization-code exchange, AES-256-GCM encrypted token storage, automatic access-token refresh, sanitized status, reconnection, and local disconnect. Policy discovery, listing readiness, and publication remain later steps in this phase.
+
 Implementation:
 
 - Add seller OAuth Authorization Code Grant.

@@ -34,6 +34,11 @@ export interface AppConfig {
       endpoint?: string;
       verificationToken?: string;
     };
+    oauth: {
+      ruName?: string;
+      encryptionKey?: Buffer;
+      scopes: string[];
+    };
   };
   ownSellers: Set<string>;
 }
@@ -69,6 +74,28 @@ export function getConfig(): AppConfig {
   }
   if (notificationVerificationToken && !/^[A-Za-z0-9_-]{32,80}$/.test(notificationVerificationToken)) {
     throw new Error("EBAY_NOTIFICATION_VERIFICATION_TOKEN must be 32-80 letters, numbers, underscores, or hyphens");
+  }
+
+  const ebayRuName = process.env.EBAY_RUNAME?.trim() || undefined;
+  const ebayEncryptionKeyValue = process.env.EBAY_OAUTH_ENCRYPTION_KEY?.trim() || undefined;
+  if (Boolean(ebayRuName) !== Boolean(ebayEncryptionKeyValue)) {
+    throw new Error("EBAY_RUNAME and EBAY_OAUTH_ENCRYPTION_KEY must be provided together");
+  }
+  let ebayEncryptionKey: Buffer | undefined;
+  if (ebayEncryptionKeyValue) {
+    ebayEncryptionKey = Buffer.from(ebayEncryptionKeyValue, "base64");
+    if (ebayEncryptionKey.length !== 32 || ebayEncryptionKey.toString("base64") !== ebayEncryptionKeyValue) {
+      throw new Error("EBAY_OAUTH_ENCRYPTION_KEY must be a canonical Base64-encoded 32-byte key");
+    }
+  }
+  const defaultEbayOAuthScopes = [
+    "https://api.ebay.com/oauth/api_scope/sell.inventory",
+    "https://api.ebay.com/oauth/api_scope/sell.account",
+    "https://api.ebay.com/oauth/api_scope/commerce.identity.readonly",
+  ];
+  const ebayOAuthScopes = (process.env.EBAY_OAUTH_SCOPES?.trim() || defaultEbayOAuthScopes.join(" ")).split(/\s+/).filter(Boolean);
+  if (!ebayOAuthScopes.length || ebayOAuthScopes.some((scope) => !/^https:\/\/api\.ebay\.com\/oauth\/api_scope\/[a-z0-9._-]+$/i.test(scope))) {
+    throw new Error("EBAY_OAUTH_SCOPES must contain space-separated eBay OAuth scope URLs");
   }
 
   const accessSecret = process.env.JWT_ACCESS_SECRET?.trim() || undefined;
@@ -187,6 +214,11 @@ export function getConfig(): AppConfig {
       notifications: {
         endpoint: notificationEndpoint,
         verificationToken: notificationVerificationToken,
+      },
+      oauth: {
+        ruName: ebayRuName,
+        encryptionKey: ebayEncryptionKey,
+        scopes: ebayOAuthScopes,
       },
     },
     ownSellers: new Set(

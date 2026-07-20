@@ -79,6 +79,8 @@ See [Catalog Workspace](docs/CATALOG_WORKSPACE.md) for catalog filters, editing,
 
 See [Bulk Pricing Jobs](docs/BULK_PRICING.md) for selected-part eBay pricing, condition controls, job polling, exact-match evidence, and competitor listing snapshots.
 
+See [eBay Seller Connection Setup](docs/EBAY_SELLER_OAUTH.md) for production RuName configuration, encrypted OAuth token storage, Railway variables, connection endpoints, and troubleshooting.
+
 See [Production Release Checklist](docs/PRODUCTION_RELEASE.md) before deploying. It contains the Railway service commands, required variables, health checks, smoke test, rollback process, and current release limitations.
 
 ## API
@@ -112,6 +114,10 @@ See [Production Release Checklist](docs/PRODUCTION_RELEASE.md) before deploying.
 - `POST /api/fitment/jobs` - discover scored eBay catalog fitment candidates for up to 10 selected parts
 - `GET /api/fitment/jobs` / `GET /api/fitment/jobs/:id` - list and poll tenant-scoped fitment jobs
 - `POST /api/fitment/items/:id/approve` - approve an ePID candidate and import its compatibility applications
+- `GET /api/ebay/connection` - retrieve the organization's sanitized eBay seller connection status
+- `POST /api/ebay/connection/authorize` - start owner/admin eBay seller consent
+- `GET /api/ebay/oauth/callback` - validate eBay consent and store encrypted seller credentials
+- `DELETE /api/ebay/connection` - disconnect the organization and delete local token material
 - `GET /health`
 - `GET /health/live`
 - `GET /health/ready`

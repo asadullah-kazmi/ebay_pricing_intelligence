@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import styles from "./catalog.module.css";
-import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogStatus, FitmentJob, FitmentJobSummary, PartCondition, PricingConditionMode, PricingJob, PricingJobSummary } from "./types";
+import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogStatus, EbayConnection, FitmentJob, FitmentJobSummary, PartCondition, PricingConditionMode, PricingJob, PricingJobSummary } from "./types";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const statuses: CatalogStatus[] = ["IMPORTED", "NEEDS_IMAGES", "IMPORT_ERROR", "READY_FOR_ENRICHMENT", "ARCHIVED"];
@@ -48,6 +48,7 @@ export default function CatalogWorkspace() {
   const [catalog, setCatalog] = useState<CatalogResponse>(emptyCatalog);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [status, setStatus] = useState("");
@@ -70,6 +71,8 @@ export default function CatalogWorkspace() {
   const [fitmentJob, setFitmentJob] = useState<FitmentJob | null>(null);
   const [fitmentBusy, setFitmentBusy] = useState(false);
   const [latestFitmentLoaded, setLatestFitmentLoaded] = useState(false);
+  const [ebayConnection, setEbayConnection] = useState<EbayConnection>({ connected: false, status: "NOT_CONNECTED" });
+  const [connectionBusy, setConnectionBusy] = useState(false);
 
   useEffect(() => {
     const localDemo = process.env.NODE_ENV !== "production" && new URLSearchParams(window.location.search).get("demo") === "1";
@@ -97,6 +100,16 @@ export default function CatalogWorkspace() {
     if (!response.ok) throw new Error(typeof body === "object" && body?.error ? body.error : "Request failed");
     return body;
   }, [token]);
+
+  useEffect(() => {
+    if (authState !== "ready" || demo) return;
+    const result = new URLSearchParams(window.location.search).get("ebay");
+    if (result) {
+      setNotice(result === "connected" ? "eBay seller account connected successfully." : result === "declined" ? "eBay authorization was cancelled." : "eBay connection could not be completed. Please try again.");
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    request("/api/ebay/connection").then((value) => setEbayConnection(value as EbayConnection)).catch(() => undefined);
+  }, [authState, demo, request]);
 
   const queryString = useMemo(() => {
     const query = new URLSearchParams({ page: String(page), pageSize: "25", sort });
@@ -268,6 +281,28 @@ export default function CatalogWorkspace() {
     finally { setFitmentBusy(false); }
   }
 
+  async function connectEbay() {
+    if (demo || connectionBusy) return;
+    setConnectionBusy(true); setError("");
+    try {
+      const response = await request("/api/ebay/connection/authorize", { method: "POST" }) as { authorizationUrl: string };
+      window.location.assign(response.authorizationUrl);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to start eBay authorization");
+      setConnectionBusy(false);
+    }
+  }
+
+  async function disconnectEbay() {
+    if (demo || connectionBusy || !window.confirm("Disconnect this eBay seller account? Publishing access will stop until it is reconnected.")) return;
+    setConnectionBusy(true); setError(""); setNotice("");
+    try {
+      setEbayConnection(await request("/api/ebay/connection", { method: "DELETE" }) as EbayConnection);
+      setNotice("eBay seller account disconnected and stored tokens removed.");
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to disconnect eBay"); }
+    finally { setConnectionBusy(false); }
+  }
+
   async function downloadCsv() {
     if (demo) return;
     try {
@@ -287,10 +322,11 @@ export default function CatalogWorkspace() {
   const allPageSelected = catalog.parts.length > 0 && catalog.parts.every(({ id }) => selected.has(id));
 
   return <main className={styles.shell}>
-    <aside className={styles.sidebar}><a className={styles.brand} href="/"><b>Part</b>Pulse<span>Automotive operations</span></a><nav><a className={styles.active} href="/catalog"><span>01</span>Catalog</a><a href="/"><span>02</span>Market pricing</a><a href="#fitment-workflow"><span>03</span>Fitment</a><button disabled><span>04</span>Publishing</button></nav><div className={styles.sideFoot}><i/> eBay connection active</div></aside>
+    <aside className={styles.sidebar}><a className={styles.brand} href="/"><b>Part</b>Pulse<span>Automotive operations</span></a><nav><a className={styles.active} href="/catalog"><span>01</span>Catalog</a><a href="/"><span>02</span>Market pricing</a><a href="#fitment-workflow"><span>03</span>Fitment</a><button disabled><span>04</span>Publishing</button></nav><div className={styles.sideFoot}><i className={ebayConnection.connected ? styles.connectedDot : styles.disconnectedDot}/> {ebayConnection.connected ? "eBay connection active" : "eBay not connected"}</div></aside>
     <section className={styles.workspace}>
-      <header className={styles.topbar}><div><span className={styles.eyebrow}>INVENTORY OPERATIONS</span><h1>Parts catalog</h1></div><div className={styles.topActions}><button className={styles.secondary} onClick={() => void downloadCsv()}>Export CSV</button><button className={styles.primary} disabled>+ New import</button></div></header>
+      <header className={styles.topbar}><div><span className={styles.eyebrow}>INVENTORY OPERATIONS</span><h1>Parts catalog</h1></div><div className={styles.topActions}><div className={styles.connectionStatus}><i className={ebayConnection.connected ? styles.connectedDot : styles.disconnectedDot}/><span>{ebayConnection.connected ? (ebayConnection.username || ebayConnection.ebayUserId || "eBay connected") : "Seller not connected"}</span>{ebayConnection.connected ? <button className={styles.secondary} disabled={connectionBusy} onClick={() => void disconnectEbay()}>Disconnect</button> : <button className={styles.primary} disabled={connectionBusy || demo} onClick={() => void connectEbay()}>{connectionBusy ? "Opening..." : "Connect eBay"}</button>}</div><button className={styles.secondary} onClick={() => void downloadCsv()}>Export CSV</button><button className={styles.primary} disabled>+ New import</button></div></header>
       {demo && <div className={styles.demoBanner}>Development preview - sample records are not saved.</div>}
+      {notice && <div className={styles.notice}>{notice}</div>}
       {error && <div className={styles.error}>{error}</div>}
       <section className={styles.stats}>
         <article><span>Total parts</span><b>{catalog.summary.total}</b><small>Organization catalog</small></article>
