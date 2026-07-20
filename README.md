@@ -109,6 +109,9 @@ See [Production Release Checklist](docs/PRODUCTION_RELEASE.md) before deploying.
 - `POST /api/pricing/jobs` - create a tenant-scoped pricing job for up to 25 selected parts
 - `GET /api/pricing/jobs` - list recent pricing jobs for the organization
 - `GET /api/pricing/jobs/:id` - poll job progress and inspect competitor listing snapshots
+- `POST /api/fitment/jobs` - discover scored eBay catalog fitment candidates for up to 10 selected parts
+- `GET /api/fitment/jobs` / `GET /api/fitment/jobs/:id` - list and poll tenant-scoped fitment jobs
+- `POST /api/fitment/items/:id/approve` - approve an ePID candidate and import its compatibility applications
 - `GET /health`
 - `GET /health/live`
 - `GET /health/ready`

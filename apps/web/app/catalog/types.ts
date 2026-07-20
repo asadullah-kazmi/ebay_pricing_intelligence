@@ -29,6 +29,13 @@ export interface CatalogPartCard {
     completedAt: string | null;
     pricingJob: { marketplace: string };
   }>;
+  fitmentJobItems: Array<{
+    id: string;
+    status: "APPROVED" | "NO_CANDIDATE";
+    applicationCount: number;
+    completedAt: string | null;
+    fitmentJob: { marketplace: string };
+  }>;
   _count: { media: number };
 }
 
@@ -109,5 +116,47 @@ export interface PricingJob extends PricingJobSummary {
       url: string;
       matchedOn: string[];
     }>;
+  }>;
+}
+
+export type FitmentJobStatus = "QUEUED" | "RUNNING" | "REVIEW_REQUIRED" | "COMPLETED" | "PARTIAL" | "FAILED";
+export type FitmentJobItemStatus = "QUEUED" | "RUNNING" | "REVIEW_REQUIRED" | "NO_CANDIDATE" | "APPROVED" | "FAILED";
+
+export interface FitmentJobSummary {
+  id: string;
+  marketplace: string;
+  status: FitmentJobStatus;
+  totalItems: number;
+  reviewedItems: number;
+  noCandidateItems: number;
+  failedItems: number;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+export interface FitmentJob extends FitmentJobSummary {
+  items: Array<{
+    id: string;
+    query: string;
+    status: FitmentJobItemStatus;
+    categoryId: string | null;
+    categoryName: string | null;
+    approvedCandidateId: string | null;
+    metadataVersion: string | null;
+    applicationCount: number;
+    error: string | null;
+    part: { id: string; sku: string; primaryPartNumber: string; partName: string | null; brand: string | null };
+    candidates: Array<{
+      id: string;
+      epid: string;
+      title: string;
+      brand: string | null;
+      imageUrl: string | null;
+      productWebUrl: string | null;
+      score: number;
+      matchedOn: string[];
+    }>;
+    applications: Array<{ id: string; fingerprint: string; properties: Record<string, string>; approvedAt: string }>;
   }>;
 }

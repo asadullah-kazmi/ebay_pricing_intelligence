@@ -877,6 +877,8 @@ Acceptance criteria:
 
 ### Phase 5 — Category, specifics, and fitment
 
+Step 12 implements the first review-first fitment slice: tenant-scoped discovery jobs for up to 10 selected parts, Taxonomy-assisted Catalog ePID candidates, deterministic evidence scoring, explicit candidate approval, Metadata compatibility import, normalized application persistence, polling, and startup recovery. Manual fitment editing, approval revision, durable external workers, and mapping approved applications into publishing payloads remain in this phase.
+
 **Estimate:** 4–7 weeks
 
 Implementation:

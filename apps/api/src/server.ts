@@ -3,6 +3,7 @@ import { app } from "./app.js";
 import { getConfig } from "./config.js";
 import { disconnectDatabase } from "./db.js";
 import { resumeInterruptedPricingJobs } from "./pricing-service.js";
+import { resumeInterruptedFitmentJobs } from "./fitment-service.js";
 
 const { port, ebay, shutdownTimeoutMs } = getConfig();
 const server = app.listen(port, () => console.log(`API listening on http://localhost:${port}`));
@@ -13,6 +14,9 @@ console.log(`eBay provider: ${ebay.mode} (${ebay.environment})`);
 void resumeInterruptedPricingJobs()
   .then((count) => { if (count) console.info(JSON.stringify({ type: "pricing_jobs_resumed", count })); })
   .catch((error) => console.error(JSON.stringify({ type: "pricing_job_recovery_failed", error: error instanceof Error ? { name: error.name, message: error.message } : { name: "UnknownError" } })));
+void resumeInterruptedFitmentJobs()
+  .then((count) => { if (count) console.info(JSON.stringify({ type: "fitment_jobs_resumed", count })); })
+  .catch((error) => console.error(JSON.stringify({ type: "fitment_job_recovery_failed", error: error instanceof Error ? { name: error.name, message: error.message } : { name: "UnknownError" } })));
 
 let shuttingDown = false;
 async function shutdown(signal: string, exitCode = 0) {

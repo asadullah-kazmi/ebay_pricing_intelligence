@@ -21,6 +21,7 @@ import { confirmImportBatch, correctImportMediaMatch, discardImportMediaMatch, g
 import { getObjectStorage, ObjectStorageError } from "./object-storage.js";
 import { createRateLimitMiddleware, requestLogMiddleware, requestSecurityMiddleware } from "./http-hardening.js";
 import { createPricingJob, getPricingJob, listPricingJobs, PricingJobError, startPricingJob } from "./pricing-service.js";
+import { approveFitmentCandidate, createFitmentJob, FitmentJobError, getFitmentJob, listFitmentJobs, startFitmentJob } from "./fitment-service.js";
 import { getTenantContext, requireOrganizationRoles, requireTenantContext } from "./tenant-context.js";
 
 const searchSchema = z.object({
@@ -90,6 +91,12 @@ const createPricingJobSchema = z.object({
 }).strict();
 const pricingJobListSchema = z.object({ limit: z.coerce.number().int().min(1).max(50).default(10) });
 const pricingRoles = requireOrganizationRoles("OWNER", "ADMIN", "MANAGER", "PRICING_OPERATOR");
+const createFitmentJobSchema = z.object({
+  partIds: z.array(z.string().min(1)).min(1).max(10).transform((ids) => [...new Set(ids)]),
+  marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).default("EBAY_US"),
+}).strict();
+const approveFitmentSchema = z.object({ candidateId: z.string().min(1) }).strict();
+const fitmentRoles = requireOrganizationRoles("OWNER", "ADMIN", "MANAGER", "CATALOG_OPERATOR");
 const generalRateLimit = createRateLimitMiddleware({ scope: "general", limit: 600, windowMs: 15 * 60_000 });
 const authRateLimit = createRateLimitMiddleware({ scope: "auth", limit: 30, windowMs: 15 * 60_000 });
 const searchRateLimit = createRateLimitMiddleware({ scope: "search", limit: 120, windowMs: 60_000 });
@@ -344,6 +351,39 @@ app.get("/api/pricing/jobs/:id", requireTenantContext, async (req, res, next) =>
   } catch (error) { next(error); }
 });
 
+app.post("/api/fitment/jobs", searchRateLimit, requireTenantContext, fitmentRoles, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const job = await createFitmentJob(tenant.organization.id, tenant.user.id, createFitmentJobSchema.parse(req.body));
+    res.status(202).json(job);
+    startFitmentJob(job.id);
+  } catch (error) { next(error); }
+});
+
+app.get("/api/fitment/jobs", requireTenantContext, async (req, res, next) => {
+  try {
+    const { limit } = pricingJobListSchema.parse(req.query);
+    res.json(await listFitmentJobs(getTenantContext(res).organization.id, limit));
+  } catch (error) { next(error); }
+});
+
+app.get("/api/fitment/jobs/:id", requireTenantContext, async (req, res, next) => {
+  try {
+    const jobId = req.params.id;
+    if (typeof jobId !== "string") return res.status(400).json({ error: "Invalid fitment job ID" });
+    res.json(await getFitmentJob(getTenantContext(res).organization.id, jobId));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/fitment/items/:id/approve", searchRateLimit, requireTenantContext, fitmentRoles, async (req, res, next) => {
+  try {
+    const itemId = req.params.id;
+    if (typeof itemId !== "string") return res.status(400).json({ error: "Invalid fitment item ID" });
+    const { candidateId } = approveFitmentSchema.parse(req.body);
+    res.json(await approveFitmentCandidate(getTenantContext(res).organization.id, itemId, candidateId));
+  } catch (error) { next(error); }
+});
+
 app.post("/api/media/uploads/confirm", requireTenantContext, mediaUploadRoles, async (req, res, next) => {
   try {
     const storage = getObjectStorage();
@@ -442,6 +482,7 @@ app.use((error: unknown, req: express.Request, res: express.Response, _next: exp
   if (error instanceof ImportReviewError) return response(error.statusCode, { error: error.message, ...(error.details ? { details: error.details } : {}) });
   if (error instanceof CatalogError) return response(error.statusCode, { error: error.message });
   if (error instanceof PricingJobError) return response(error.statusCode, { error: error.message });
+  if (error instanceof FitmentJobError) return response(error.statusCode, { error: error.message });
   if (typeof error === "object" && error !== null && "type" in error && error.type === "entity.too.large") {
     return response(413, { error: "Request body exceeds the configured upload limit" });
   }

@@ -86,6 +86,12 @@ const catalogCardSelect = {
       pricingJob: { select: { marketplace: true } },
     },
   },
+  fitmentJobItems: {
+    where: { status: { in: ["APPROVED" as const, "NO_CANDIDATE" as const] } },
+    orderBy: { completedAt: "desc" as const },
+    take: 1,
+    select: { id: true, status: true, applicationCount: true, completedAt: true, fitmentJob: { select: { marketplace: true } } },
+  },
   _count: { select: { media: true } },
 } satisfies Prisma.PartSelect;
 

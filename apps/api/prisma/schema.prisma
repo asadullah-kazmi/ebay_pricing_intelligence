@@ -113,28 +113,50 @@ enum PricingConditionMode {
   USED
 }
 
+enum FitmentJobStatus {
+  QUEUED
+  RUNNING
+  REVIEW_REQUIRED
+  COMPLETED
+  PARTIAL
+  FAILED
+}
+
+enum FitmentJobItemStatus {
+  QUEUED
+  RUNNING
+  REVIEW_REQUIRED
+  NO_CANDIDATE
+  APPROVED
+  FAILED
+}
+
 model Organization {
-  id                 String                      @id @default(cuid())
-  name               String
-  slug               String                      @unique
-  memberships        OrganizationMembership[]
-  refreshSessions    RefreshSession[]
-  importBatches      ImportBatch[]
-  importRows         ImportRow[]
-  vehicles           Vehicle[]
-  parts              Part[]
-  partNumbers        PartNumber[]
-  inventoryItems     InventoryItem[]
-  warehouses         Warehouse[]
-  binLocations       BinLocation[]
-  mediaAssets        MediaAsset[]
-  partMedia          PartMedia[]
-  importMediaMatches ImportMediaMatch[]
-  pricingJobs        PricingJob[]
-  pricingJobItems    PricingJobItem[]
-  competitorListings CompetitorListingSnapshot[]
-  createdAt          DateTime                    @default(now())
-  updatedAt          DateTime                    @updatedAt
+  id                  String                      @id @default(cuid())
+  name                String
+  slug                String                      @unique
+  memberships         OrganizationMembership[]
+  refreshSessions     RefreshSession[]
+  importBatches       ImportBatch[]
+  importRows          ImportRow[]
+  vehicles            Vehicle[]
+  parts               Part[]
+  partNumbers         PartNumber[]
+  inventoryItems      InventoryItem[]
+  warehouses          Warehouse[]
+  binLocations        BinLocation[]
+  mediaAssets         MediaAsset[]
+  partMedia           PartMedia[]
+  importMediaMatches  ImportMediaMatch[]
+  pricingJobs         PricingJob[]
+  pricingJobItems     PricingJobItem[]
+  competitorListings  CompetitorListingSnapshot[]
+  fitmentJobs         FitmentJob[]
+  fitmentJobItems     FitmentJobItem[]
+  fitmentCandidates   FitmentCandidate[]
+  fitmentApplications FitmentApplication[]
+  createdAt           DateTime                    @default(now())
+  updatedAt           DateTime                    @updatedAt
 }
 
 model User {
@@ -146,6 +168,7 @@ model User {
   createdImports     ImportBatch[]            @relation("ImportCreator")
   createdParts       Part[]                   @relation("PartCreator")
   createdPricingJobs PricingJob[]             @relation("PricingJobCreator")
+  createdFitmentJobs FitmentJob[]             @relation("FitmentJobCreator")
   createdAt          DateTime                 @default(now())
   updatedAt          DateTime                 @updatedAt
 }
@@ -265,7 +288,7 @@ model Vehicle {
 }
 
 model Part {
-  id                   String            @id @default(cuid())
+  id                   String               @id @default(cuid())
   organizationId       String
   sku                  String
   normalizedSku        String
@@ -276,23 +299,25 @@ model Part {
   description          String?
   condition            PartCondition
   imageGroup           String?
-  status               CatalogPartStatus @default(IMPORTED)
+  status               CatalogPartStatus    @default(IMPORTED)
   donorVehicleId       String?
   donorMileage         Int?
   donorColor           String?
   placement            String?
   notes                String?
   createdById          String
-  organization         Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  donorVehicle         Vehicle?          @relation(fields: [donorVehicleId], references: [id], onDelete: SetNull)
-  createdBy            User              @relation("PartCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  sourceImportRow      ImportRow?        @relation("CommittedImportPart")
+  organization         Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  donorVehicle         Vehicle?             @relation(fields: [donorVehicleId], references: [id], onDelete: SetNull)
+  createdBy            User                 @relation("PartCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  sourceImportRow      ImportRow?           @relation("CommittedImportPart")
   partNumbers          PartNumber[]
   inventoryItem        InventoryItem?
   media                PartMedia[]
   pricingJobItems      PricingJobItem[]
-  createdAt            DateTime          @default(now())
-  updatedAt            DateTime          @updatedAt
+  fitmentJobItems      FitmentJobItem[]
+  fitmentApplications  FitmentApplication[]
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
 
   @@unique([organizationId, normalizedSku])
   @@index([organizationId, normalizedPartNumber])
@@ -511,6 +536,96 @@ model CompetitorListingSnapshot {
   @@unique([pricingJobItemId, listingId])
   @@index([organizationId, listingId])
   @@index([pricingJobItemId, landedPrice])
+}
+
+model FitmentJob {
+  id               String           @id @default(cuid())
+  organizationId   String
+  createdById      String
+  marketplace      String
+  status           FitmentJobStatus @default(QUEUED)
+  totalItems       Int
+  reviewedItems    Int              @default(0)
+  noCandidateItems Int              @default(0)
+  failedItems      Int              @default(0)
+  startedAt        DateTime?
+  completedAt      DateTime?
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy        User             @relation("FitmentJobCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  items            FitmentJobItem[]
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, status])
+}
+
+model FitmentJobItem {
+  id                  String               @id @default(cuid())
+  organizationId      String
+  fitmentJobId        String
+  partId              String
+  query               String
+  status              FitmentJobItemStatus @default(QUEUED)
+  categoryId          String?
+  categoryName        String?
+  approvedCandidateId String?              @unique
+  metadataVersion     String?
+  applicationCount    Int                  @default(0)
+  error               String?
+  startedAt           DateTime?
+  completedAt         DateTime?
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  fitmentJob          FitmentJob           @relation(fields: [fitmentJobId], references: [id], onDelete: Cascade)
+  part                Part                 @relation(fields: [partId], references: [id], onDelete: Cascade)
+  candidates          FitmentCandidate[]   @relation("FitmentItemCandidates")
+  approvedCandidate   FitmentCandidate?    @relation("ApprovedFitmentCandidate", fields: [approvedCandidateId], references: [id], onDelete: SetNull)
+  applications        FitmentApplication[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@unique([fitmentJobId, partId])
+  @@index([organizationId, status])
+  @@index([partId, completedAt])
+}
+
+model FitmentCandidate {
+  id               String          @id @default(cuid())
+  organizationId   String
+  fitmentJobItemId String
+  epid             String
+  title            String
+  brand            String?
+  imageUrl         String?
+  productWebUrl    String?
+  score            Int
+  matchedOn        String[]
+  aspects          Json?
+  organization     Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  fitmentJobItem   FitmentJobItem  @relation("FitmentItemCandidates", fields: [fitmentJobItemId], references: [id], onDelete: Cascade)
+  approvedFor      FitmentJobItem? @relation("ApprovedFitmentCandidate")
+  createdAt        DateTime        @default(now())
+
+  @@unique([fitmentJobItemId, epid])
+  @@index([organizationId, epid])
+  @@index([fitmentJobItemId, score])
+}
+
+model FitmentApplication {
+  id               String         @id @default(cuid())
+  organizationId   String
+  fitmentJobItemId String
+  partId           String
+  fingerprint      String
+  properties       Json
+  notes            String?
+  organization     Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  fitmentJobItem   FitmentJobItem @relation(fields: [fitmentJobItemId], references: [id], onDelete: Cascade)
+  part             Part           @relation(fields: [partId], references: [id], onDelete: Cascade)
+  approvedAt       DateTime       @default(now())
+
+  @@unique([fitmentJobItemId, fingerprint])
+  @@index([organizationId, partId])
 }
 
 model Search {
