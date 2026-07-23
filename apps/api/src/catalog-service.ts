@@ -1,6 +1,8 @@
 import { Prisma, type CatalogPartStatus, type PartCondition } from "@prisma/client";
+import { recordAuditEvent } from "./audit-service.js";
 import { prisma } from "./db.js";
 import { normalizePartNumber } from "./domain/matching.js";
+import { invalidateListingDraftsForCatalogChanges } from "./listing-draft-service.js";
 
 export class CatalogError extends Error {
   constructor(message: string, readonly statusCode: 400 | 404 | 409 = 400) {
@@ -14,7 +16,17 @@ export interface CatalogQuery {
   status?: CatalogPartStatus;
   condition?: PartCondition;
   hasImages?: boolean;
+  hasPricing?: boolean;
+  hasFitment?: boolean;
+  hasDraft?: boolean;
+  hasShippingPolicy?: boolean;
+  draftStatus?: "DRAFT" | "BLOCKED" | "READY";
+  marketplace?: "EBAY_US" | "EBAY_GB" | "EBAY_DE";
   warehouseId?: string;
+  minQuantity?: number;
+  maxQuantity?: number;
+  minCost?: number;
+  maxCost?: number;
   createdFrom?: Date;
   createdTo?: Date;
   sort: "newest" | "oldest" | "updated" | "sku";
@@ -24,13 +36,36 @@ export interface CatalogQuery {
 
 export function buildCatalogWhere(organizationId: string, query: Omit<CatalogQuery, "page" | "pageSize" | "sort">): Prisma.PartWhereInput {
   const q = query.q?.trim();
+  const inventoryFilter: Prisma.InventoryItemWhereInput = {
+    ...(query.warehouseId ? { warehouseId: query.warehouseId } : {}),
+    ...(query.minQuantity !== undefined || query.maxQuantity !== undefined ? {
+      quantity: { ...(query.minQuantity !== undefined ? { gte: query.minQuantity } : {}), ...(query.maxQuantity !== undefined ? { lte: query.maxQuantity } : {}) },
+    } : {}),
+    ...(query.minCost !== undefined || query.maxCost !== undefined ? {
+      cost: { ...(query.minCost !== undefined ? { gte: query.minCost } : {}), ...(query.maxCost !== undefined ? { lte: query.maxCost } : {}) },
+    } : {}),
+  };
+  const draftFilter: Prisma.ListingDraftWhereInput = {
+    ...(query.marketplace ? { marketplace: query.marketplace } : {}),
+    ...(query.draftStatus ? { status: query.draftStatus } : {}),
+    ...(query.hasShippingPolicy === true ? { shippingPolicyId: { not: null } } : {}),
+    ...(query.hasShippingPolicy === false ? { shippingPolicyId: null } : {}),
+  };
+  const hasInventoryFilter = Object.keys(inventoryFilter).length > 0;
+  const hasDraftFilter = Object.keys(draftFilter).length > 0;
   return {
     organizationId,
     ...(query.status ? { status: query.status } : {}),
     ...(query.condition ? { condition: query.condition } : {}),
     ...(query.hasImages === true ? { media: { some: {} } } : {}),
     ...(query.hasImages === false ? { media: { none: {} } } : {}),
-    ...(query.warehouseId ? { inventoryItem: { warehouseId: query.warehouseId } } : {}),
+    ...(hasInventoryFilter ? { inventoryItem: { is: inventoryFilter } } : {}),
+    ...(query.hasPricing === true ? { pricingProposals: { some: { status: { in: ["APPROVED", "OVERRIDDEN"] } } } } : {}),
+    ...(query.hasPricing === false ? { pricingProposals: { none: { status: { in: ["APPROVED", "OVERRIDDEN"] } } } } : {}),
+    ...(query.hasFitment === true ? { fitmentApplications: { some: { status: "APPROVED" } } } : {}),
+    ...(query.hasFitment === false ? { fitmentApplications: { none: { status: "APPROVED" } } } : {}),
+    ...(query.hasDraft === true || (query.hasDraft === undefined && hasDraftFilter) ? { listingDrafts: { some: draftFilter } } : {}),
+    ...(query.hasDraft === false ? { listingDrafts: { none: hasDraftFilter ? draftFilter : {} } } : {}),
     ...(query.createdFrom || query.createdTo ? {
       createdAt: { ...(query.createdFrom ? { gte: query.createdFrom } : {}), ...(query.createdTo ? { lte: query.createdTo } : {}) },
     } : {}),
@@ -278,6 +313,101 @@ export async function bulkUpdateCatalogStatus(organizationId: string, partIds: s
     if (count !== partIds.length) throw new CatalogError("One or more selected parts were not found", 404);
     const result = await tx.part.updateMany({ where: { organizationId, id: { in: partIds } }, data: { status } });
     return { updated: result.count, status };
+  });
+}
+
+export interface CatalogBulkUpdate {
+  status?: CatalogPartStatus;
+  condition?: PartCondition;
+  placement?: string | null;
+  quantity?: number;
+  warehouseCode?: string | null;
+  binLocation?: string | null;
+}
+
+export async function bulkUpdateCatalogParts(
+  organizationId: string,
+  userId: string,
+  partIds: string[],
+  changes: CatalogBulkUpdate,
+) {
+  return prisma.$transaction(async (tx) => {
+    const parts = await tx.part.findMany({
+      where: { organizationId, id: { in: partIds } },
+      select: { id: true, inventoryItem: { select: { id: true } } },
+    });
+    if (parts.length !== partIds.length) throw new CatalogError("One or more selected parts were not found", 404);
+    if (changes.quantity !== undefined && parts.some(({ inventoryItem }) => !inventoryItem)) {
+      throw new CatalogError("One or more selected parts do not have inventory records", 409);
+    }
+
+    let warehouseId: string | null | undefined;
+    let binLocationId: string | null | undefined;
+    if (changes.warehouseCode !== undefined) {
+      const warehouseCode = changes.warehouseCode?.trim().toUpperCase() || null;
+      if (warehouseCode) {
+        const warehouse = await tx.warehouse.upsert({
+          where: { organizationId_code: { organizationId, code: warehouseCode } },
+          create: { organizationId, code: warehouseCode, name: warehouseCode },
+          update: {},
+          select: { id: true },
+        });
+        warehouseId = warehouse.id;
+        const binCode = changes.binLocation?.trim() || null;
+        if (binCode) {
+          const bin = await tx.binLocation.upsert({
+            where: { warehouseId_code: { warehouseId: warehouse.id, code: binCode } },
+            create: { organizationId, warehouseId: warehouse.id, code: binCode },
+            update: {},
+            select: { id: true },
+          });
+          binLocationId = bin.id;
+        } else {
+          binLocationId = null;
+        }
+      } else {
+        warehouseId = null;
+        binLocationId = null;
+      }
+    }
+
+    if (changes.status || changes.condition || changes.placement !== undefined) {
+      await tx.part.updateMany({
+        where: { organizationId, id: { in: partIds } },
+        data: {
+          ...(changes.status ? { status: changes.status } : {}),
+          ...(changes.condition ? { condition: changes.condition } : {}),
+          ...(changes.placement !== undefined ? { placement: changes.placement } : {}),
+        },
+      });
+    }
+    if (changes.quantity !== undefined || warehouseId !== undefined) {
+      await tx.inventoryItem.updateMany({
+        where: { organizationId, partId: { in: partIds } },
+        data: {
+          ...(changes.quantity !== undefined ? { quantity: changes.quantity } : {}),
+          ...(warehouseId !== undefined ? { warehouseId, binLocationId } : {}),
+        },
+      });
+    }
+
+    const invalidatedDrafts = await invalidateListingDraftsForCatalogChanges(
+      tx,
+      organizationId,
+      userId,
+      partIds,
+      Object.keys(changes),
+    );
+    await recordAuditEvent(tx, {
+      organizationId,
+      actorUserId: userId,
+      action: "catalog.parts.bulk_updated",
+      resourceType: "Part",
+      severity: "INFO",
+      summary: `Bulk-updated ${parts.length} catalog parts`,
+      metadata: JSON.parse(JSON.stringify({ partIds, changes, invalidatedDrafts })) as Prisma.InputJsonObject,
+    });
+    return { updated: parts.length, invalidatedDrafts };
   });
 }
 

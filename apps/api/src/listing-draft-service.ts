@@ -476,3 +476,131 @@ export async function getListingDraft(organizationId: string, draftId: string) {
     pricingApproval: await getApprovedPricingContext(organizationId, draft.partId, draft.marketplace),
   };
 }
+
+export async function invalidateListingDraftsForCatalogChanges(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  userId: string,
+  partIds: string[],
+  fields: string[],
+) {
+  const drafts = await tx.listingDraft.findMany({ where: { organizationId, partId: { in: partIds } } });
+  for (const draft of drafts) {
+    const values = valuesFromDraft(draft);
+    const issues: ReadinessIssue[] = [{
+      code: "CATALOG_DATA_CHANGED",
+      severity: "BLOCKER",
+      field: "catalog",
+      message: `Catalog fields changed (${fields.join(", ")}). Review and save this draft before publishing.`,
+    }];
+    const nextVersion = draft.version + 1;
+    await tx.listingDraft.update({
+      where: { id: draft.id },
+      data: {
+        status: "BLOCKED",
+        validationIssues: asJson(issues),
+        validatedAt: new Date(),
+        liveValidatedAt: null,
+        updatedById: userId,
+        version: nextVersion,
+      },
+    });
+    await tx.listingDraftVersion.create({
+      data: {
+        organizationId,
+        listingDraftId: draft.id,
+        version: nextVersion,
+        snapshot: snapshot(values, "BLOCKED", issues),
+        reason: `Catalog bulk edit: ${fields.join(", ")}`,
+        createdById: userId,
+      },
+    });
+    await enqueueOutboxEvent(tx, {
+      organizationId,
+      topic: "listing.draft.invalidated",
+      aggregateType: "ListingDraft",
+      aggregateId: draft.id,
+      payload: { draftId: draft.id, version: nextVersion, reason: "CATALOG_DATA_CHANGED", fields },
+    });
+  }
+  return drafts.length;
+}
+
+export interface BulkPolicyAssignment {
+  paymentPolicyId: string;
+  returnPolicyId: string;
+  shippingPolicyId: string;
+  merchantLocationKey: string;
+}
+
+export async function bulkAssignListingDraftPolicies(input: {
+  organizationId: string;
+  userId: string;
+  partIds: string[];
+  marketplace: Marketplace;
+  policies: BulkPolicyAssignment;
+}) {
+  const drafts = await prisma.listingDraft.findMany({
+    where: { organizationId: input.organizationId, partId: { in: input.partIds }, marketplace: input.marketplace },
+    include: contextInclude,
+  });
+  if (drafts.length !== input.partIds.length) {
+    throw new ListingDraftError("Create a listing draft for every selected part before assigning policies", 409);
+  }
+  const prepared = await Promise.all(drafts.map(async (draft) => {
+    const values = { ...valuesFromDraft(draft), ...input.policies };
+    const [cached, pricingApproval] = await Promise.all([
+      getCachedReadinessMetadata(input.organizationId, input.marketplace, values.categoryId),
+      getApprovedPricingContext(input.organizationId, draft.partId, draft.marketplace),
+    ]);
+    if (!cached.sellerResources) throw new ListingDraftError("Sync eBay policies and locations before bulk assignment", 409);
+    if (
+      !cached.sellerResources.paymentPolicyIds.has(input.policies.paymentPolicyId)
+      || !cached.sellerResources.returnPolicyIds.has(input.policies.returnPolicyId)
+      || !cached.sellerResources.fulfillmentPolicyIds.has(input.policies.shippingPolicyId)
+      || !cached.sellerResources.inventoryLocationKeys.has(input.policies.merchantLocationKey)
+    ) {
+      throw new ListingDraftError("One or more selected policies or locations are unavailable for this seller and marketplace", 409);
+    }
+    const issues = evaluateListingReadiness(values, { ...contextFromDraft(draft), ...cached, pricingApproval });
+    const status = issues.some(({ severity }) => severity === "BLOCKER") ? "BLOCKED" as const : "READY" as const;
+    return { draft, values, issues, status };
+  }));
+
+  await prisma.$transaction(async (tx) => {
+    for (const { draft, values, issues, status } of prepared) {
+      const nextVersion = draft.version + 1;
+      const updated = await tx.listingDraft.updateMany({
+        where: { id: draft.id, organizationId: input.organizationId, version: draft.version },
+        data: {
+          ...input.policies,
+          status,
+          validationIssues: asJson(issues),
+          validatedAt: new Date(),
+          liveValidatedAt: null,
+          updatedById: input.userId,
+          version: nextVersion,
+        },
+      });
+      if (!updated.count) throw new ListingDraftError("A selected draft changed; reload before assigning policies", 409);
+      await tx.listingDraftVersion.create({
+        data: {
+          organizationId: input.organizationId,
+          listingDraftId: draft.id,
+          version: nextVersion,
+          snapshot: snapshot(values, status, issues),
+          reason: "Bulk eBay policy and location assignment",
+          createdById: input.userId,
+        },
+      });
+      await enqueueOutboxEvent(tx, {
+        organizationId: input.organizationId,
+        topic: "listing.draft.updated",
+        aggregateType: "ListingDraft",
+        aggregateId: draft.id,
+        payload: { draftId: draft.id, version: nextVersion, status, bulkPolicyAssignment: true },
+      });
+    }
+  });
+  return listListingDrafts(input.organizationId, { partIds: input.partIds, marketplace: input.marketplace, limit: input.partIds.length });
+}

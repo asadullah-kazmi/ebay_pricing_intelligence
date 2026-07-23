@@ -986,6 +986,8 @@ Step 21 adds unpublished offer preparation, expected listing-fee review, named-u
 
 Step 22 adds controlled live revision from a newer inventory sync, explicit withdrawal, and remote offer reconciliation with drift detection. See [EBAY_LISTING_OPERATIONS.md](./EBAY_LISTING_OPERATIONS.md).
 
+Step 29 adds advanced inventory and readiness filters, personal saved views, transactional bulk catalog editing with draft invalidation, and versioned bulk seller-policy assignment. See [CATALOG_OPERATIONS.md](./CATALOG_OPERATIONS.md).
+
 - eBay Sell Metadata product identifiers: https://developer.ebay.com/api-docs/sell/metadata/types/api%3AProductIdentifier
 - eBay Sell Metadata product compatibility request: https://developer.ebay.com/api-docs/sell/metadata/types/api%3AProductRequest
 - eBay compatibility property values: https://developer.ebay.com/api-docs/sell/taxonomy/resources/category_tree/methods/getCompatibilityPropertyValues

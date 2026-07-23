@@ -103,6 +103,8 @@ See [Organization Onboarding and Team Management](docs/ORGANIZATION_ONBOARDING.m
 
 See [Complete Authentication and Account Security](docs/COMPLETE_AUTHENTICATION.md) for Gmail/Railway configuration, registration, verified login, password reset, account recovery, logout, and optional TOTP MFA.
 
+See [Catalog Operations](docs/CATALOG_OPERATIONS.md) for advanced catalog filters, personal saved views, atomic bulk editing, and bulk eBay policy/location assignment.
+
 See [Production Release Checklist](docs/PRODUCTION_RELEASE.md) before deploying. It contains the Railway service commands, required variables, health checks, smoke test, rollback process, and current release limitations.
 
 ## API
@@ -138,6 +140,9 @@ See [Production Release Checklist](docs/PRODUCTION_RELEASE.md) before deploying.
 - `GET /api/parts/:id` - retrieve a complete editable catalog record
 - `PATCH /api/parts/:id` - update core part and inventory fields
 - `PATCH /api/parts/bulk-status` - update the status of up to 500 selected parts
+- `PATCH /api/parts/bulk-edit` - atomically edit status, condition, placement, quantity, warehouse, or bin for selected parts
+- `GET` / `POST /api/catalog/saved-views` - list or create personal catalog filter views
+- `PATCH` / `DELETE /api/catalog/saved-views/:id` - replace or delete a user-owned saved view
 - `POST /api/pricing/jobs` - create a tenant-scoped pricing job for up to 25 selected parts
 - `GET /api/pricing/jobs` - list recent pricing jobs for the organization
 - `GET /api/pricing/jobs/:id` - poll job progress and inspect competitor listing snapshots
@@ -157,6 +162,7 @@ See [Production Release Checklist](docs/PRODUCTION_RELEASE.md) before deploying.
 - `POST /api/listing-drafts` - create idempotent, tenant-scoped listing drafts for selected catalog parts
 - `GET /api/listing-drafts` / `GET /api/listing-drafts/:id` - list drafts or retrieve one with version history
 - `PATCH /api/listing-drafts/:id` - edit a draft using optimistic concurrency
+- `POST /api/listing-drafts/bulk-policies` - validate and assign seller policies/location to selected marketplace drafts
 - `POST /api/listing-drafts/:id/validate` - rerun publication-readiness checks without publishing
 - `GET /api/ebay/resources` / `POST /api/ebay/resources/sync` - read or refresh seller policies and inventory locations
 - `POST /api/ebay/categories/:categoryId/aspects/refresh` - retrieve and cache live category item specifics

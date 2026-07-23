@@ -62,6 +62,15 @@ export interface CatalogResponse {
   warehouses: Array<{ id: string; code: string; name: string }>;
 }
 
+export interface CatalogSavedView {
+  id: string;
+  name: string;
+  filters: Record<string, string>;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface CatalogPartDetail extends Omit<CatalogPartCard, "media" | "inventoryItem"> {
   description: string | null;
   donorMileage: number | null;

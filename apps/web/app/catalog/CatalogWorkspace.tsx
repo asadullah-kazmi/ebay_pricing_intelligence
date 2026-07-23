@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import styles from "./catalog.module.css";
-import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogStatus, EbayAspectRequirement, EbayConditionOption, EbayConnection, EbayInventorySyncJob, EbayListingOperationJob, EbayOffer, EbayOfferJob, EbaySellerResources, FitmentJob, FitmentJobSummary, InventoryPreparation, InventoryPreparationJob, ListingDraft, LiveDraftValidation, ManualFitmentApplication, PartCondition, PartFitment, PricingConditionMode, PricingJob, PricingJobSummary, PricingRule } from "./types";
+import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogSavedView, CatalogStatus, EbayAspectRequirement, EbayConditionOption, EbayConnection, EbayInventorySyncJob, EbayListingOperationJob, EbayOffer, EbayOfferJob, EbaySellerResources, FitmentJob, FitmentJobSummary, InventoryPreparation, InventoryPreparationJob, ListingDraft, LiveDraftValidation, ManualFitmentApplication, PartCondition, PartFitment, PricingConditionMode, PricingJob, PricingJobSummary, PricingRule } from "./types";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const statuses: CatalogStatus[] = ["IMPORTED", "NEEDS_IMAGES", "IMPORT_ERROR", "READY_FOR_ENRICHMENT", "ARCHIVED"];
@@ -54,7 +54,16 @@ export default function CatalogWorkspace() {
   const [status, setStatus] = useState("");
   const [condition, setCondition] = useState("");
   const [hasImages, setHasImages] = useState("");
+  const [hasPricing, setHasPricing] = useState("");
+  const [hasFitment, setHasFitment] = useState("");
+  const [listingState, setListingState] = useState("");
+  const [hasShippingPolicy, setHasShippingPolicy] = useState("");
+  const [marketplaceFilter, setMarketplaceFilter] = useState("");
   const [warehouseId, setWarehouseId] = useState("");
+  const [minQuantity, setMinQuantity] = useState("");
+  const [maxQuantity, setMaxQuantity] = useState("");
+  const [minCost, setMinCost] = useState("");
+  const [maxCost, setMaxCost] = useState("");
   const [createdFrom, setCreatedFrom] = useState("");
   const [createdTo, setCreatedTo] = useState("");
   const [sort, setSort] = useState("newest");
@@ -89,6 +98,10 @@ export default function CatalogWorkspace() {
   const [ebayOffer, setEbayOffer] = useState<EbayOffer | null>(null);
   const [ebayOfferJob, setEbayOfferJob] = useState<EbayOfferJob | null>(null);
   const [listingOperationJob, setListingOperationJob] = useState<EbayListingOperationJob | null>(null);
+  const [savedViews, setSavedViews] = useState<CatalogSavedView[]>([]);
+  const [activeSavedViewId, setActiveSavedViewId] = useState("");
+  const [bulkEditorOpen, setBulkEditorOpen] = useState(false);
+  const [bulkPoliciesOpen, setBulkPoliciesOpen] = useState(false);
 
   useEffect(() => {
     const localDemo = process.env.NODE_ENV !== "production" && new URLSearchParams(window.location.search).get("demo") === "1";
@@ -135,6 +148,14 @@ export default function CatalogWorkspace() {
     request("/api/pricing/rule")
       .then((value) => setPricingRule(value as PricingRule))
       .catch(() => undefined);
+    request("/api/catalog/saved-views")
+      .then((value) => {
+        const views = value as CatalogSavedView[];
+        setSavedViews(views);
+        const defaultView = views.find(({ isDefault }) => isDefault);
+        if (defaultView) { setActiveSavedViewId(defaultView.id); applySavedFilters(defaultView.filters); }
+      })
+      .catch(() => undefined);
   }, [authState, demo, request]);
 
   const queryString = useMemo(() => {
@@ -143,11 +164,21 @@ export default function CatalogWorkspace() {
     if (status) query.set("status", status);
     if (condition) query.set("condition", condition);
     if (hasImages) query.set("hasImages", hasImages);
+    if (hasPricing) query.set("hasPricing", hasPricing);
+    if (hasFitment) query.set("hasFitment", hasFitment);
+    if (listingState === "NONE") query.set("hasDraft", "false");
+    else if (listingState) { query.set("hasDraft", "true"); query.set("draftStatus", listingState); }
+    if (hasShippingPolicy) query.set("hasShippingPolicy", hasShippingPolicy);
+    if (marketplaceFilter) query.set("marketplace", marketplaceFilter);
     if (warehouseId) query.set("warehouseId", warehouseId);
+    if (minQuantity) query.set("minQuantity", minQuantity);
+    if (maxQuantity) query.set("maxQuantity", maxQuantity);
+    if (minCost) query.set("minCost", minCost);
+    if (maxCost) query.set("maxCost", maxCost);
     if (createdFrom) query.set("createdFrom", `${createdFrom}T00:00:00.000Z`);
     if (createdTo) query.set("createdTo", `${createdTo}T23:59:59.999Z`);
     return query.toString();
-  }, [condition, createdFrom, createdTo, deferredSearch, hasImages, page, sort, status, warehouseId]);
+  }, [condition, createdFrom, createdTo, deferredSearch, hasFitment, hasImages, hasPricing, hasShippingPolicy, listingState, marketplaceFilter, maxCost, maxQuantity, minCost, minQuantity, page, sort, status, warehouseId]);
 
   const loadCatalog = useCallback(async () => {
     if (authState !== "ready" || demo) return;
@@ -263,6 +294,121 @@ export default function CatalogWorkspace() {
     try { await request("/api/parts/bulk-status", { method: "PATCH", body: JSON.stringify({ partIds: [...selected], status: "ARCHIVED" }) }); setSelected(new Set()); await loadCatalog(); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to update selected parts"); }
     finally { setLoading(false); }
+  }
+
+  function currentSavedFilters(): Record<string, string> {
+    return Object.fromEntries(Object.entries({
+      q: search.trim(), status, condition, hasImages, hasPricing, hasFitment,
+      hasDraft: listingState === "NONE" ? "false" : listingState ? "true" : "",
+      draftStatus: listingState === "NONE" ? "" : listingState,
+      hasShippingPolicy, marketplace: marketplaceFilter, warehouseId,
+      minQuantity, maxQuantity, minCost, maxCost, createdFrom, createdTo, sort,
+    }).filter(([, value]) => value));
+  }
+
+  function applySavedFilters(filters: Record<string, string>) {
+    setSearch(filters.q ?? "");
+    setStatus(filters.status ?? "");
+    setCondition(filters.condition ?? "");
+    setHasImages(filters.hasImages ?? "");
+    setHasPricing(filters.hasPricing ?? "");
+    setHasFitment(filters.hasFitment ?? "");
+    setListingState(filters.hasDraft === "false" ? "NONE" : filters.draftStatus ?? "");
+    setHasShippingPolicy(filters.hasShippingPolicy ?? "");
+    setMarketplaceFilter(filters.marketplace ?? "");
+    setWarehouseId(filters.warehouseId ?? "");
+    setMinQuantity(filters.minQuantity ?? "");
+    setMaxQuantity(filters.maxQuantity ?? "");
+    setMinCost(filters.minCost ?? "");
+    setMaxCost(filters.maxCost ?? "");
+    setCreatedFrom(filters.createdFrom ?? "");
+    setCreatedTo(filters.createdTo ?? "");
+    setSort(filters.sort ?? "newest");
+    resetPage();
+  }
+
+  async function saveCurrentView() {
+    if (demo) return;
+    const name = window.prompt("Name this catalog view:")?.trim();
+    if (!name) return;
+    try {
+      const saved = await request("/api/catalog/saved-views", {
+        method: "POST",
+        body: JSON.stringify({ name, filters: currentSavedFilters(), isDefault: window.confirm("Make this your default catalog view?") }),
+      }) as CatalogSavedView;
+      setSavedViews(await request("/api/catalog/saved-views") as CatalogSavedView[]);
+      setActiveSavedViewId(saved.id);
+      setNotice(`Saved catalog view "${saved.name}".`);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to save catalog view"); }
+  }
+
+  async function deleteCurrentView() {
+    const view = savedViews.find(({ id }) => id === activeSavedViewId);
+    if (!view || demo || !window.confirm(`Delete saved view "${view.name}"?`)) return;
+    try {
+      await request(`/api/catalog/saved-views/${view.id}`, { method: "DELETE" });
+      setSavedViews(savedViews.filter(({ id }) => id !== view.id));
+      setActiveSavedViewId("");
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to delete saved view"); }
+  }
+
+  async function bulkEditSelected(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const changes: Record<string, string | number | null> = {};
+    for (const name of ["status", "condition"] as const) {
+      const value = String(form.get(name) ?? "");
+      if (value) changes[name] = value;
+    }
+    for (const name of ["placement", "warehouseCode"] as const) {
+      const value = String(form.get(name) ?? "");
+      if (value) changes[name] = value === "__CLEAR__" ? null : value;
+    }
+    const quantity = String(form.get("quantity") ?? "");
+    if (quantity) changes.quantity = Number(quantity);
+    const warehouseCode = String(form.get("warehouseCode") ?? "");
+    const binLocation = String(form.get("binLocation") ?? "");
+    if (warehouseCode && warehouseCode !== "__CLEAR__") changes.binLocation = binLocation || null;
+    if (!Object.keys(changes).length) { setError("Choose at least one bulk change."); return; }
+    setSaving(true); setError("");
+    try {
+      const result = await request("/api/parts/bulk-edit", { method: "PATCH", body: JSON.stringify({ partIds: [...selected], changes }) }) as { updated: number; invalidatedDrafts: number };
+      setBulkEditorOpen(false); setSelected(new Set()); await loadCatalog();
+      setNotice(`Updated ${result.updated} parts. ${result.invalidatedDrafts} listing drafts require review.`);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to bulk edit selected parts"); }
+    finally { setSaving(false); }
+  }
+
+  async function openBulkPolicies() {
+    if (!selected.size || demo) return;
+    setDraftBusy(true); setError("");
+    try {
+      setSellerResources(await request(`/api/ebay/resources?marketplace=${encodeURIComponent(pricingMarketplace)}`) as EbaySellerResources);
+      setBulkPoliciesOpen(true);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to load eBay policies"); }
+    finally { setDraftBusy(false); }
+  }
+
+  async function assignBulkPolicies(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    setDraftBusy(true); setError("");
+    try {
+      const updated = await request("/api/listing-drafts/bulk-policies", {
+        method: "POST",
+        body: JSON.stringify({
+          partIds: [...selected],
+          marketplace: pricingMarketplace,
+          paymentPolicyId: String(form.get("paymentPolicyId")),
+          returnPolicyId: String(form.get("returnPolicyId")),
+          shippingPolicyId: String(form.get("shippingPolicyId")),
+          merchantLocationKey: String(form.get("merchantLocationKey")),
+        }),
+      }) as ListingDraft[];
+      setDrafts(updated); setBulkPoliciesOpen(false); setSelected(new Set());
+      setNotice(`Assigned policies and locations to ${updated.length} listing drafts.`);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to assign policies"); }
+    finally { setDraftBusy(false); }
   }
 
   async function priceSelected() {
@@ -850,23 +996,55 @@ export default function CatalogWorkspace() {
       </section>}
       <section className={styles.catalogPanel}>
         <div className={styles.panelTitle}><div><span className={styles.eyebrow}>CATALOG RECORDS</span><h2>{catalog.pagination.total} matching parts</h2></div><div className={styles.viewToggle}><button className={view === "table" ? styles.viewActive : ""} onClick={() => setView("table")}>Table</button><button className={view === "gallery" ? styles.viewActive : ""} onClick={() => setView("gallery")}>Gallery</button></div></div>
+        <div className={styles.savedViews}>
+          <label><span>Saved view</span><select value={activeSavedViewId} onChange={(event) => {
+            const id = event.target.value; setActiveSavedViewId(id);
+            const selectedView = savedViews.find((savedView) => savedView.id === id);
+            if (selectedView) applySavedFilters(selectedView.filters);
+          }}><option value="">Custom filters</option>{savedViews.map((savedView) => <option key={savedView.id} value={savedView.id}>{savedView.name}{savedView.isDefault ? " (default)" : ""}</option>)}</select></label>
+          <button onClick={() => void saveCurrentView()}>Save current view</button>
+          <button disabled={!activeSavedViewId} onClick={() => void deleteCurrentView()}>Delete view</button>
+        </div>
         <div className={styles.filters}>
           <label className={styles.searchBox}><span>Search</span><input value={search} onChange={(event) => { setSearch(event.target.value); resetPage(); }} placeholder="SKU, part number, title or VIN"/></label>
           <label><span>Status</span><select value={status} onChange={(event) => { setStatus(event.target.value); resetPage(); }}><option value="">All statuses</option>{statuses.map((value) => <option key={value} value={value}>{humanStatus(value)}</option>)}</select></label>
           <label><span>Condition</span><select value={condition} onChange={(event) => { setCondition(event.target.value); resetPage(); }}><option value="">Any condition</option><option value="NEW">New</option><option value="USED">Used</option></select></label>
           <label><span>Images</span><select value={hasImages} onChange={(event) => { setHasImages(event.target.value); resetPage(); }}><option value="">Any</option><option value="true">Has images</option><option value="false">Needs images</option></select></label>
+          <label><span>Pricing</span><select value={hasPricing} onChange={(event) => { setHasPricing(event.target.value); resetPage(); }}><option value="">Any</option><option value="true">Approved price</option><option value="false">Needs approved price</option></select></label>
+          <label><span>Fitment</span><select value={hasFitment} onChange={(event) => { setHasFitment(event.target.value); resetPage(); }}><option value="">Any</option><option value="true">Approved fitment</option><option value="false">Needs fitment</option></select></label>
+          <label><span>Listing readiness</span><select value={listingState} onChange={(event) => { setListingState(event.target.value); resetPage(); }}><option value="">Any</option><option value="NONE">No draft</option><option value="DRAFT">Draft</option><option value="BLOCKED">Blocked</option><option value="READY">Ready</option></select></label>
+          <label><span>Shipping policy</span><select value={hasShippingPolicy} onChange={(event) => { setHasShippingPolicy(event.target.value); resetPage(); }}><option value="">Any</option><option value="true">Assigned</option><option value="false">Unassigned</option></select></label>
+          <label><span>Listing marketplace</span><select value={marketplaceFilter} onChange={(event) => { setMarketplaceFilter(event.target.value); resetPage(); }}><option value="">Any</option><option value="EBAY_US">eBay US</option><option value="EBAY_GB">eBay UK</option><option value="EBAY_DE">eBay Germany</option></select></label>
           <label><span>Warehouse</span><select value={warehouseId} onChange={(event) => { setWarehouseId(event.target.value); resetPage(); }}><option value="">All locations</option>{catalog.warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.code}</option>)}</select></label>
+          <label><span>Minimum quantity</span><input type="number" min="0" value={minQuantity} onChange={(event) => { setMinQuantity(event.target.value); resetPage(); }}/></label>
+          <label><span>Maximum quantity</span><input type="number" min="0" value={maxQuantity} onChange={(event) => { setMaxQuantity(event.target.value); resetPage(); }}/></label>
+          <label><span>Minimum cost</span><input type="number" min="0" step="0.01" value={minCost} onChange={(event) => { setMinCost(event.target.value); resetPage(); }}/></label>
+          <label><span>Maximum cost</span><input type="number" min="0" step="0.01" value={maxCost} onChange={(event) => { setMaxCost(event.target.value); resetPage(); }}/></label>
           <label><span>Created from</span><input type="date" value={createdFrom} onChange={(event) => { setCreatedFrom(event.target.value); resetPage(); }}/></label>
           <label><span>Created to</span><input type="date" value={createdTo} onChange={(event) => { setCreatedTo(event.target.value); resetPage(); }}/></label>
           <label><span>Sort</span><select value={sort} onChange={(event) => { setSort(event.target.value); resetPage(); }}><option value="newest">Newest first</option><option value="updated">Recently updated</option><option value="sku">SKU A-Z</option><option value="oldest">Oldest first</option></select></label>
         </div>
-        {selected.size > 0 && <div className={styles.bulkBar}><b>{selected.size} selected</b><span>{selected.size > 10 ? "Fitment supports 10; pricing and drafts support 25 parts." : "Selection can continue across result pages."}</span><select aria-label="eBay marketplace" value={pricingMarketplace} onChange={(event) => setPricingMarketplace(event.target.value)}><option value="EBAY_US">eBay US</option><option value="EBAY_GB">eBay UK</option><option value="EBAY_DE">eBay Germany</option></select><select aria-label="Pricing condition" value={pricingCondition} onChange={(event) => setPricingCondition(event.target.value as PricingConditionMode)}><option value="MATCH_PART">Match each part</option><option value="ANY">Any condition</option><option value="NEW">New only</option><option value="USED">Used only</option></select><button className={styles.priceButton} disabled={selected.size > 25 || pricingBusy || Boolean(pricingJob && ["QUEUED", "RUNNING"].includes(pricingJob.status))} onClick={() => void priceSelected()}>{selected.size > 25 ? "Maximum 25" : pricingBusy ? "Starting..." : "Price selected"}</button><button className={styles.fitmentButton} disabled={selected.size > 10 || fitmentBusy || Boolean(fitmentJob && ["QUEUED", "RUNNING"].includes(fitmentJob.status))} onClick={() => void findFitment()}>{selected.size > 10 ? "Maximum 10" : fitmentBusy ? "Working..." : "Find fitment"}</button><button className={styles.draftButton} disabled={selected.size > 25 || draftBusy} onClick={() => void createDrafts()}>{draftBusy ? "Preparing..." : "Create drafts"}</button><button onClick={() => void archiveSelected()}>Archive</button><button onClick={() => setSelected(new Set())}>Clear</button></div>}
+        {selected.size > 0 && <div className={styles.bulkBar}><b>{selected.size} selected</b><span>{selected.size > 10 ? "Fitment supports 10; pricing and drafts support 25 parts." : "Selection can continue across result pages."}</span><select aria-label="eBay marketplace" value={pricingMarketplace} onChange={(event) => setPricingMarketplace(event.target.value)}><option value="EBAY_US">eBay US</option><option value="EBAY_GB">eBay UK</option><option value="EBAY_DE">eBay Germany</option></select><select aria-label="Pricing condition" value={pricingCondition} onChange={(event) => setPricingCondition(event.target.value as PricingConditionMode)}><option value="MATCH_PART">Match each part</option><option value="ANY">Any condition</option><option value="NEW">New only</option><option value="USED">Used only</option></select><button className={styles.priceButton} disabled={selected.size > 25 || pricingBusy || Boolean(pricingJob && ["QUEUED", "RUNNING"].includes(pricingJob.status))} onClick={() => void priceSelected()}>{selected.size > 25 ? "Maximum 25" : pricingBusy ? "Starting..." : "Price selected"}</button><button className={styles.fitmentButton} disabled={selected.size > 10 || fitmentBusy || Boolean(fitmentJob && ["QUEUED", "RUNNING"].includes(fitmentJob.status))} onClick={() => void findFitment()}>{selected.size > 10 ? "Maximum 10" : fitmentBusy ? "Working..." : "Find fitment"}</button><button className={styles.draftButton} disabled={selected.size > 25 || draftBusy} onClick={() => void createDrafts()}>{draftBusy ? "Preparing..." : "Create drafts"}</button><button onClick={() => setBulkEditorOpen(true)}>Bulk edit</button><button disabled={draftBusy} onClick={() => void openBulkPolicies()}>Assign policies</button><button onClick={() => void archiveSelected()}>Archive</button><button onClick={() => setSelected(new Set())}>Clear</button></div>}
         {loading ? <div className={styles.loadingRows}>Refreshing catalog...</div> : catalog.parts.length === 0 ? <div className={styles.empty}><b>No parts found</b><span>Adjust your filters or confirm a catalog import.</span></div> : view === "table" ?
           <div className={styles.tableWrap}><table><thead><tr><th><input aria-label="Select current page" type="checkbox" checked={allPageSelected} onChange={togglePage}/></th><th>Part</th><th>SKU / OEM</th><th>Status</th><th>Condition</th><th>Market</th><th>Location</th><th>Qty</th><th>Cost</th><th/></tr></thead><tbody>{catalog.parts.map((part) => { const latestPrice = part.pricingJobItems[0]; return <tr key={part.id}><td><input aria-label={`Select ${part.sku}`} type="checkbox" checked={selected.has(part.id)} onChange={() => togglePart(part.id)}/></td><td><div className={styles.partCell}><CatalogImage mediaId={part.media[0]?.mediaAsset.id} token={token} demo={demo}/><div><b>{part.partName || "Unnamed automotive part"}</b><span>{part.brand || "Brand not set"} · {part._count.media} image{part._count.media === 1 ? "" : "s"}</span></div></div></td><td><b className={styles.mono}>{part.sku}</b><span className={styles.subtle}>{part.primaryPartNumber}</span></td><td><span className={`${styles.statusPill} ${styles[part.status.toLowerCase()]}`}>{humanStatus(part.status)}</span></td><td><span className={styles.condition}>{part.condition}</span></td><td>{latestPrice?.recommendedPrice != null ? <><b>{money(latestPrice.recommendedPrice, latestPrice.currency!)}</b><span className={styles.subtle}>{latestPrice.competitorCount} matches</span></> : <span className={styles.subtle}>{latestPrice ? "No matches" : "Not priced"}</span>}</td><td>{part.inventoryItem?.warehouse?.code || "—"}<span className={styles.subtle}>{part.inventoryItem?.binLocation?.code || "Unassigned"}</span></td><td>{part.inventoryItem?.quantity ?? 0}</td><td>{part.inventoryItem ? money(part.inventoryItem.cost, part.inventoryItem.currency) : "—"}</td><td><button className={styles.editButton} onClick={() => void openPart(part.id)}>Edit</button><button className={styles.editButton} onClick={() => void openManualFitment(part.id)}>Fitment</button></td></tr>; })}</tbody></table></div> :
           <div className={styles.gallery}>{catalog.parts.map((part) => <article key={part.id} className={styles.partCard}><button className={styles.cardSelect} aria-label={`Select ${part.sku}`} onClick={() => togglePart(part.id)}>{selected.has(part.id) ? "✓" : "+"}</button><CatalogImage mediaId={part.media[0]?.mediaAsset.id} token={token} demo={demo}/><span className={`${styles.statusPill} ${styles[part.status.toLowerCase()]}`}>{humanStatus(part.status)}</span><h3>{part.partName || "Unnamed automotive part"}</h3><p>{part.brand || "Brand not set"} · {part.condition}</p><div><b>{part.sku}</b><span>{part.primaryPartNumber}</span></div><footer><span>{part.inventoryItem?.quantity ?? 0} in stock</span><button onClick={() => void openManualFitment(part.id)}>Fitment</button><button onClick={() => void openPart(part.id)}>Edit part</button></footer></article>)}</div>}
         <div className={styles.pagination}><span>Page {catalog.pagination.page} of {Math.max(catalog.pagination.totalPages, 1)}</span><div><button disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>Previous</button><button disabled={page >= catalog.pagination.totalPages} onClick={() => setPage((value) => value + 1)}>Next</button></div></div>
       </section>
     </section>
+    {bulkEditorOpen && <div className={styles.modalBackdrop} role="presentation"><section className={styles.drawer} role="dialog" aria-modal="true" aria-labelledby="bulk-edit-title"><header><div><span className={styles.eyebrow}>ATOMIC BULK EDIT</span><h2 id="bulk-edit-title">Edit {selected.size} catalog parts</h2></div><button aria-label="Close bulk editor" onClick={() => setBulkEditorOpen(false)}>×</button></header><form onSubmit={bulkEditSelected}><div className={styles.formGrid}>
+      <label><span>Status</span><select name="status"><option value="">No change</option>{statuses.map((value) => <option key={value} value={value}>{humanStatus(value)}</option>)}</select></label>
+      <label><span>Condition</span><select name="condition"><option value="">No change</option><option value="NEW">New</option><option value="USED">Used</option></select></label>
+      <label><span>Quantity</span><input name="quantity" type="number" min="0" placeholder="No change"/></label>
+      <label><span>Placement</span><select name="placement"><option value="">No change</option><option value="__CLEAR__">Clear placement</option><option value="Front">Front</option><option value="Rear">Rear</option><option value="Left">Left</option><option value="Right">Right</option><option value="Upper">Upper</option><option value="Lower">Lower</option></select></label>
+      <label><span>Warehouse</span><select name="warehouseCode"><option value="">No change</option><option value="__CLEAR__">Clear warehouse and bin</option>{catalog.warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.code}>{warehouse.code} — {warehouse.name}</option>)}</select></label>
+      <label><span>Bin location</span><input name="binLocation" placeholder="Optional for selected warehouse"/></label>
+    </div><p className={styles.bulkWarning}>This operation is all-or-nothing. Listing drafts linked to changed catalog records will be blocked until reviewed.</p><div className={styles.formActions}><button type="button" onClick={() => setBulkEditorOpen(false)}>Cancel</button><button className={styles.primary} disabled={saving}>{saving ? "Updating..." : "Apply to selected"}</button></div></form></section></div>}
+    {bulkPoliciesOpen && <div className={styles.modalBackdrop} role="presentation"><section className={styles.drawer} role="dialog" aria-modal="true" aria-labelledby="bulk-policy-title"><header><div><span className={styles.eyebrow}>EBAY BUSINESS POLICIES</span><h2 id="bulk-policy-title">Assign to {selected.size} {pricingMarketplace} drafts</h2></div><button aria-label="Close policy assignment" onClick={() => setBulkPoliciesOpen(false)}>×</button></header><form onSubmit={assignBulkPolicies}><div className={styles.formGrid}>
+      <label><span>Payment policy</span><select name="paymentPolicyId" required defaultValue=""><option value="" disabled>Select policy</option>{sellerResources?.paymentPolicies.filter(({ enabled }) => enabled).map((resource) => <option key={resource.remoteId} value={resource.remoteId}>{resource.name}</option>)}</select></label>
+      <label><span>Return policy</span><select name="returnPolicyId" required defaultValue=""><option value="" disabled>Select policy</option>{sellerResources?.returnPolicies.filter(({ enabled }) => enabled).map((resource) => <option key={resource.remoteId} value={resource.remoteId}>{resource.name}</option>)}</select></label>
+      <label><span>Shipping policy</span><select name="shippingPolicyId" required defaultValue=""><option value="" disabled>Select policy</option>{sellerResources?.fulfillmentPolicies.filter(({ enabled }) => enabled).map((resource) => <option key={resource.remoteId} value={resource.remoteId}>{resource.name}</option>)}</select></label>
+      <label><span>Merchant location</span><select name="merchantLocationKey" required defaultValue=""><option value="" disabled>Select location</option>{sellerResources?.inventoryLocations.filter(({ enabled }) => enabled).map((resource) => <option key={resource.remoteId} value={resource.remoteId}>{resource.name}</option>)}</select></label>
+    </div>{sellerResources && !sellerResources.paymentPolicies.length && <p className={styles.bulkWarning}>No cached seller policies were found. Open a listing draft and refresh eBay policies and locations first.</p>}<div className={styles.formActions}><button type="button" onClick={() => setBulkPoliciesOpen(false)}>Cancel</button><button className={styles.primary} disabled={draftBusy}>{draftBusy ? "Assigning..." : "Assign and recalculate readiness"}</button></div></form></section></div>}
     {fitmentEditor && <div className={styles.modalBackdrop} role="presentation"><section className={`${styles.drawer} ${styles.fitmentManager}`} role="dialog" aria-modal="true" aria-labelledby="fitment-editor-title"><header><div><span className={styles.eyebrow}>FITMENT REVIEW</span><h2 id="fitment-editor-title">{fitmentEditor.part.sku} · {fitmentEditor.marketplace}</h2></div><button aria-label="Close fitment editor" onClick={() => setFitmentEditor(null)}>×</button></header>
       {fitmentEditor.part.donorVehicle && <div className={styles.donorEvidence}><b>Donor VIN {fitmentEditor.part.donorVehicle.vin}</b><span>{[fitmentEditor.part.donorVehicle.year, fitmentEditor.part.donorVehicle.make, fitmentEditor.part.donorVehicle.model, fitmentEditor.part.donorVehicle.trim, fitmentEditor.part.donorVehicle.engine].filter(Boolean).join(" · ")}</span></div>}
       <form onSubmit={createManualApplication}><span className={styles.eyebrow}>NEW APPLICATION</span><div className={styles.formGrid}>

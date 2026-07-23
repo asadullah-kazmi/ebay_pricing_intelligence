@@ -319,6 +319,7 @@ model Organization {
   ebayOfferJobs         EbayOfferJob[]
   ebayListingOperationJobs EbayListingOperationJob[]
   auditEvents          OrganizationAuditEvent[]
+  catalogSavedViews    CatalogSavedView[]
   invitations          OrganizationInvitation[]
   mfaLoginChallenges   MfaLoginChallenge[]
   createdAt            DateTime                    @default(now())
@@ -352,6 +353,7 @@ model User {
   approvedEbayOffers    EbayOffer[]    @relation("EbayOfferApprover")
   createdEbayListingOperationJobs EbayListingOperationJob[] @relation("EbayListingOperationJobCreator")
   auditEvents          OrganizationAuditEvent[] @relation("AuditEventActor")
+  catalogSavedViews    CatalogSavedView[]
   sentInvitations      OrganizationInvitation[] @relation("InvitationSender")
   acceptedInvitations  OrganizationInvitation[] @relation("InvitationAcceptor")
   passwordHash         String?
@@ -1159,6 +1161,22 @@ model ListingDraft {
   @@unique([partId, marketplace])
   @@index([organizationId, status, updatedAt])
   @@index([organizationId, marketplace])
+}
+
+model CatalogSavedView {
+  id             String       @id @default(cuid())
+  organizationId String
+  userId         String
+  name           String
+  filters        Json
+  isDefault      Boolean      @default(false)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, userId, name])
+  @@index([organizationId, userId, updatedAt])
 }
 
 model EbayInventoryPreparation {

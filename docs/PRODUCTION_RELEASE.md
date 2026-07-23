@@ -164,6 +164,7 @@ Omit `API_ACCESS_TOKEN` to run only public health/security checks. The script ne
 - Apply `20260723060000_add_inventory_sync`, deploy API/worker/web from one commit, and smoke-test one dedicated non-publishing SKU before enabling Step 20 for operators.
 - Apply `20260723070000_add_offer_publication` before Step 21. Prepare and inspect fees for a dedicated low-risk SKU before explicitly approving its first live publication.
 - Apply `20260723080000_add_listing_operations` before Step 22. Reconcile a test listing first, then verify one controlled revision and withdrawal.
+- Apply `20260724120000_add_catalog_saved_views` before Step 29. Verify one personal saved view, one rollback case, and one bulk policy assignment in a test organization.
 
 - The current Next.js 15 dependency pins PostCSS 8.4.31, which npm audit reports for a moderate CSS-stringification XSS advisory. This application does not stringify user-supplied CSS, so the vulnerable path is not currently exposed. Track the upstream Next.js fix and upgrade when a compatible release is available; do not use npm's suggested forced downgrade to Next 9.
 - Authentication and SMTP invitation delivery are implemented. Gmail SMTP is suitable for initial testing and low-volume rollout; move to a transactional provider with delivery telemetry and bounce/complaint handling before materially increasing customer volume.

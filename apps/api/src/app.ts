@@ -5,7 +5,7 @@ import { z } from "zod";
 import { AuthenticationError, AuthorizationError } from "./auth.js";
 import { assertTrustedAuthOrigin, clearRefreshCookie, getJwtConfiguration, readRefreshCookie, revokeRefreshToken, rotateTokenPair, setRefreshCookie } from "./auth-sessions.js";
 import { getConfig } from "./config.js";
-import { bulkUpdateCatalogStatus, CatalogError, exportCatalogCsv, getCatalogPart, listCatalogParts, updateCatalogPart } from "./catalog-service.js";
+import { bulkUpdateCatalogParts, CatalogError, exportCatalogCsv, getCatalogPart, listCatalogParts, updateCatalogPart } from "./catalog-service.js";
 import { databaseIsReachable } from "./db.js";
 import { calculateAnalytics } from "./domain/analytics.js";
 import { matchListing, normalizePartNumber } from "./domain/matching.js";
@@ -27,7 +27,7 @@ import { getTenantContext, requireOrganizationRoles, requireTenantContext } from
 import { getWorkerHealth } from "./worker-operations.js";
 import { executeIdempotent, IdempotencyError } from "./idempotency-service.js";
 import { DeadLetterError, listDeadLetters, requeueDeadLetter } from "./dead-letter-service.js";
-import { createListingDrafts, getListingDraft, ListingDraftError, listListingDrafts, updateListingDraft, validateListingDraftLive } from "./listing-draft-service.js";
+import { bulkAssignListingDraftPolicies, createListingDrafts, getListingDraft, ListingDraftError, listListingDrafts, updateListingDraft, validateListingDraftLive } from "./listing-draft-service.js";
 import { listCachedSellerResources, refreshCategoryMetadata, syncSellerResources } from "./ebay-resource-service.js";
 import { createInventoryPreparationJob, getInventoryPreparationJob, getLatestInventoryPreparation, InventoryPreparationError, startInventoryPreparationJob } from "./inventory-preparation-service.js";
 import { createEbayInventorySyncJob, EbayInventorySyncError, getEbayInventorySyncJob, getLatestEbayInventorySyncJob, startEbayInventorySyncJob } from "./ebay-inventory-sync-service.js";
@@ -40,6 +40,7 @@ import { AccountAuthError, beginMfaSetup, changeAccountPassword, completeMfaLogi
 import { EmailDeliveryError, verifyEmailTransport } from "./email-service.js";
 import { decidePricingProposal, getOrganizationPricingRule, listPricingProposals, PricingGovernanceError, updateOrganizationPricingRule } from "./pricing-governance-service.js";
 import { createManualFitment, decideManualFitment, listPartFitment, ManualFitmentError, reviseManualFitment } from "./manual-fitment-service.js";
+import { CatalogSavedViewError, deleteCatalogSavedView, listCatalogSavedViews, saveCatalogView } from "./catalog-saved-view-service.js";
 
 const searchSchema = z.object({
   oem: z.string().trim().min(2).max(80),
@@ -66,7 +67,17 @@ const catalogQuerySchema = z.object({
   status: catalogStatusSchema.optional(),
   condition: z.enum(["NEW", "USED"]).optional(),
   hasImages: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
+  hasPricing: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
+  hasFitment: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
+  hasDraft: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
+  hasShippingPolicy: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
+  draftStatus: z.enum(["DRAFT", "BLOCKED", "READY"]).optional(),
+  marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).optional(),
   warehouseId: z.string().min(1).optional(),
+  minQuantity: z.coerce.number().int().nonnegative().optional(),
+  maxQuantity: z.coerce.number().int().nonnegative().optional(),
+  minCost: z.coerce.number().nonnegative().optional(),
+  maxCost: z.coerce.number().nonnegative().optional(),
   createdFrom: z.coerce.date().optional(),
   createdTo: z.coerce.date().optional(),
   sort: z.enum(["newest", "oldest", "updated", "sku"]).default("newest"),
@@ -101,6 +112,43 @@ const catalogPartUpdateSchema = z.object({
   }).strict().optional(),
 }).strict().refine((value) => Object.keys(value).length > 0, "At least one field is required");
 const catalogBulkStatusSchema = z.object({ partIds: z.array(z.string().min(1)).min(1).max(500).transform((ids) => [...new Set(ids)]), status: catalogStatusSchema });
+const catalogPartIdsSchema = z.array(z.string().min(1)).min(1).max(500).transform((ids) => [...new Set(ids)]);
+const catalogBulkUpdateSchema = z.object({
+  partIds: catalogPartIdsSchema,
+  changes: z.object({
+    status: catalogStatusSchema.optional(),
+    condition: z.enum(["NEW", "USED"]).optional(),
+    placement: z.string().trim().max(100).nullable().optional(),
+    quantity: z.number().int().nonnegative().optional(),
+    warehouseCode: z.string().trim().max(50).nullable().optional(),
+    binLocation: z.string().trim().max(100).nullable().optional(),
+  }).strict().refine((value) => Object.keys(value).length > 0, "Choose at least one bulk change"),
+}).strict();
+const savedCatalogFiltersSchema = z.object({
+  q: z.string().max(100).optional(),
+  status: catalogStatusSchema.optional(),
+  condition: z.enum(["NEW", "USED"]).optional(),
+  hasImages: z.enum(["true", "false"]).optional(),
+  hasPricing: z.enum(["true", "false"]).optional(),
+  hasFitment: z.enum(["true", "false"]).optional(),
+  hasDraft: z.enum(["true", "false"]).optional(),
+  hasShippingPolicy: z.enum(["true", "false"]).optional(),
+  draftStatus: z.enum(["DRAFT", "BLOCKED", "READY"]).optional(),
+  marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).optional(),
+  warehouseId: z.string().min(1).optional(),
+  minQuantity: z.string().regex(/^\d+$/).optional(),
+  maxQuantity: z.string().regex(/^\d+$/).optional(),
+  minCost: z.string().regex(/^\d+(?:\.\d+)?$/).optional(),
+  maxCost: z.string().regex(/^\d+(?:\.\d+)?$/).optional(),
+  createdFrom: z.string().optional(),
+  createdTo: z.string().optional(),
+  sort: z.enum(["newest", "oldest", "updated", "sku"]).optional(),
+}).strict();
+const catalogSavedViewSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  filters: savedCatalogFiltersSchema,
+  isDefault: z.boolean().optional(),
+}).strict();
 const createPricingJobSchema = z.object({
   partIds: z.array(z.string().min(1)).min(1).max(25).transform((ids) => [...new Set(ids)]),
   marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).default("EBAY_US"),
@@ -221,6 +269,14 @@ const listingDraftRoles = requireOrganizationRoles("OWNER", "ADMIN", "MANAGER", 
 const createListingDraftsSchema = z.object({
   partIds: z.array(z.string().min(1)).min(1).max(25).transform((ids) => [...new Set(ids)]),
   marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).default("EBAY_US"),
+}).strict();
+const bulkListingPoliciesSchema = z.object({
+  partIds: z.array(z.string().min(1)).min(1).max(100).transform((ids) => [...new Set(ids)]),
+  marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]),
+  paymentPolicyId: z.string().trim().min(1).max(200),
+  returnPolicyId: z.string().trim().min(1).max(200),
+  shippingPolicyId: z.string().trim().min(1).max(200),
+  merchantLocationKey: z.string().trim().min(1).max(200),
 }).strict();
 const listingDraftListSchema = z.object({
   marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).optional(),
@@ -703,6 +759,39 @@ app.get("/api/parts", requireTenantContext, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+app.get("/api/catalog/saved-views", requireTenantContext, async (_req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    res.json(await listCatalogSavedViews(tenant.organization.id, tenant.user.id));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/catalog/saved-views", writeRateLimit, requireTenantContext, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const input = catalogSavedViewSchema.parse(req.body);
+    res.status(201).json(await saveCatalogView(tenant.organization.id, tenant.user.id, input));
+  } catch (error) { next(error); }
+});
+
+app.patch("/api/catalog/saved-views/:id", writeRateLimit, requireTenantContext, async (req, res, next) => {
+  try {
+    const viewId = req.params.id;
+    if (typeof viewId !== "string") return res.status(400).json({ error: "Invalid saved view ID" });
+    const tenant = getTenantContext(res);
+    res.json(await saveCatalogView(tenant.organization.id, tenant.user.id, catalogSavedViewSchema.parse(req.body), viewId));
+  } catch (error) { next(error); }
+});
+
+app.delete("/api/catalog/saved-views/:id", writeRateLimit, requireTenantContext, async (req, res, next) => {
+  try {
+    const viewId = req.params.id;
+    if (typeof viewId !== "string") return res.status(400).json({ error: "Invalid saved view ID" });
+    const tenant = getTenantContext(res);
+    res.json(await deleteCatalogSavedView(tenant.organization.id, tenant.user.id, viewId));
+  } catch (error) { next(error); }
+});
+
 app.get("/api/parts/export", requireTenantContext, async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
@@ -717,7 +806,15 @@ app.patch("/api/parts/bulk-status", writeRateLimit, requireTenantContext, mediaU
   try {
     const tenant = getTenantContext(res);
     const input = catalogBulkStatusSchema.parse(req.body);
-    res.json(await bulkUpdateCatalogStatus(tenant.organization.id, input.partIds, input.status));
+    res.json(await bulkUpdateCatalogParts(tenant.organization.id, tenant.user.id, input.partIds, { status: input.status }));
+  } catch (error) { next(error); }
+});
+
+app.patch("/api/parts/bulk-edit", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const input = catalogBulkUpdateSchema.parse(req.body);
+    res.json(await bulkUpdateCatalogParts(tenant.organization.id, tenant.user.id, input.partIds, input.changes));
   } catch (error) { next(error); }
 });
 
@@ -934,6 +1031,20 @@ app.post("/api/listing-drafts", writeRateLimit, requireTenantContext, listingDra
 app.get("/api/listing-drafts", requireTenantContext, async (req, res, next) => {
   try {
     res.json(await listListingDrafts(getTenantContext(res).organization.id, listingDraftListSchema.parse(req.query)));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/listing-drafts/bulk-policies", writeRateLimit, requireTenantContext, listingDraftRoles, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const { partIds, marketplace, ...policies } = bulkListingPoliciesSchema.parse(req.body);
+    res.json(await bulkAssignListingDraftPolicies({
+      organizationId: tenant.organization.id,
+      userId: tenant.user.id,
+      partIds,
+      marketplace,
+      policies,
+    }));
   } catch (error) { next(error); }
 });
 
@@ -1443,6 +1554,7 @@ app.use((error: unknown, req: express.Request, res: express.Response, _next: exp
   if (error instanceof ImageImportError) return response(error.statusCode, { error: error.message });
   if (error instanceof ImportReviewError) return response(error.statusCode, { error: error.message, ...(error.details ? { details: error.details } : {}) });
   if (error instanceof CatalogError) return response(error.statusCode, { error: error.message });
+  if (error instanceof CatalogSavedViewError) return response(error.statusCode, { error: error.message });
   if (error instanceof PricingJobError) return response(error.statusCode, { error: error.message });
   if (error instanceof PricingGovernanceError) return response(error.statusCode, { error: error.message });
   if (error instanceof FitmentJobError) return response(error.statusCode, { error: error.message });

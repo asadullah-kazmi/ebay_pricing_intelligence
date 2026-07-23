@@ -26,8 +26,33 @@ describe("catalog query construction", () => {
       status: "NEEDS_IMAGES",
       condition: "USED",
       media: { none: {} },
-      inventoryItem: { warehouseId: "warehouse-1" },
+      inventoryItem: { is: { warehouseId: "warehouse-1" } },
       createdAt: { gte: createdFrom },
+    });
+  });
+
+  it("combines inventory, governed pricing, fitment, and listing readiness filters", () => {
+    const where = buildCatalogWhere("org-3", {
+      minQuantity: 1,
+      maxCost: 100,
+      hasPricing: true,
+      hasFitment: true,
+      hasDraft: true,
+      draftStatus: "READY",
+      marketplace: "EBAY_US",
+      hasShippingPolicy: true,
+    });
+    expect(where).toMatchObject({
+      inventoryItem: { is: { quantity: { gte: 1 }, cost: { lte: 100 } } },
+      pricingProposals: { some: { status: { in: ["APPROVED", "OVERRIDDEN"] } } },
+      fitmentApplications: { some: { status: "APPROVED" } },
+      listingDrafts: {
+        some: {
+          marketplace: "EBAY_US",
+          status: "READY",
+          shippingPolicyId: { not: null },
+        },
+      },
     });
   });
 });
