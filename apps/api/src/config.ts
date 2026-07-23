@@ -4,6 +4,9 @@ export interface AppConfig {
   port: number;
   databaseUrl?: string;
   shutdownTimeoutMs: number;
+  jobs: {
+    executionMode: "inline" | "worker";
+  };
   jwt: {
     accessSecret?: string;
     refreshSecret?: string;
@@ -124,6 +127,11 @@ export function getConfig(): AppConfig {
     throw new Error("API_SHUTDOWN_TIMEOUT_MS must be an integer between 1000 and 30000");
   }
 
+  const jobExecutionMode = process.env.JOB_EXECUTION_MODE?.trim() || "inline";
+  if (jobExecutionMode !== "inline" && jobExecutionMode !== "worker") {
+    throw new Error("JOB_EXECUTION_MODE must be either inline or worker");
+  }
+
   const storageBucket = process.env.STORAGE_BUCKET?.trim() || undefined;
   const storageRegion = process.env.STORAGE_REGION?.trim() || undefined;
   const storageAccessKeyId = process.env.STORAGE_ACCESS_KEY_ID?.trim() || undefined;
@@ -185,6 +193,7 @@ export function getConfig(): AppConfig {
     port,
     databaseUrl,
     shutdownTimeoutMs,
+    jobs: { executionMode: jobExecutionMode },
     jwt: {
       accessSecret,
       refreshSecret,

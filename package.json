@@ -4,7 +4,10 @@
   "workspaces": ["apps/*"],
   "scripts": {
     "dev": "concurrently -n api,web -c cyan,magenta \"npm run dev -w @price-intel/api\" \"npm run dev -w @price-intel/web\"",
+    "dev:services": "concurrently -n api,worker,web -c cyan,yellow,magenta \"npm run dev -w @price-intel/api\" \"npm run dev -w @price-intel/worker\" \"npm run dev -w @price-intel/web\"",
     "build": "npm run build -w @price-intel/api && npm run build -w @price-intel/web",
+    "build:worker": "npm run build -w @price-intel/api && npm run build -w @price-intel/worker",
+    "start:worker": "npm run start -w @price-intel/worker",
     "test": "npm run test -w @price-intel/api",
     "release:check": "npm test && npm run build",
     "db:generate": "npm run db:generate -w @price-intel/api",

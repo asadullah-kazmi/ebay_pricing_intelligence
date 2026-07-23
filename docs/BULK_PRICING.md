@@ -66,4 +66,4 @@ Run migrations before deploying the API:
 npx prisma migrate deploy --schema apps/api/prisma/schema.prisma
 ```
 
-The current worker is in-process and handles items sequentially. On API startup, queued jobs and items interrupted while running are safely returned to the queue and resumed. Keep one Railway API replica and jobs to 25 parts. A later milestone must move execution to Redis-backed workers and add quota-aware delayed retries before increasing volume.
+Pricing can run inline for local development or in the dedicated `@price-intel/worker` process. In production, set `JOB_EXECUTION_MODE=worker` on both the API and worker. The worker handles items sequentially within each job and resumes interrupted database-backed jobs at startup. Keep one Railway API replica, exactly one worker replica, and jobs to 25 parts. A later milestone must add leases, Redis-backed queues, and quota-aware delayed retries before increasing concurrency.

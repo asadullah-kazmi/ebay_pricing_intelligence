@@ -18,6 +18,8 @@ Check `GET http://localhost:4000/health` after startup. Its `ebay.mode` value is
 
 Use `GET /health/live` for process liveness and `GET /health/ready` for Railway readiness. Readiness returns HTTP 503 when PostgreSQL is unavailable.
 
+For the production API/worker split, set `JOB_EXECUTION_MODE=worker` on both services and deploy `@price-intel/worker` without a public domain. Local development defaults to `inline`; `npm run dev:services` runs the API, worker, and web app together. See [Microservice Architecture](docs/MICROSERVICES_ARCHITECTURE.md) for Railway commands, ownership boundaries, and scaling limits.
+
 Run `npm run db:check` to test the configured PostgreSQL connection without starting the applications.
 Run `npm run ebay:check` to verify the configured eBay credentials without performing a listing search.
 

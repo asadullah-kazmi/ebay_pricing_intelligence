@@ -7,7 +7,7 @@ This checklist releases the current Catalog and Pricing milestone: authenticated
 - Rotate the JWT access secret that was previously committed. Removing it from the current file does not invalidate copies in Git history.
 - Rotate any eBay sandbox credentials previously committed in `.env.example`, even if GitHub blocked some pushes.
 - Use different JWT access and refresh secrets, each generated independently.
-- Keep all secrets in the Railway API service only. Never add them to the web service or prefix them with `NEXT_PUBLIC_`.
+- Keep secrets in Railway server services only. The API and worker need the database/provider variables used by their code. Never add them to the web service or prefix them with `NEXT_PUBLIC_`.
 - Confirm the GitHub repository and latest push pass secret scanning.
 - Restrict Railway project access and enable MFA for Railway, GitHub, eBay, the database provider, and object-storage provider.
 - Enable automated PostgreSQL backups and object-storage lifecycle/retention rules.
@@ -23,7 +23,7 @@ Start command: npm run start -w @price-intel/api
 Health-check path: /health/ready
 ```
 
-Railway supplies `PORT`; do not hard-code a production port. Set `API_SHUTDOWN_TIMEOUT_MS=10000`. Keep one API replica for this milestone because rate limits are held in process memory. Move rate-limit counters and background jobs to Redis before enabling multiple replicas.
+Railway supplies `PORT`; do not hard-code a production port. Set `API_SHUTDOWN_TIMEOUT_MS=10000` and `JOB_EXECUTION_MODE=worker`. Keep one API replica because rate limits are held in process memory. Move rate-limit counters to Redis before enabling multiple API replicas.
 
 The API fails at startup when `NODE_ENV=production` and any core production variable is missing. Configure:
 
@@ -53,9 +53,22 @@ EBAY_NOTIFICATION_ENDPOINT
 EBAY_NOTIFICATION_VERIFICATION_TOKEN
 OWN_SELLERS
 API_SHUTDOWN_TIMEOUT_MS
+JOB_EXECUTION_MODE=worker
 ```
 
 `WEB_ORIGIN` must be the exact public HTTPS origin of the web service. `EBAY_NOTIFICATION_ENDPOINT` must be the exact public API callback ending in `/api/ebay/account-deletion` and must match the value registered with eBay.
+
+## 2a. Railway worker service
+
+Create another Railway service from the same repository. It does not need a public domain.
+
+```text
+Build command: npm run build:worker
+Start command: npm run start:worker
+Replicas: exactly one
+```
+
+Configure `JOB_EXECUTION_MODE=worker`, `WORKER_POLL_INTERVAL_MS=2000`, and the same `DATABASE_URL`, eBay credentials, and provider variables used by pricing and fitment. See [Microservice Architecture](MICROSERVICES_ARCHITECTURE.md) for the complete boundary and deployment rules.
 
 ## 3. Railway web service
 

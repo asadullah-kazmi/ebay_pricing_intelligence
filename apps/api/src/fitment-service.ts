@@ -172,6 +172,16 @@ export async function runFitmentJob(jobId: string): Promise<void> {
 
 export function startFitmentJob(jobId: string): void { setImmediate(() => void runFitmentJob(jobId)); }
 
+export async function startQueuedFitmentJobs(): Promise<number> {
+  const queued = await prisma.fitmentJob.findMany({
+    where: { status: "QUEUED" },
+    select: { id: true },
+    orderBy: { createdAt: "asc" },
+  });
+  queued.forEach(({ id }) => startFitmentJob(id));
+  return queued.length;
+}
+
 export async function approveFitmentCandidate(organizationId: string, itemId: string, candidateId: string) {
   const item = await prisma.fitmentJobItem.findFirst({ where: { id: itemId, organizationId }, include: {
     fitmentJob: { select: { id: true, marketplace: true } }, candidates: { where: { id: candidateId } },

@@ -375,7 +375,7 @@ app.post("/api/pricing/jobs", searchRateLimit, requireTenantContext, pricingRole
     const tenant = getTenantContext(res);
     const job = await createPricingJob(tenant.organization.id, tenant.user.id, createPricingJobSchema.parse(req.body));
     res.status(202).json(job);
-    startPricingJob(job.id);
+    if (getConfig().jobs.executionMode === "inline") startPricingJob(job.id);
   } catch (error) { next(error); }
 });
 
@@ -399,7 +399,7 @@ app.post("/api/fitment/jobs", searchRateLimit, requireTenantContext, fitmentRole
     const tenant = getTenantContext(res);
     const job = await createFitmentJob(tenant.organization.id, tenant.user.id, createFitmentJobSchema.parse(req.body));
     res.status(202).json(job);
-    startFitmentJob(job.id);
+    if (getConfig().jobs.executionMode === "inline") startFitmentJob(job.id);
   } catch (error) { next(error); }
 });
 

@@ -244,6 +244,16 @@ export function startPricingJob(jobId: string): void {
   setImmediate(() => void runPricingJob(jobId));
 }
 
+export async function startQueuedPricingJobs(): Promise<number> {
+  const queued = await prisma.pricingJob.findMany({
+    where: { status: "QUEUED" },
+    select: { id: true },
+    orderBy: { createdAt: "asc" },
+  });
+  queued.forEach(({ id }) => startPricingJob(id));
+  return queued.length;
+}
+
 export async function resumeInterruptedPricingJobs(): Promise<number> {
   const pending = await prisma.pricingJob.findMany({
     where: { status: { in: ["QUEUED", "RUNNING"] } },
