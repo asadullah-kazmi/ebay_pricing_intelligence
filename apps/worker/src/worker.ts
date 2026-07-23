@@ -5,6 +5,7 @@ import {
   getActiveFitmentJobCount,
   getActivePricingJobCount,
   getActiveInventoryPreparationJobCount,
+  getActiveEbayInventorySyncJobCount,
   markWorkerStopped,
   publishOutboxEvents,
   recordWorkerHeartbeat,
@@ -12,6 +13,7 @@ import {
   resumeInterruptedFitmentJobs,
   resumeInterruptedPricingJobs,
   resumeInterruptedInventoryPreparationJobs,
+  resumeInterruptedEbayInventorySyncJobs,
   type JobRunOptions,
 } from "@price-intel/api/jobs";
 
@@ -50,12 +52,13 @@ const metrics = {
   pricingJobsDispatched: 0,
   fitmentJobsDispatched: 0,
   inventoryPreparationJobsDispatched: 0,
+  ebayInventorySyncJobsDispatched: 0,
   outboxPublished: 0,
   outboxFailed: 0,
 };
 
 function activeJobs(): number {
-  return getActivePricingJobCount() + getActiveFitmentJobCount() + getActiveInventoryPreparationJobCount();
+  return getActivePricingJobCount() + getActiveFitmentJobCount() + getActiveInventoryPreparationJobCount() + getActiveEbayInventorySyncJobCount();
 }
 
 async function heartbeat(): Promise<void> {
@@ -75,10 +78,11 @@ async function poll(): Promise<void> {
   pollInProgress = true;
   metrics.polls += 1;
   try {
-    const [pricingJobs, fitmentJobs, inventoryPreparationJobs, outbox] = await Promise.all([
+    const [pricingJobs, fitmentJobs, inventoryPreparationJobs, ebayInventorySyncJobs, outbox] = await Promise.all([
       resumeInterruptedPricingJobs(jobOptions),
       resumeInterruptedFitmentJobs(jobOptions),
       resumeInterruptedInventoryPreparationJobs(jobOptions),
+      resumeInterruptedEbayInventorySyncJobs(jobOptions),
       publishOutboxEvents({
         instanceId,
         leaseDurationMs,
@@ -100,10 +104,11 @@ async function poll(): Promise<void> {
     metrics.pricingJobsDispatched += pricingJobs;
     metrics.fitmentJobsDispatched += fitmentJobs;
     metrics.inventoryPreparationJobsDispatched += inventoryPreparationJobs;
+    metrics.ebayInventorySyncJobsDispatched += ebayInventorySyncJobs;
     metrics.outboxPublished += outbox.published;
     metrics.outboxFailed += outbox.failed;
-    if (pricingJobs || fitmentJobs || inventoryPreparationJobs) {
-      console.info(JSON.stringify({ type: "jobs_dispatched", pricingJobs, fitmentJobs, inventoryPreparationJobs, activeJobs: activeJobs() }));
+    if (pricingJobs || fitmentJobs || inventoryPreparationJobs || ebayInventorySyncJobs) {
+      console.info(JSON.stringify({ type: "jobs_dispatched", pricingJobs, fitmentJobs, inventoryPreparationJobs, ebayInventorySyncJobs, activeJobs: activeJobs() }));
     }
   } catch (error) {
     metrics.pollFailures += 1;
@@ -118,10 +123,11 @@ async function poll(): Promise<void> {
 
 async function start(): Promise<void> {
   await heartbeat();
-  const [pricingJobs, fitmentJobs, inventoryPreparationJobs] = await Promise.all([
+  const [pricingJobs, fitmentJobs, inventoryPreparationJobs, ebayInventorySyncJobs] = await Promise.all([
     resumeInterruptedPricingJobs(jobOptions),
     resumeInterruptedFitmentJobs(jobOptions),
     resumeInterruptedInventoryPreparationJobs(jobOptions),
+    resumeInterruptedEbayInventorySyncJobs(jobOptions),
   ]);
   console.info(JSON.stringify({
     type: "worker_started",
@@ -129,7 +135,7 @@ async function start(): Promise<void> {
     heartbeatIntervalMs,
     leaseDurationMs,
     maxAttempts,
-    recovered: { pricingJobs, fitmentJobs, inventoryPreparationJobs },
+    recovered: { pricingJobs, fitmentJobs, inventoryPreparationJobs, ebayInventorySyncJobs },
   }));
   pollTimer = setInterval(() => void poll(), pollIntervalMs);
   heartbeatTimer = setInterval(() => void heartbeat().catch((error) => {

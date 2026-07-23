@@ -1,6 +1,6 @@
 import { Prisma, type EbaySellerResourceType } from "@prisma/client";
 import { prisma } from "./db.js";
-import { fetchCategoryAspects, fetchSellerResources, type EbayAspectRequirement } from "./providers/ebay-selling.js";
+import { fetchCategoryAspects, fetchCategoryConditions, fetchSellerResources, type EbayAspectRequirement, type EbayConditionOption } from "./providers/ebay-selling.js";
 import type { Marketplace } from "./types.js";
 
 function asJson(value: unknown): Prisma.InputJsonValue {
@@ -59,14 +59,24 @@ export async function syncSellerResources(organizationId: string, marketplace: M
 }
 
 export async function refreshCategoryMetadata(marketplace: Marketplace, categoryId: string) {
-  const aspects = await fetchCategoryAspects(marketplace, categoryId);
+  const [aspects, conditions] = await Promise.all([fetchCategoryAspects(marketplace, categoryId), fetchCategoryConditions(marketplace, categoryId)]);
   const fetchedAt = new Date();
   const metadata = await prisma.ebayCategoryMetadata.upsert({
     where: { marketplace_categoryId: { marketplace, categoryId } },
-    create: { marketplace, categoryId, aspects: asJson(aspects), fetchedAt },
-    update: { aspects: asJson(aspects), fetchedAt },
+    create: { marketplace, categoryId, aspects: asJson(aspects), conditions: asJson(conditions), fetchedAt },
+    update: { aspects: asJson(aspects), conditions: asJson(conditions), fetchedAt },
   });
-  return { marketplace, categoryId, aspects, fetchedAt: metadata.fetchedAt };
+  return { marketplace, categoryId, aspects, conditions, fetchedAt: metadata.fetchedAt };
+}
+
+export function conditionOptions(value: Prisma.JsonValue | null | undefined): EbayConditionOption[] | null {
+  if (!Array.isArray(value)) return null;
+  return value.flatMap((entry) => {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return [];
+    const row = entry as Record<string, unknown>;
+    if (typeof row.conditionId !== "string" || typeof row.enumValue !== "string" || typeof row.name !== "string") return [];
+    return [{ conditionId: row.conditionId, enumValue: row.enumValue, name: row.name, description: typeof row.description === "string" ? row.description : null }];
+  });
 }
 
 export function aspectRequirements(value: Prisma.JsonValue | null | undefined): EbayAspectRequirement[] | null {
@@ -106,5 +116,6 @@ export async function getCachedReadinessMetadata(organizationId: string, marketp
       inventoryLocationKeys: ids("INVENTORY_LOCATION"),
     } : null,
     categoryRequirements: aspectRequirements(metadata?.aspects),
+    categoryConditions: conditionOptions(metadata?.conditions),
   };
 }

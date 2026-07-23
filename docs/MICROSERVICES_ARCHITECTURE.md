@@ -122,6 +122,8 @@ Each extracted service must eventually own its data. API and worker share Prisma
 
 Step 17 keeps listing drafts and synchronous readiness validation in the core API while the model is still evolving. Its transactional `listing.draft.created` and `listing.draft.updated` outbox events provide the future extraction seam; no publishing service should write catalog-owned part records directly.
 
+Step 20 keeps eBay inventory and compatibility mutations in the worker as durable, leased, retryable jobs. The API only validates and queues an explicitly confirmed request.
+
 ## 8. Current limitations
 
 - PostgreSQL polling adds up to `WORKER_POLL_INTERVAL_MS` latency.

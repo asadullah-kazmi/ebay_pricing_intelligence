@@ -1,7 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { normalizeCategoryAspects, normalizeInventoryLocations } from "./ebay-selling.js";
+import { normalizeCategoryAspects, normalizeCategoryConditions, normalizeInventoryLocations } from "./ebay-selling.js";
 
 describe("eBay selling metadata normalization", () => {
+  it("maps supported category condition IDs to Inventory API enum values", () => {
+    expect(normalizeCategoryConditions([
+      { conditionId: "1000", conditionDescription: "New" },
+      { conditionId: 5000, conditionDescription: "Used - Good", conditionHelpText: "Shows normal wear." },
+      { conditionId: "9999", conditionDescription: "Unknown" },
+    ])).toEqual([
+      { conditionId: "1000", enumValue: "NEW", name: "New", description: null },
+      { conditionId: "5000", enumValue: "USED_GOOD", name: "Used - Good", description: "Shows normal wear." },
+    ]);
+  });
+
   it("normalizes required category aspects and allowed values", () => {
     expect(normalizeCategoryAspects([{
       localizedAspectName: "Brand",

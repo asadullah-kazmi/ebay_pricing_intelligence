@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import styles from "./catalog.module.css";
-import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogStatus, EbayAspectRequirement, EbayConnection, EbaySellerResources, FitmentJob, FitmentJobSummary, InventoryPreparation, InventoryPreparationJob, ListingDraft, LiveDraftValidation, PartCondition, PricingConditionMode, PricingJob, PricingJobSummary } from "./types";
+import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogStatus, EbayAspectRequirement, EbayConditionOption, EbayConnection, EbayInventorySyncJob, EbaySellerResources, FitmentJob, FitmentJobSummary, InventoryPreparation, InventoryPreparationJob, ListingDraft, LiveDraftValidation, PartCondition, PricingConditionMode, PricingJob, PricingJobSummary } from "./types";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const statuses: CatalogStatus[] = ["IMPORTED", "NEEDS_IMAGES", "IMPORT_ERROR", "READY_FOR_ENRICHMENT", "ARCHIVED"];
@@ -78,8 +78,10 @@ export default function CatalogWorkspace() {
   const [draftBusy, setDraftBusy] = useState(false);
   const [sellerResources, setSellerResources] = useState<EbaySellerResources | null>(null);
   const [categoryAspects, setCategoryAspects] = useState<EbayAspectRequirement[]>([]);
+  const [categoryConditions, setCategoryConditions] = useState<EbayConditionOption[]>([]);
   const [inventoryPreparation, setInventoryPreparation] = useState<InventoryPreparation | null>(null);
   const [inventoryPreparationJob, setInventoryPreparationJob] = useState<InventoryPreparationJob | null>(null);
+  const [inventorySyncJob, setInventorySyncJob] = useState<EbayInventorySyncJob | null>(null);
 
   useEffect(() => {
     const localDemo = process.env.NODE_ENV !== "production" && new URLSearchParams(window.location.search).get("demo") === "1";
@@ -314,8 +316,10 @@ export default function CatalogWorkspace() {
   async function openDraft(id: string) {
     setError("");
     setCategoryAspects([]);
+    setCategoryConditions([]);
     setInventoryPreparation(null);
     setInventoryPreparationJob(null);
+    setInventorySyncJob(null);
     try {
       const draft = await request(`/api/listing-drafts/${id}`) as ListingDraft;
       setDraftDetail(draft);
@@ -344,6 +348,7 @@ export default function CatalogWorkspace() {
       description: String(form.get("description")) || null,
       categoryId: String(form.get("categoryId")) || null,
       condition: form.get("condition") as PartCondition,
+      ebayCondition: String(form.get("ebayCondition")) || null,
       price: form.get("price") === "" ? null : Number(form.get("price")),
       currency: String(form.get("currency")).toUpperCase(),
       quantity: Number(form.get("quantity")),
@@ -359,6 +364,7 @@ export default function CatalogWorkspace() {
       setDraftDetail(updated);
       setInventoryPreparation(null);
       setInventoryPreparationJob(null);
+      setInventorySyncJob(null);
       setDrafts((current) => current.map((draft) => draft.id === updated.id ? updated : draft));
       setNotice(updated.status === "READY" ? "Draft is ready for the future publish step." : "Draft saved. Review the remaining blockers.");
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to save listing draft"); }
@@ -387,9 +393,11 @@ export default function CatalogWorkspace() {
       setDraftDetail(result.draft);
       setInventoryPreparation(null);
       setInventoryPreparationJob(null);
+      setInventorySyncJob(null);
       setDrafts((current) => current.map((draft) => draft.id === result.draft.id ? result.draft : draft));
       setSellerResources(result.resources);
       setCategoryAspects(result.categoryMetadata.aspects);
+      setCategoryConditions(result.categoryMetadata.conditions);
       setNotice(result.draft.status === "READY" ? "Draft passed live eBay validation." : "Live eBay metadata loaded. Resolve the displayed blockers and validate again.");
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to validate with eBay"); }
     finally { setDraftBusy(false); }
@@ -429,6 +437,37 @@ export default function CatalogWorkspace() {
     }, 1500);
     return () => window.clearTimeout(timer);
   }, [demo, inventoryPreparationJob, request]);
+
+  async function applyInventoryToEbay() {
+    if (!inventoryPreparation || !draftDetail || demo || draftBusy || inventoryPreparation.draftVersion !== draftDetail.version) return;
+    if (!window.confirm("This will create or replace this SKU and its compatibility data in the connected eBay seller inventory. It will not publish a listing. Continue?")) return;
+    setDraftBusy(true); setError("");
+    try {
+      const job = await request(`/api/inventory-preparations/${inventoryPreparation.id}/apply`, {
+        method: "POST",
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+        body: JSON.stringify({ confirmInventoryWrite: true }),
+      }) as EbayInventorySyncJob;
+      setInventorySyncJob(job);
+      setNotice("The eBay inventory write was queued. This does not publish a listing.");
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to write eBay inventory"); }
+    finally { setDraftBusy(false); }
+  }
+
+  useEffect(() => {
+    if (!inventorySyncJob || !["QUEUED", "RUNNING"].includes(inventorySyncJob.status) || demo) return;
+    const timer = window.setTimeout(() => {
+      request(`/api/ebay/inventory-sync-jobs/${inventorySyncJob.id}`)
+        .then((value) => {
+          const job = value as EbayInventorySyncJob;
+          setInventorySyncJob(job);
+          if (job.status === "COMPLETED") setNotice(`SKU ${job.sku} and compatibility were written to eBay inventory. It is not published.`);
+          else if (job.status === "FAILED") setError(job.lastError ?? "eBay inventory write failed");
+        })
+        .catch((caught) => setError(caught instanceof Error ? caught.message : "Unable to refresh eBay inventory sync"));
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [demo, inventorySyncJob, request]);
 
   async function connectEbay() {
     if (demo || connectionBusy) return;
@@ -553,12 +592,17 @@ export default function CatalogWorkspace() {
           {inventoryPreparation.warnings.map((warning) => <p key={warning}>{warning}</p>)}
           <details><summary>View Inventory API JSON</summary><pre>{JSON.stringify(inventoryPreparation.inventoryPayload, null, 2)}</pre></details>
           {inventoryPreparation.compatibilityPayload && <details><summary>View compatibility JSON</summary><pre>{JSON.stringify(inventoryPreparation.compatibilityPayload, null, 2)}</pre></details>}
+          <button type="button" className={styles.primary} disabled={draftBusy || inventoryPreparation.draftVersion !== draftDetail.version || Boolean(inventorySyncJob && ["QUEUED", "RUNNING"].includes(inventorySyncJob.status))} onClick={() => void applyInventoryToEbay()}>
+            {inventorySyncJob && ["QUEUED", "RUNNING"].includes(inventorySyncJob.status) ? "Writing inventory..." : "Write inventory to eBay"}
+          </button>
+          {inventorySyncJob && <p><b>eBay inventory sync: {inventorySyncJob.status.toLowerCase()}</b>{inventorySyncJob.status === "COMPLETED" ? " — inventory only; not published." : inventorySyncJob.lastError ? ` — ${inventorySyncJob.lastError}` : ""}</p>}
         </section>}
         <form onSubmit={saveDraft}>
           <div className={styles.formGrid}>
             <label className={styles.wide}><span>Title ({draftDetail.title.length}/80)</span><input name="title" maxLength={120} defaultValue={draftDetail.title} required/></label>
             <label><span>eBay category ID</span><input name="categoryId" defaultValue={draftDetail.categoryId ?? ""}/></label>
             <label><span>Condition</span><select name="condition" defaultValue={draftDetail.condition}><option value="NEW">New</option><option value="USED">Used</option></select></label>
+            <label><span>eBay condition</span><select name="ebayCondition" defaultValue={draftDetail.ebayCondition ?? ""}><option value="">Validate category to load conditions</option>{categoryConditions.map((option) => <option key={option.conditionId} value={option.enumValue}>{option.name}</option>)}</select></label>
             <label><span>Price</span><input name="price" type="number" min="0.01" step="0.01" defaultValue={draftDetail.price ?? ""}/></label>
             <label><span>Currency</span><input name="currency" maxLength={3} defaultValue={draftDetail.currency}/></label>
             <label><span>Quantity</span><input name="quantity" type="number" min="0" defaultValue={draftDetail.quantity}/></label>

@@ -20,6 +20,7 @@ interface PayloadInput {
   title: string;
   description: string;
   condition: PartCondition;
+  ebayCondition: string;
   quantity: number;
   aspects: Record<string, string[]>;
   imageUrls: string[];
@@ -53,8 +54,6 @@ function decimal(value: Prisma.Decimal | null): number | null {
 
 export function buildInventoryItemPayload(input: PayloadInput) {
   const warnings: string[] = [];
-  const condition = input.condition === "NEW" ? "NEW" : "USED_GOOD";
-  if (input.condition === "USED") warnings.push("Used catalog condition is staged as USED_GOOD; confirm it is supported by the selected category before writing to eBay.");
   const packageWeightAndSize: Record<string, unknown> = {};
   if (input.weight !== null && input.weightUnit) {
     packageWeightAndSize.weight = { value: input.weight, unit: input.weightUnit === "LB" ? "POUND" : "KILOGRAM" };
@@ -72,7 +71,7 @@ export function buildInventoryItemPayload(input: PayloadInput) {
   return {
     payload: {
       availability: { shipToLocationAvailability: { quantity: input.quantity } },
-      condition,
+      condition: input.ebayCondition,
       ...(input.condition === "USED" ? { conditionDescription: input.description.slice(0, 1_000) } : {}),
       product: {
         title: input.title,
@@ -170,6 +169,7 @@ export async function prepareInventoryItem(input: {
   if (draft.status !== "READY" || !draft.liveValidatedAt) throw new InventoryPreparationError("The draft must pass live eBay validation before inventory preparation", 409);
   if (draft.inventoryPreparations[0]) return serializePreparation(draft.inventoryPreparations[0]);
   if (!draft.description) throw new InventoryPreparationError("Listing description is required");
+  if (!draft.ebayCondition) throw new InventoryPreparationError("Select and live-validate an eBay condition before preparing inventory", 409);
   if (!draft.part.inventoryItem) throw new InventoryPreparationError("Part inventory data is missing", 409);
   if (!draft.part.media.length) throw new InventoryPreparationError("At least one approved image is required", 409);
   if (draft.part.sku.length > 50) throw new InventoryPreparationError("eBay inventory SKUs cannot exceed 50 characters");
@@ -184,6 +184,7 @@ export async function prepareInventoryItem(input: {
     title: draft.title,
     description: draft.description,
     condition: draft.condition,
+    ebayCondition: draft.ebayCondition,
     quantity: draft.quantity,
     aspects: record(draft.aspects),
     imageUrls,

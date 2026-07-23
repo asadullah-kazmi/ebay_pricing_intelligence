@@ -7,6 +7,7 @@ describe("eBay inventory preparation", () => {
       title: "OEM BMW Brake Caliper",
       description: "Tested used part.",
       condition: "USED",
+      ebayCondition: "USED_GOOD",
       quantity: 2,
       aspects: { Brand: ["BMW"], MPN: ["123"] },
       imageUrls: ["https://i.ebayimg.com/image.jpg"],
@@ -23,7 +24,7 @@ describe("eBay inventory preparation", () => {
       product: { imageUrls: ["https://i.ebayimg.com/image.jpg"] },
       packageWeightAndSize: { weight: { value: 4.5, unit: "POUND" }, dimensions: { unit: "INCH" } },
     });
-    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings).toHaveLength(0);
   });
 
   it("maps approved applications to compatibility name/value pairs", () => {

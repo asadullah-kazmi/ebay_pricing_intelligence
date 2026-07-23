@@ -2,7 +2,7 @@ import { Prisma, type ListingDraft, type PartCondition } from "@prisma/client";
 import { prisma } from "./db.js";
 import { enqueueOutboxEvent } from "./outbox-service.js";
 import { getCachedReadinessMetadata, refreshCategoryMetadata, syncSellerResources } from "./ebay-resource-service.js";
-import type { EbayAspectRequirement } from "./providers/ebay-selling.js";
+import type { EbayAspectRequirement, EbayConditionOption } from "./providers/ebay-selling.js";
 import type { Marketplace } from "./types.js";
 
 export class ListingDraftError extends Error {
@@ -24,6 +24,7 @@ export interface DraftValues {
   description: string | null;
   categoryId: string | null;
   condition: PartCondition;
+  ebayCondition: string | null;
   price: number | null;
   currency: string;
   quantity: number;
@@ -45,6 +46,7 @@ export interface DraftReadinessContext {
     inventoryLocationKeys: Set<string>;
   } | null;
   categoryRequirements?: EbayAspectRequirement[] | null;
+  categoryConditions?: EbayConditionOption[] | null;
 }
 
 export function evaluateListingReadiness(values: DraftValues, context: DraftReadinessContext): ReadinessIssue[] {
@@ -56,6 +58,12 @@ export function evaluateListingReadiness(values: DraftValues, context: DraftRead
   else if (values.title.length > 80) blocker("TITLE_TOO_LONG", "title", "eBay titles cannot exceed 80 characters.");
   if (!values.description?.trim()) blocker("DESCRIPTION_REQUIRED", "description", "Description is required.");
   if (!values.categoryId?.trim()) blocker("CATEGORY_REQUIRED", "categoryId", "Select an eBay leaf category.");
+  if (context.categoryConditions) {
+    if (!values.ebayCondition) blocker("EBAY_CONDITION_REQUIRED", "ebayCondition", "Select an eBay condition supported by this category.");
+    else if (!context.categoryConditions.some(({ enumValue }) => enumValue === values.ebayCondition)) {
+      blocker("EBAY_CONDITION_INVALID", "ebayCondition", "The selected eBay condition is not supported by this category.");
+    }
+  }
   if (values.price === null || !Number.isFinite(values.price) || values.price <= 0) blocker("PRICE_REQUIRED", "price", "Set a price greater than zero.");
   if (!/^[A-Z]{3}$/.test(values.currency)) blocker("CURRENCY_INVALID", "currency", "Currency must be a three-letter code.");
   if (!Number.isInteger(values.quantity) || values.quantity < 1) blocker("QUANTITY_REQUIRED", "quantity", "At least one unit must be available.");
@@ -150,6 +158,7 @@ function valuesFromDraft(draft: ListingDraft): DraftValues {
     description: draft.description,
     categoryId: draft.categoryId,
     condition: draft.condition,
+    ebayCondition: draft.ebayCondition,
     price: numberOrNull(draft.price),
     currency: draft.currency,
     quantity: draft.quantity,
@@ -194,6 +203,7 @@ export async function createListingDrafts(input: {
         description: part.description?.trim() || `${part.condition === "USED" ? "Used OEM" : "New"} ${part.partName ?? "automotive part"}. Part number ${part.primaryPartNumber}. Review all actual-item images before purchase.`,
         categoryId: null,
         condition: part.condition,
+        ebayCondition: part.condition === "NEW" ? "NEW" : null,
         price: latestPrice?.recommendedPrice ? Number(latestPrice.recommendedPrice.toString()) : null,
         currency: latestPrice?.currency ?? part.inventoryItem?.currency ?? (input.marketplace === "EBAY_GB" ? "GBP" : input.marketplace === "EBAY_DE" ? "EUR" : "USD"),
         quantity: part.inventoryItem?.quantity ?? 0,
@@ -261,6 +271,7 @@ export interface ListingDraftPatch {
   description?: string | null;
   categoryId?: string | null;
   condition?: PartCondition;
+  ebayCondition?: string | null;
   price?: number | null;
   currency?: string;
   quantity?: number;
@@ -347,6 +358,7 @@ export async function validateListingDraftLive(organizationId: string, userId: s
     ...contextFromDraft(current),
     sellerResources: sellerResourceContext(resources),
     categoryRequirements: categoryMetadata.aspects,
+    categoryConditions: categoryMetadata.conditions,
   });
   const status = issues.some(({ severity }) => severity === "BLOCKER") ? "BLOCKED" as const : "READY" as const;
   const nextVersion = current.version + 1;

@@ -4,6 +4,8 @@ Step 19 prepares a live-validated listing draft for future Inventory API writes.
 
 This step does not call `createOrReplaceInventoryItem`, `createOrReplaceProductCompatibility`, create an offer, or publish a listing.
 
+Step 20 consumes the preview only after the operator chooses an exact condition returned by eBay's live category condition policy. The generic catalog condition is never silently converted to a used-condition grade.
+
 ## Why image staging uses the worker
 
 A part can have many approved images and each Media API upload is an external operation. `POST /api/listing-drafts/:id/prepare-inventory` therefore creates a durable job and returns HTTP 202. The worker:

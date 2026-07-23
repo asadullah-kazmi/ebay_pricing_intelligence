@@ -195,6 +195,7 @@ export interface ListingDraft {
   description: string | null;
   categoryId: string | null;
   condition: PartCondition;
+  ebayCondition: string | null;
   price: number | null;
   currency: string;
   quantity: number;
@@ -245,6 +246,13 @@ export interface EbayAspectRequirement {
   values: string[];
 }
 
+export interface EbayConditionOption {
+  conditionId: string;
+  name: string;
+  enumValue: string;
+  description: string | null;
+}
+
 export interface LiveDraftValidation {
   draft: ListingDraft;
   resources: EbaySellerResources;
@@ -252,6 +260,7 @@ export interface LiveDraftValidation {
     marketplace: string;
     categoryId: string;
     aspects: EbayAspectRequirement[];
+    conditions: EbayConditionOption[];
     fetchedAt: string;
   };
 }
@@ -278,4 +287,19 @@ export interface InventoryPreparationJob {
   createdAt: string;
   completedAt: string | null;
   preparation: InventoryPreparation | null;
+}
+
+export interface EbayInventorySyncJob {
+  id: string;
+  listingDraftId: string;
+  preparationId: string;
+  draftVersion: number;
+  sku: string;
+  payloadHash: string;
+  status: "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+  attemptCount: number;
+  lastError: string | null;
+  inventoryWrittenAt: string | null;
+  compatibilityWrittenAt: string | null;
+  completedAt: string | null;
 }

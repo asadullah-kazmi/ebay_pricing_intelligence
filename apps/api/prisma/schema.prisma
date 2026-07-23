@@ -187,6 +187,13 @@ enum InventoryPreparationJobStatus {
   FAILED
 }
 
+enum EbayInventorySyncJobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
 model Organization {
   id                   String                      @id @default(cuid())
   name                 String
@@ -222,6 +229,7 @@ model Organization {
   ebayPublishedImages  EbayPublishedImage[]
   inventoryPreparations EbayInventoryPreparation[]
   inventoryPreparationJobs InventoryPreparationJob[]
+  ebayInventorySyncJobs EbayInventorySyncJob[]
   createdAt            DateTime                    @default(now())
   updatedAt            DateTime                    @updatedAt
 }
@@ -243,6 +251,7 @@ model User {
   ebayOAuthStates     EbayOAuthState[]
   inventoryPreparations EbayInventoryPreparation[] @relation("InventoryPreparationCreator")
   createdInventoryPreparationJobs InventoryPreparationJob[] @relation("InventoryPreparationJobCreator")
+  createdEbayInventorySyncJobs EbayInventorySyncJob[] @relation("EbayInventorySyncJobCreator")
   createdAt           DateTime                 @default(now())
   updatedAt           DateTime                 @updatedAt
 }
@@ -346,6 +355,7 @@ model EbayCategoryMetadata {
   marketplace String
   categoryId  String
   aspects     Json
+  conditions  Json?
   fetchedAt   DateTime @default(now())
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -864,6 +874,7 @@ model ListingDraft {
   description         String?
   categoryId          String?
   condition           PartCondition
+  ebayCondition       String?
   price               Decimal?           @db.Decimal(12, 2)
   currency            String              @default("USD")
   quantity            Int                 @default(0)
@@ -885,6 +896,7 @@ model ListingDraft {
   versions            ListingDraftVersion[]
   inventoryPreparations EbayInventoryPreparation[]
   inventoryPreparationJobs InventoryPreparationJob[]
+  ebayInventorySyncJobs EbayInventorySyncJob[]
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
 
@@ -908,11 +920,41 @@ model EbayInventoryPreparation {
   listingDraft         ListingDraft @relation(fields: [listingDraftId], references: [id], onDelete: Cascade)
   createdBy            User         @relation("InventoryPreparationCreator", fields: [createdById], references: [id], onDelete: Restrict)
   job                  InventoryPreparationJob?
+  syncJob              EbayInventorySyncJob?
   createdAt            DateTime     @default(now())
 
   @@unique([listingDraftId, draftVersion])
   @@index([organizationId, createdAt])
   @@index([payloadHash])
+}
+
+model EbayInventorySyncJob {
+  id                     String                     @id @default(cuid())
+  organizationId         String
+  createdById            String
+  listingDraftId         String
+  preparationId          String                     @unique
+  draftVersion           Int
+  sku                    String
+  payloadHash            String
+  status                 EbayInventorySyncJobStatus @default(QUEUED)
+  attemptCount           Int                        @default(0)
+  leaseOwner             String?
+  leaseExpiresAt         DateTime?
+  lastError              String?
+  inventoryWrittenAt     DateTime?
+  compatibilityWrittenAt DateTime?
+  startedAt              DateTime?
+  completedAt            DateTime?
+  organization           Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy              User                       @relation("EbayInventorySyncJobCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  listingDraft           ListingDraft               @relation(fields: [listingDraftId], references: [id], onDelete: Cascade)
+  preparation            EbayInventoryPreparation   @relation(fields: [preparationId], references: [id], onDelete: Cascade)
+  createdAt              DateTime                   @default(now())
+  updatedAt              DateTime                   @updatedAt
+
+  @@index([organizationId, createdAt])
+  @@index([status, leaseExpiresAt])
 }
 
 model InventoryPreparationJob {

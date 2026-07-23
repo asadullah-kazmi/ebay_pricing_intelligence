@@ -6,6 +6,7 @@ const complete: DraftValues = {
   description: "Tested actual item.",
   categoryId: "33596",
   condition: "USED",
+  ebayCondition: "USED_GOOD",
   price: 68.58,
   currency: "USD",
   quantity: 1,
@@ -50,6 +51,7 @@ describe("listing publication readiness", () => {
         { name: "Brand", required: true, recommended: false, mode: "SELECTION_ONLY", dataType: "STRING", cardinality: "SINGLE", values: ["BMW", "Audi"] },
         { name: "Type", required: true, recommended: false, mode: "FREE_TEXT", dataType: "STRING", cardinality: "SINGLE", values: [] },
       ],
+      categoryConditions: [{ conditionId: "5000", enumValue: "USED_GOOD", name: "Used - Good", description: null }],
     });
     expect(issues).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: "SHIPPING_POLICY_INVALID", severity: "BLOCKER" }),

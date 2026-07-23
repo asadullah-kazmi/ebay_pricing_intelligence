@@ -30,6 +30,7 @@ import { DeadLetterError, listDeadLetters, requeueDeadLetter } from "./dead-lett
 import { createListingDrafts, getListingDraft, ListingDraftError, listListingDrafts, updateListingDraft, validateListingDraftLive } from "./listing-draft-service.js";
 import { listCachedSellerResources, refreshCategoryMetadata, syncSellerResources } from "./ebay-resource-service.js";
 import { createInventoryPreparationJob, getInventoryPreparationJob, getLatestInventoryPreparation, InventoryPreparationError, startInventoryPreparationJob } from "./inventory-preparation-service.js";
+import { createEbayInventorySyncJob, EbayInventorySyncError, getEbayInventorySyncJob, startEbayInventorySyncJob } from "./ebay-inventory-sync-service.js";
 
 const searchSchema = z.object({
   oem: z.string().trim().min(2).max(80),
@@ -130,6 +131,7 @@ const listingDraftPatchSchema = z.object({
   description: z.string().trim().max(100_000).nullable().optional(),
   categoryId: z.string().trim().max(50).nullable().optional(),
   condition: z.enum(["NEW", "USED"]).optional(),
+  ebayCondition: z.string().trim().min(1).max(50).nullable().optional(),
   price: z.number().positive().max(10_000_000).nullable().optional(),
   currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).optional(),
   quantity: z.number().int().min(0).max(1_000_000).optional(),
@@ -618,6 +620,40 @@ app.get("/api/listing-drafts/:id/inventory-preparation", requireTenantContext, a
   } catch (error) { next(error); }
 });
 
+app.post("/api/inventory-preparations/:id/apply", writeRateLimit, requireTenantContext, listingDraftRoles, async (req, res, next) => {
+  try {
+    const preparationId = req.params.id;
+    if (typeof preparationId !== "string") return res.status(400).json({ error: "Invalid inventory preparation ID" });
+    const tenant = getTenantContext(res);
+    const body = z.object({ confirmInventoryWrite: z.literal(true) }).strict().parse(req.body);
+    const idempotencyKey = idempotencyKeySchema.parse(req.get("Idempotency-Key"));
+    if (!idempotencyKey) return res.status(400).json({ error: "Idempotency-Key is required for eBay inventory writes" });
+    const result = await executeIdempotent({
+      organizationId: tenant.organization.id,
+      operation: "ebay.inventory.apply",
+      key: idempotencyKey,
+      request: { preparationId, ...body },
+      responseStatus: 202,
+      execute: () => createEbayInventorySyncJob({
+        organizationId: tenant.organization.id,
+        userId: tenant.user.id,
+        preparationId,
+        confirmInventoryWrite: true,
+      }),
+    });
+    res.set("Idempotency-Replayed", String(result.replayed)).status(202).json(result.value);
+    if (!result.replayed && getConfig().jobs.executionMode === "inline") startEbayInventorySyncJob(result.value.id);
+  } catch (error) { next(error); }
+});
+
+app.get("/api/ebay/inventory-sync-jobs/:id", requireTenantContext, async (req, res, next) => {
+  try {
+    const jobId = req.params.id;
+    if (typeof jobId !== "string") return res.status(400).json({ error: "Invalid eBay inventory sync job ID" });
+    res.json(await getEbayInventorySyncJob(getTenantContext(res).organization.id, jobId));
+  } catch (error) { next(error); }
+});
+
 app.get("/api/admin/dead-letters", requireTenantContext, deadLetterRoles, async (req, res, next) => {
   try {
     const query = deadLetterQuerySchema.parse(req.query);
@@ -736,6 +772,7 @@ app.use((error: unknown, req: express.Request, res: express.Response, _next: exp
   if (error instanceof DeadLetterError) return response(error.statusCode, { error: error.message });
   if (error instanceof ListingDraftError) return response(error.statusCode, { error: error.message });
   if (error instanceof InventoryPreparationError) return response(error.statusCode, { error: error.message });
+  if (error instanceof EbayInventorySyncError) return response(error.statusCode, { error: error.message });
   if (error instanceof EbaySellerOAuthError) return response(error.statusCode, { error: error.message });
   if (typeof error === "object" && error !== null && "type" in error && error.type === "entity.too.large") {
     return response(413, { error: "Request body exceeds the configured upload limit" });

@@ -23,6 +23,32 @@ export interface EbayAspectRequirement {
   values: string[];
 }
 
+export interface EbayConditionOption {
+  conditionId: string;
+  name: string;
+  enumValue: string;
+  description: string | null;
+}
+
+const conditionEnums: Record<string, string> = {
+  "1000": "NEW", "1500": "NEW_OTHER", "1750": "NEW_WITH_DEFECTS",
+  "2000": "CERTIFIED_REFURBISHED", "2010": "EXCELLENT_REFURBISHED",
+  "2020": "VERY_GOOD_REFURBISHED", "2030": "GOOD_REFURBISHED",
+  "2500": "SELLER_REFURBISHED", "2750": "LIKE_NEW", "3000": "USED_EXCELLENT",
+  "4000": "USED_VERY_GOOD", "5000": "USED_GOOD", "6000": "USED_ACCEPTABLE",
+  "7000": "FOR_PARTS_OR_NOT_WORKING",
+};
+
+export function normalizeCategoryConditions(rows: Array<Record<string, unknown>>): EbayConditionOption[] {
+  return rows.flatMap((row) => {
+    const conditionId = typeof row.conditionId === "string" ? row.conditionId : typeof row.conditionId === "number" ? String(row.conditionId) : "";
+    const enumValue = conditionEnums[conditionId];
+    if (!conditionId || !enumValue) return [];
+    const name = typeof row.conditionDescription === "string" ? row.conditionDescription : enumValue.replaceAll("_", " ");
+    return [{ conditionId, enumValue, name, description: typeof row.conditionHelpText === "string" ? row.conditionHelpText : null }];
+  });
+}
+
 function apiBase(): string {
   return getConfig().ebay.environment === "production" ? "https://api.ebay.com" : "https://api.sandbox.ebay.com";
 }
@@ -171,4 +197,13 @@ export async function fetchCategoryAspects(marketplace: Marketplace, categoryId:
     "eBay category aspect lookup",
   );
   return normalizeCategoryAspects(result.aspects ?? []);
+}
+
+export async function fetchCategoryConditions(marketplace: Marketplace, categoryId: string): Promise<EbayConditionOption[]> {
+  const result = await applicationGet<{ itemConditionPolicies?: Array<{ itemConditions?: Array<Record<string, unknown>> }> }>(
+    `/sell/metadata/v1/marketplace/${encodeURIComponent(marketplace)}/get_item_condition_policies?filter=${encodeURIComponent(`categoryIds:{${categoryId}}`)}`,
+    marketplace,
+    "eBay category condition policy lookup",
+  );
+  return normalizeCategoryConditions(result.itemConditionPolicies?.flatMap(({ itemConditions }) => itemConditions ?? []) ?? []);
 }
