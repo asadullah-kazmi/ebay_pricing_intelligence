@@ -6,7 +6,7 @@ PartPulse will use a staged microservice architecture. The first production boun
 
 - `@price-intel/web` serves the browser application.
 - `@price-intel/api` owns HTTP routes, authentication, tenant authorization, catalog commands, and eBay callbacks.
-- `@price-intel/worker` executes durable pricing and fitment jobs outside the API process.
+- `@price-intel/worker` executes durable pricing, fitment, and eBay image/inventory-preparation jobs outside the API process.
 - PostgreSQL is currently both the system of record and the durable job queue.
 
 This is a deployable-process boundary before it becomes a separate-codebase boundary. The API and worker share existing domain modules, the Prisma schema, and eBay providers, avoiding duplicated business rules while the product is changing quickly.
@@ -101,7 +101,7 @@ Do not generate a public domain for the worker.
 | --- | --- | --- |
 | Web | UI and client-side job progress | Secrets, direct eBay calls, database access |
 | Core API | JWT authorization, tenancy, catalog commands, job creation, callbacks | Long-running eBay or image work |
-| Worker (current) | Pricing and fitment job execution and recovery | Public HTTP routes |
+| Worker (current) | Pricing, fitment, and eBay image/inventory-preparation job execution and recovery | Public HTTP routes |
 | Media service (later) | Image ingestion, deduplication, transformation, storage metadata | Catalog business rules |
 | Publishing service (later) | Consume validated draft events; eBay inventory/offer/publish/revise/withdraw | Pricing decisions or catalog ownership |
 | Notification service (later) | eBay webhooks, signature verification, deletion events | Interactive catalog APIs |

@@ -909,6 +909,8 @@ Acceptance criteria:
 
 **Step 18 delivered:** the connected seller's payment, return, and fulfillment policies and enabled inventory locations can be synchronized per marketplace. Drafts can be checked against live automotive Taxonomy aspect requirements, invalid seller-resource IDs, selection-only values, and aspect cardinality. Results are cached, versioned, timestamped, and emitted through the outbox. Inventory item, offer, and publish operations remain later steps.
 
+**Step 19 delivered:** approved private images are uploaded to eBay Picture Services through the current Media API by durable worker jobs. The system reuses valid checksum-matching EPS records, persists upload failures and expiry, and stores immutable, hashed inventory-item and compatibility payload previews for the exact live-validated draft version. No Inventory API write or listing publication occurs.
+
 Implementation:
 
 - Add seller OAuth Authorization Code Grant.

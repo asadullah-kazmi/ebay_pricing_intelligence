@@ -4,12 +4,14 @@ import {
   disconnectDatabase,
   getActiveFitmentJobCount,
   getActivePricingJobCount,
+  getActiveInventoryPreparationJobCount,
   markWorkerStopped,
   publishOutboxEvents,
   recordWorkerHeartbeat,
   renewWorkerJobLeases,
   resumeInterruptedFitmentJobs,
   resumeInterruptedPricingJobs,
+  resumeInterruptedInventoryPreparationJobs,
   type JobRunOptions,
 } from "@price-intel/api/jobs";
 
@@ -47,12 +49,13 @@ const metrics = {
   pollFailures: 0,
   pricingJobsDispatched: 0,
   fitmentJobsDispatched: 0,
+  inventoryPreparationJobsDispatched: 0,
   outboxPublished: 0,
   outboxFailed: 0,
 };
 
 function activeJobs(): number {
-  return getActivePricingJobCount() + getActiveFitmentJobCount();
+  return getActivePricingJobCount() + getActiveFitmentJobCount() + getActiveInventoryPreparationJobCount();
 }
 
 async function heartbeat(): Promise<void> {
@@ -72,9 +75,10 @@ async function poll(): Promise<void> {
   pollInProgress = true;
   metrics.polls += 1;
   try {
-    const [pricingJobs, fitmentJobs, outbox] = await Promise.all([
+    const [pricingJobs, fitmentJobs, inventoryPreparationJobs, outbox] = await Promise.all([
       resumeInterruptedPricingJobs(jobOptions),
       resumeInterruptedFitmentJobs(jobOptions),
+      resumeInterruptedInventoryPreparationJobs(jobOptions),
       publishOutboxEvents({
         instanceId,
         leaseDurationMs,
@@ -95,10 +99,11 @@ async function poll(): Promise<void> {
     ]);
     metrics.pricingJobsDispatched += pricingJobs;
     metrics.fitmentJobsDispatched += fitmentJobs;
+    metrics.inventoryPreparationJobsDispatched += inventoryPreparationJobs;
     metrics.outboxPublished += outbox.published;
     metrics.outboxFailed += outbox.failed;
-    if (pricingJobs || fitmentJobs) {
-      console.info(JSON.stringify({ type: "jobs_dispatched", pricingJobs, fitmentJobs, activeJobs: activeJobs() }));
+    if (pricingJobs || fitmentJobs || inventoryPreparationJobs) {
+      console.info(JSON.stringify({ type: "jobs_dispatched", pricingJobs, fitmentJobs, inventoryPreparationJobs, activeJobs: activeJobs() }));
     }
   } catch (error) {
     metrics.pollFailures += 1;
@@ -113,9 +118,10 @@ async function poll(): Promise<void> {
 
 async function start(): Promise<void> {
   await heartbeat();
-  const [pricingJobs, fitmentJobs] = await Promise.all([
+  const [pricingJobs, fitmentJobs, inventoryPreparationJobs] = await Promise.all([
     resumeInterruptedPricingJobs(jobOptions),
     resumeInterruptedFitmentJobs(jobOptions),
+    resumeInterruptedInventoryPreparationJobs(jobOptions),
   ]);
   console.info(JSON.stringify({
     type: "worker_started",
@@ -123,7 +129,7 @@ async function start(): Promise<void> {
     heartbeatIntervalMs,
     leaseDurationMs,
     maxAttempts,
-    recovered: { pricingJobs, fitmentJobs },
+    recovered: { pricingJobs, fitmentJobs, inventoryPreparationJobs },
   }));
   pollTimer = setInterval(() => void poll(), pollIntervalMs);
   heartbeatTimer = setInterval(() => void heartbeat().catch((error) => {

@@ -174,6 +174,19 @@ enum EbaySellerResourceType {
   INVENTORY_LOCATION
 }
 
+enum EbayImageStatus {
+  PENDING
+  READY
+  FAILED
+}
+
+enum InventoryPreparationJobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
 model Organization {
   id                   String                      @id @default(cuid())
   name                 String
@@ -206,6 +219,9 @@ model Organization {
   listingDrafts        ListingDraft[]
   listingDraftVersions ListingDraftVersion[]
   ebaySellerResources  EbaySellerResource[]
+  ebayPublishedImages  EbayPublishedImage[]
+  inventoryPreparations EbayInventoryPreparation[]
+  inventoryPreparationJobs InventoryPreparationJob[]
   createdAt            DateTime                    @default(now())
   updatedAt            DateTime                    @updatedAt
 }
@@ -225,6 +241,8 @@ model User {
   listingDraftVersions ListingDraftVersion[]    @relation("ListingDraftVersionCreator")
   connectedEbayStores EbaySellerConnection[]   @relation("EbayConnectionCreator")
   ebayOAuthStates     EbayOAuthState[]
+  inventoryPreparations EbayInventoryPreparation[] @relation("InventoryPreparationCreator")
+  createdInventoryPreparationJobs InventoryPreparationJob[] @relation("InventoryPreparationJobCreator")
   createdAt           DateTime                 @default(now())
   updatedAt           DateTime                 @updatedAt
 }
@@ -544,12 +562,36 @@ model MediaAsset {
   organization     Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   parts            PartMedia[]
   importMatches    ImportMediaMatch[]
+  ebayImages       EbayPublishedImage[]
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
 
   @@unique([organizationId, storageKey])
   @@index([organizationId, checksum])
   @@index([organizationId, status])
+}
+
+model EbayPublishedImage {
+  id                   String          @id @default(cuid())
+  organizationId       String
+  mediaAssetId         String
+  environment          String
+  status               EbayImageStatus @default(PENDING)
+  sourceChecksum       String
+  ebayImageId          String?
+  imageUrl             String?
+  maxDimensionImageUrl String?
+  expirationDate       DateTime?
+  lastError            String?
+  uploadedAt           DateTime?
+  organization         Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  mediaAsset           MediaAsset      @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  @@unique([organizationId, mediaAssetId, environment])
+  @@index([organizationId, status])
+  @@index([expirationDate])
 }
 
 model PartMedia {
@@ -841,12 +883,62 @@ model ListingDraft {
   createdBy           User               @relation("ListingDraftCreator", fields: [createdById], references: [id], onDelete: Restrict)
   updatedBy           User               @relation("ListingDraftUpdater", fields: [updatedById], references: [id], onDelete: Restrict)
   versions            ListingDraftVersion[]
+  inventoryPreparations EbayInventoryPreparation[]
+  inventoryPreparationJobs InventoryPreparationJob[]
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
 
   @@unique([partId, marketplace])
   @@index([organizationId, status, updatedAt])
   @@index([organizationId, marketplace])
+}
+
+model EbayInventoryPreparation {
+  id                   String       @id @default(cuid())
+  organizationId       String
+  listingDraftId       String
+  draftVersion         Int
+  sku                  String
+  payloadHash          String
+  inventoryPayload     Json
+  compatibilityPayload Json?
+  warnings             Json
+  createdById          String
+  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  listingDraft         ListingDraft @relation(fields: [listingDraftId], references: [id], onDelete: Cascade)
+  createdBy            User         @relation("InventoryPreparationCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  job                  InventoryPreparationJob?
+  createdAt            DateTime     @default(now())
+
+  @@unique([listingDraftId, draftVersion])
+  @@index([organizationId, createdAt])
+  @@index([payloadHash])
+}
+
+model InventoryPreparationJob {
+  id               String                        @id @default(cuid())
+  organizationId   String
+  createdById      String
+  listingDraftId   String
+  draftVersion     Int
+  status           InventoryPreparationJobStatus @default(QUEUED)
+  attemptCount     Int                           @default(0)
+  leaseOwner       String?
+  leaseExpiresAt   DateTime?
+  lastError        String?
+  preparationId    String?                       @unique
+  startedAt        DateTime?
+  completedAt      DateTime?
+  organization     Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy        User                          @relation("InventoryPreparationJobCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  listingDraft     ListingDraft                  @relation(fields: [listingDraftId], references: [id], onDelete: Cascade)
+  preparation      EbayInventoryPreparation?     @relation(fields: [preparationId], references: [id], onDelete: SetNull)
+  createdAt        DateTime                      @default(now())
+  updatedAt        DateTime                      @updatedAt
+
+  @@unique([listingDraftId, draftVersion])
+  @@index([organizationId, createdAt])
+  @@index([status, leaseExpiresAt])
 }
 
 model ListingDraftVersion {

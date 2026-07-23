@@ -283,6 +283,20 @@ export class ObjectStorage {
       { expiresIn: Math.min(Math.max(expiresIn, 60), 900) },
     );
   }
+
+  async readImage(organizationId: string, storageKey: string): Promise<Uint8Array> {
+    assertOwnedStorageKey(organizationId, storageKey);
+    try {
+      const object = await this.client.send(new GetObjectCommand({ Bucket: this.config.bucket, Key: storageKey }));
+      if (!object.Body) throw new ObjectStorageError("The image object is empty");
+      const bytes = await object.Body.transformToByteArray();
+      if (!bytes.length || bytes.length > this.config.maxImageBytes) throw new ObjectStorageError("The image object has an invalid size");
+      return bytes;
+    } catch (error) {
+      if (error instanceof ObjectStorageError) throw error;
+      throw new ObjectStorageError("The image object could not be read");
+    }
+  }
 }
 
 let cachedStorage: ObjectStorage | undefined;

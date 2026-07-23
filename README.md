@@ -91,6 +91,8 @@ See [Listing Drafts and Publication Readiness](docs/LISTING_DRAFTS.md) for draft
 
 See [eBay Seller Resources and Live Listing Validation](docs/EBAY_LIVE_METADATA.md) for policy/location synchronization, category item specifics, OAuth scope requirements, and the live validation workflow.
 
+See [eBay Image Staging and Inventory Preparation](docs/EBAY_INVENTORY_PREPARATION.md) for Media API image uploads, worker jobs, immutable payload previews, compatibility JSON, and the boundary before Inventory API writes.
+
 See [Production Release Checklist](docs/PRODUCTION_RELEASE.md) before deploying. It contains the Railway service commands, required variables, health checks, smoke test, rollback process, and current release limitations.
 
 ## API
@@ -135,6 +137,9 @@ See [Production Release Checklist](docs/PRODUCTION_RELEASE.md) before deploying.
 - `GET /api/ebay/resources` / `POST /api/ebay/resources/sync` - read or refresh seller policies and inventory locations
 - `POST /api/ebay/categories/:categoryId/aspects/refresh` - retrieve and cache live category item specifics
 - `POST /api/listing-drafts/:id/validate-live` - validate a versioned draft against live eBay metadata
+- `POST /api/listing-drafts/:id/prepare-inventory` - queue approved-image staging and an immutable Inventory API payload preview
+- `GET /api/inventory-preparation-jobs/:id` - poll the worker job and retrieve its completed preparation
+- `GET /api/listing-drafts/:id/inventory-preparation` - retrieve the latest preparation for a draft
 - `GET /health`
 - `GET /health/live`
 - `GET /health/ready`

@@ -60,8 +60,7 @@ Deploy the API before the web application so the new catalog controls do not cal
 
 ## Not yet included
 
-- EPS or image publication;
-- Inventory API item/offer creation;
+- Inventory API item/offer writes;
 - publish, revise, withdraw, or listing-ID persistence; and
 - bulk publication jobs.
 

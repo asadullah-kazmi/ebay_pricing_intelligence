@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import styles from "./catalog.module.css";
-import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogStatus, EbayAspectRequirement, EbayConnection, EbaySellerResources, FitmentJob, FitmentJobSummary, ListingDraft, LiveDraftValidation, PartCondition, PricingConditionMode, PricingJob, PricingJobSummary } from "./types";
+import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogStatus, EbayAspectRequirement, EbayConnection, EbaySellerResources, FitmentJob, FitmentJobSummary, InventoryPreparation, InventoryPreparationJob, ListingDraft, LiveDraftValidation, PartCondition, PricingConditionMode, PricingJob, PricingJobSummary } from "./types";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const statuses: CatalogStatus[] = ["IMPORTED", "NEEDS_IMAGES", "IMPORT_ERROR", "READY_FOR_ENRICHMENT", "ARCHIVED"];
@@ -78,6 +78,8 @@ export default function CatalogWorkspace() {
   const [draftBusy, setDraftBusy] = useState(false);
   const [sellerResources, setSellerResources] = useState<EbaySellerResources | null>(null);
   const [categoryAspects, setCategoryAspects] = useState<EbayAspectRequirement[]>([]);
+  const [inventoryPreparation, setInventoryPreparation] = useState<InventoryPreparation | null>(null);
+  const [inventoryPreparationJob, setInventoryPreparationJob] = useState<InventoryPreparationJob | null>(null);
 
   useEffect(() => {
     const localDemo = process.env.NODE_ENV !== "production" && new URLSearchParams(window.location.search).get("demo") === "1";
@@ -312,10 +314,15 @@ export default function CatalogWorkspace() {
   async function openDraft(id: string) {
     setError("");
     setCategoryAspects([]);
+    setInventoryPreparation(null);
+    setInventoryPreparationJob(null);
     try {
       const draft = await request(`/api/listing-drafts/${id}`) as ListingDraft;
       setDraftDetail(draft);
       setSellerResources(await request(`/api/ebay/resources?marketplace=${encodeURIComponent(draft.marketplace)}`) as EbaySellerResources);
+      request(`/api/listing-drafts/${id}/inventory-preparation`)
+        .then((value) => setInventoryPreparation(value as InventoryPreparation))
+        .catch(() => undefined);
     }
     catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to open listing draft"); }
   }
@@ -350,6 +357,8 @@ export default function CatalogWorkspace() {
     try {
       const updated = await request(`/api/listing-drafts/${draftDetail.id}`, { method: "PATCH", body: JSON.stringify(body) }) as ListingDraft;
       setDraftDetail(updated);
+      setInventoryPreparation(null);
+      setInventoryPreparationJob(null);
       setDrafts((current) => current.map((draft) => draft.id === updated.id ? updated : draft));
       setNotice(updated.status === "READY" ? "Draft is ready for the future publish step." : "Draft saved. Review the remaining blockers.");
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to save listing draft"); }
@@ -376,6 +385,8 @@ export default function CatalogWorkspace() {
         method: "POST", body: JSON.stringify({ expectedVersion: draftDetail.version }),
       }) as LiveDraftValidation;
       setDraftDetail(result.draft);
+      setInventoryPreparation(null);
+      setInventoryPreparationJob(null);
       setDrafts((current) => current.map((draft) => draft.id === result.draft.id ? result.draft : draft));
       setSellerResources(result.resources);
       setCategoryAspects(result.categoryMetadata.aspects);
@@ -383,6 +394,41 @@ export default function CatalogWorkspace() {
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to validate with eBay"); }
     finally { setDraftBusy(false); }
   }
+
+  async function prepareInventoryPreview() {
+    if (!draftDetail || demo || draftBusy) return;
+    setDraftBusy(true); setError("");
+    try {
+      const job = await request(`/api/listing-drafts/${draftDetail.id}/prepare-inventory`, {
+        method: "POST",
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+        body: JSON.stringify({ expectedVersion: draftDetail.version }),
+      }) as InventoryPreparationJob;
+      setInventoryPreparationJob(job);
+      if (job.preparation) setInventoryPreparation(job.preparation);
+      setNotice("Inventory preparation was queued. The worker will stage approved images and build the preview; nothing will be listed.");
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to prepare eBay inventory preview"); }
+    finally { setDraftBusy(false); }
+  }
+
+  useEffect(() => {
+    if (!inventoryPreparationJob || !["QUEUED", "RUNNING"].includes(inventoryPreparationJob.status) || demo) return;
+    const timer = window.setTimeout(() => {
+      request(`/api/inventory-preparation-jobs/${inventoryPreparationJob.id}`)
+        .then((value) => {
+          const job = value as InventoryPreparationJob;
+          setInventoryPreparationJob(job);
+          if (job.preparation) {
+            setInventoryPreparation(job.preparation);
+            setNotice("Approved images are staged on eBay and the Inventory API payload preview is ready. Nothing has been listed.");
+          } else if (job.status === "FAILED") {
+            setError(job.lastError ?? "Inventory preparation failed");
+          }
+        })
+        .catch((caught) => setError(caught instanceof Error ? caught.message : "Unable to refresh inventory preparation"));
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [demo, inventoryPreparationJob, request]);
 
   async function connectEbay() {
     if (demo || connectionBusy) return;
@@ -498,7 +544,16 @@ export default function CatalogWorkspace() {
         <div className={styles.metadataActions}>
           <button type="button" disabled={draftBusy} onClick={() => void syncResources()}>Refresh policies & locations</button>
           <button type="button" className={styles.primary} disabled={draftBusy || !draftDetail.categoryId} onClick={() => void validateDraftLive()}>{draftBusy ? "Contacting eBay..." : "Validate with eBay"}</button>
+          <button type="button" className={styles.primary} disabled={draftBusy || Boolean(inventoryPreparationJob && ["QUEUED", "RUNNING"].includes(inventoryPreparationJob.status)) || draftDetail.status !== "READY" || !draftDetail.liveValidatedAt} onClick={() => void prepareInventoryPreview()}>{inventoryPreparationJob && ["QUEUED", "RUNNING"].includes(inventoryPreparationJob.status) ? "Worker preparing..." : draftBusy ? "Queueing..." : "Stage images & preview"}</button>
         </div>
+        {inventoryPreparationJob && ["QUEUED", "RUNNING", "FAILED"].includes(inventoryPreparationJob.status) && <div className={styles.preparationStatus}><b>Image staging: {inventoryPreparationJob.status.toLowerCase()}</b>{inventoryPreparationJob.lastError && <span>{inventoryPreparationJob.lastError}</span>}</div>}
+        {inventoryPreparation && <section className={styles.inventoryPreview}>
+          <div><b>Inventory payload · {inventoryPreparation.sku}</b><span>{inventoryPreparation.draftVersion === draftDetail.version ? "Current draft version" : "Outdated — prepare this draft version again"}</span></div>
+          <small>SHA-256 {inventoryPreparation.payloadHash}</small>
+          {inventoryPreparation.warnings.map((warning) => <p key={warning}>{warning}</p>)}
+          <details><summary>View Inventory API JSON</summary><pre>{JSON.stringify(inventoryPreparation.inventoryPayload, null, 2)}</pre></details>
+          {inventoryPreparation.compatibilityPayload && <details><summary>View compatibility JSON</summary><pre>{JSON.stringify(inventoryPreparation.compatibilityPayload, null, 2)}</pre></details>}
+        </section>}
         <form onSubmit={saveDraft}>
           <div className={styles.formGrid}>
             <label className={styles.wide}><span>Title ({draftDetail.title.length}/80)</span><input name="title" maxLength={120} defaultValue={draftDetail.title} required/></label>

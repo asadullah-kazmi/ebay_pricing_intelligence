@@ -255,3 +255,27 @@ export interface LiveDraftValidation {
     fetchedAt: string;
   };
 }
+
+export interface InventoryPreparation {
+  id: string;
+  listingDraftId: string;
+  draftVersion: number;
+  sku: string;
+  payloadHash: string;
+  inventoryPayload: Record<string, unknown>;
+  compatibilityPayload: Record<string, unknown> | null;
+  warnings: string[];
+  createdAt: string;
+}
+
+export interface InventoryPreparationJob {
+  id: string;
+  listingDraftId: string;
+  draftVersion: number;
+  status: "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+  attemptCount: number;
+  lastError: string | null;
+  createdAt: string;
+  completedAt: string | null;
+  preparation: InventoryPreparation | null;
+}

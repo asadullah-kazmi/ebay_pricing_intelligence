@@ -14,6 +14,7 @@ export interface WorkerHealth {
     pollFailures: number;
     pricingJobsDispatched: number;
     fitmentJobsDispatched: number;
+    inventoryPreparationJobsDispatched: number;
     outboxPublished: number;
     outboxFailed: number;
   };
@@ -24,6 +25,7 @@ const emptyMetrics = {
   pollFailures: 0,
   pricingJobsDispatched: 0,
   fitmentJobsDispatched: 0,
+  inventoryPreparationJobsDispatched: 0,
   outboxPublished: 0,
   outboxFailed: 0,
 };
@@ -75,6 +77,10 @@ export async function renewWorkerJobLeases(instanceId: string, leaseDurationMs: 
       where: { status: "RUNNING", leaseOwner: instanceId },
       data: { leaseExpiresAt },
     }),
+    prisma.inventoryPreparationJob.updateMany({
+      where: { status: "RUNNING", leaseOwner: instanceId },
+      data: { leaseExpiresAt },
+    }),
   ]);
 }
 
@@ -98,6 +104,7 @@ export async function getWorkerHealth(maxAgeMs: number): Promise<WorkerHealth> {
     pollFailures: numberField(rawMetrics.pollFailures),
     pricingJobsDispatched: numberField(rawMetrics.pricingJobsDispatched),
     fitmentJobsDispatched: numberField(rawMetrics.fitmentJobsDispatched),
+    inventoryPreparationJobsDispatched: numberField(rawMetrics.inventoryPreparationJobsDispatched),
     outboxPublished: numberField(rawMetrics.outboxPublished),
     outboxFailed: numberField(rawMetrics.outboxFailed),
   };

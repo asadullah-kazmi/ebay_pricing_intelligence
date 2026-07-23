@@ -29,6 +29,7 @@ import { executeIdempotent, IdempotencyError } from "./idempotency-service.js";
 import { DeadLetterError, listDeadLetters, requeueDeadLetter } from "./dead-letter-service.js";
 import { createListingDrafts, getListingDraft, ListingDraftError, listListingDrafts, updateListingDraft, validateListingDraftLive } from "./listing-draft-service.js";
 import { listCachedSellerResources, refreshCategoryMetadata, syncSellerResources } from "./ebay-resource-service.js";
+import { createInventoryPreparationJob, getInventoryPreparationJob, getLatestInventoryPreparation, InventoryPreparationError, startInventoryPreparationJob } from "./inventory-preparation-service.js";
 
 const searchSchema = z.object({
   oem: z.string().trim().min(2).max(80),
@@ -576,6 +577,47 @@ app.post("/api/listing-drafts/:id/validate-live", writeRateLimit, requireTenantC
   } catch (error) { next(error); }
 });
 
+app.post("/api/listing-drafts/:id/prepare-inventory", writeRateLimit, requireTenantContext, listingDraftRoles, async (req, res, next) => {
+  try {
+    const draftId = req.params.id;
+    if (typeof draftId !== "string") return res.status(400).json({ error: "Invalid listing draft ID" });
+    const tenant = getTenantContext(res);
+    const body = z.object({ expectedVersion: z.number().int().positive() }).strict().parse(req.body);
+    const idempotencyKey = idempotencyKeySchema.parse(req.get("Idempotency-Key"));
+    const result = await executeIdempotent({
+      organizationId: tenant.organization.id,
+      operation: "listing-drafts.prepare-inventory",
+      key: idempotencyKey,
+      request: { draftId, ...body },
+      responseStatus: 202,
+      execute: () => createInventoryPreparationJob({
+        organizationId: tenant.organization.id,
+        userId: tenant.user.id,
+        draftId,
+        expectedVersion: body.expectedVersion,
+      }),
+    });
+    res.set("Idempotency-Replayed", String(result.replayed)).status(202).json(result.value);
+    if (!result.replayed && getConfig().jobs.executionMode === "inline") startInventoryPreparationJob(result.value.id);
+  } catch (error) { next(error); }
+});
+
+app.get("/api/inventory-preparation-jobs/:id", requireTenantContext, async (req, res, next) => {
+  try {
+    const jobId = req.params.id;
+    if (typeof jobId !== "string") return res.status(400).json({ error: "Invalid inventory preparation job ID" });
+    res.json(await getInventoryPreparationJob(getTenantContext(res).organization.id, jobId));
+  } catch (error) { next(error); }
+});
+
+app.get("/api/listing-drafts/:id/inventory-preparation", requireTenantContext, async (req, res, next) => {
+  try {
+    const draftId = req.params.id;
+    if (typeof draftId !== "string") return res.status(400).json({ error: "Invalid listing draft ID" });
+    res.json(await getLatestInventoryPreparation(getTenantContext(res).organization.id, draftId));
+  } catch (error) { next(error); }
+});
+
 app.get("/api/admin/dead-letters", requireTenantContext, deadLetterRoles, async (req, res, next) => {
   try {
     const query = deadLetterQuerySchema.parse(req.query);
@@ -693,6 +735,7 @@ app.use((error: unknown, req: express.Request, res: express.Response, _next: exp
   if (error instanceof IdempotencyError) return response(error.statusCode, { error: error.message });
   if (error instanceof DeadLetterError) return response(error.statusCode, { error: error.message });
   if (error instanceof ListingDraftError) return response(error.statusCode, { error: error.message });
+  if (error instanceof InventoryPreparationError) return response(error.statusCode, { error: error.message });
   if (error instanceof EbaySellerOAuthError) return response(error.statusCode, { error: error.message });
   if (typeof error === "object" && error !== null && "type" in error && error.type === "entity.too.large") {
     return response(413, { error: "Request body exceeds the configured upload limit" });

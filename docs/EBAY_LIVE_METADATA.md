@@ -64,6 +64,6 @@ No additional environment variables are introduced by Step 18.
 
 - creating missing eBay policies or locations;
 - category suggestion and leaf-category selection UI;
-- image upload/publication;
+- associating staged images through an Inventory API write;
 - Inventory API inventory-item and offer operations;
 - publish, revise, withdraw, and listing-ID persistence.
