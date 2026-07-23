@@ -105,7 +105,8 @@ Do not generate a public domain for the worker.
 | Media service (later) | Image ingestion, deduplication, transformation, storage metadata | Catalog business rules |
 | Publishing service (later) | Consume validated draft events; eBay inventory/offer/publish/revise/withdraw | Pricing decisions or catalog ownership |
 | Notification service (later) | eBay webhooks, signature verification, deletion events | Interactive catalog APIs |
-| Admin service (later) | Cross-tenant support actions, audit views, retries | Normal tenant workflows |
+| Tenant admin module (current, core API) | Organization-scoped health, audit views, guarded retries | Cross-tenant support actions |
+| Platform admin service (later) | Explicitly authorized cross-tenant support workflows | Normal tenant operations |
 
 ## 6. Rules for future extraction
 
@@ -117,7 +118,7 @@ Each extracted service must eventually own its data. API and worker share Prisma
 
 1. Introduce Redis/BullMQ when queue volume or delayed provider retries outgrow PostgreSQL polling.
 2. Connect the transactional outbox to a message broker when another service needs event consumption.
-3. Add platform-level dead-letter dashboards and audit history.
+3. Export tenant audit/outbox streams to platform observability before adding cross-tenant support tools.
 4. Split media processing first, then publishing; keep authentication and catalog ownership in the core API until usage proves another boundary is necessary.
 
 Step 17 keeps listing drafts and synchronous readiness validation in the core API while the model is still evolving. Its transactional `listing.draft.created` and `listing.draft.updated` outbox events provide the future extraction seam; no publishing service should write catalog-owned part records directly.
@@ -128,8 +129,10 @@ Step 21 adds the first publishing-service boundary: offer preparation/fee previe
 
 Step 22 keeps published-listing revision, withdrawal, and reconciliation behind the same worker boundary. Each command persists its requested version and remote evidence, making a future publishing-service extraction an ownership move rather than a workflow rewrite.
 
+Step 23 keeps tenant administration in the core API because it aggregates shared database health. Its endpoints are owner/admin-only and organization-scoped. Safe retries enqueue existing worker jobs; mutation-capable eBay commands remain in their explicit publishing workflows. A future platform support service must use separate authorization and must not inherit tenant-admin permissions.
+
 ## 8. Current limitations
 
 - PostgreSQL polling adds up to `WORKER_POLL_INTERVAL_MS` latency.
-- Redis, an external event broker, and a platform-wide worker dashboard are not included yet.
+- Redis, an external event broker, and a cross-tenant platform dashboard are not included yet.
 - The API's in-memory rate limiter still requires one API replica.

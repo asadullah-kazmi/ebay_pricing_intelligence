@@ -33,6 +33,8 @@ import { createInventoryPreparationJob, getInventoryPreparationJob, getLatestInv
 import { createEbayInventorySyncJob, EbayInventorySyncError, getEbayInventorySyncJob, getLatestEbayInventorySyncJob, startEbayInventorySyncJob } from "./ebay-inventory-sync-service.js";
 import { createOfferPreparationJob, createOfferPublishJob, EbayOfferError, getOffer, getOfferByDraft, getOfferJob, startOfferJob } from "./ebay-offer-service.js";
 import { createReconciliationJob, createRevisionJob, createWithdrawalJob, EbayListingOperationError, getListingOperationJob, startListingOperationJob } from "./ebay-listing-operation-service.js";
+import { listAuditEvents } from "./audit-service.js";
+import { AdminOperationsError, getAdminOverview, listFailedJobs, listPublishingOperations, retryAdminJob } from "./admin-operations-service.js";
 
 const searchSchema = z.object({
   oem: z.string().trim().min(2).max(80),
@@ -108,11 +110,24 @@ const createFitmentJobSchema = z.object({
 const approveFitmentSchema = z.object({ candidateId: z.string().min(1) }).strict();
 const fitmentRoles = requireOrganizationRoles("OWNER", "ADMIN", "MANAGER", "CATALOG_OPERATOR");
 const deadLetterRoles = requireOrganizationRoles("OWNER", "ADMIN", "MANAGER");
+const adminOperationsRoles = requireOrganizationRoles("OWNER", "ADMIN");
 const idempotencyKeySchema = z.string().trim().min(8).max(200).regex(/^[A-Za-z0-9._:-]+$/).optional();
 const deadLetterQuerySchema = z.object({
   status: z.enum(["OPEN", "REQUEUED", "RESOLVED"]).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
+const adminListQuerySchema = z.object({ limit: z.coerce.number().int().min(1).max(100).default(50) });
+const adminPublishingQuerySchema = adminListQuerySchema.extend({
+  status: z.enum(["PUBLISHED", "WITHDRAWN", "DRIFTED", "FAILED"]).optional(),
+});
+const adminAuditQuerySchema = adminListQuerySchema.extend({
+  action: z.string().trim().max(100).optional(),
+  resourceType: z.string().trim().max(100).optional(),
+  severity: z.enum(["INFO", "WARNING", "CRITICAL"]).optional(),
+  createdFrom: z.coerce.date().optional(),
+  createdTo: z.coerce.date().optional(),
+});
+const adminJobTypeSchema = z.enum(["PRICING", "FITMENT", "INVENTORY_PREPARATION", "INVENTORY_SYNC", "OFFER", "LISTING_OPERATION"]);
 const listingDraftRoles = requireOrganizationRoles("OWNER", "ADMIN", "MANAGER", "PUBLISHER");
 const createListingDraftsSchema = z.object({
   partIds: z.array(z.string().min(1)).min(1).max(25).transform((ids) => [...new Set(ids)]),
@@ -832,11 +847,54 @@ app.get("/api/admin/dead-letters", requireTenantContext, deadLetterRoles, async 
   } catch (error) { next(error); }
 });
 
+app.get("/api/admin/overview", requireTenantContext, adminOperationsRoles, async (_req, res, next) => {
+  try {
+    res.json(await getAdminOverview(getTenantContext(res).organization.id));
+  } catch (error) { next(error); }
+});
+
+app.get("/api/admin/audit-events", requireTenantContext, adminOperationsRoles, async (req, res, next) => {
+  try {
+    const query = adminAuditQuerySchema.parse(req.query);
+    res.json(await listAuditEvents(getTenantContext(res).organization.id, query));
+  } catch (error) { next(error); }
+});
+
+app.get("/api/admin/publishing", requireTenantContext, adminOperationsRoles, async (req, res, next) => {
+  try {
+    const query = adminPublishingQuerySchema.parse(req.query);
+    res.json(await listPublishingOperations(getTenantContext(res).organization.id, query));
+  } catch (error) { next(error); }
+});
+
+app.get("/api/admin/failed-jobs", requireTenantContext, adminOperationsRoles, async (req, res, next) => {
+  try {
+    const query = adminListQuerySchema.parse(req.query);
+    res.json(await listFailedJobs(getTenantContext(res).organization.id, query.limit));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/admin/jobs/:type/:id/retry", writeRateLimit, requireTenantContext, adminOperationsRoles, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const jobType = adminJobTypeSchema.parse(req.params.type);
+    const jobId = z.string().min(1).parse(req.params.id);
+    res.status(202).json(await retryAdminJob({
+      organizationId: tenant.organization.id,
+      userId: tenant.user.id,
+      jobType,
+      jobId,
+      requestId: res.locals.requestId,
+    }));
+  } catch (error) { next(error); }
+});
+
 app.post("/api/admin/dead-letters/:id/requeue", writeRateLimit, requireTenantContext, deadLetterRoles, async (req, res, next) => {
   try {
     const entryId = req.params.id;
     if (typeof entryId !== "string") return res.status(400).json({ error: "Invalid dead-letter entry ID" });
-    res.json(await requeueDeadLetter(getTenantContext(res).organization.id, entryId));
+    const tenant = getTenantContext(res);
+    res.json(await requeueDeadLetter(tenant.organization.id, entryId, { userId: tenant.user.id, requestId: res.locals.requestId }));
   } catch (error) { next(error); }
 });
 
@@ -946,6 +1004,7 @@ app.use((error: unknown, req: express.Request, res: express.Response, _next: exp
   if (error instanceof EbayInventorySyncError) return response(error.statusCode, { error: error.message });
   if (error instanceof EbayOfferError) return response(error.statusCode, { error: error.message });
   if (error instanceof EbayListingOperationError) return response(error.statusCode, { error: error.message });
+  if (error instanceof AdminOperationsError) return response(error.statusCode, { error: error.message });
   if (error instanceof EbaySellerOAuthError) return response(error.statusCode, { error: error.message });
   if (typeof error === "object" && error !== null && "type" in error && error.type === "entity.too.large") {
     return response(413, { error: "Request body exceeds the configured upload limit" });

@@ -4,6 +4,7 @@ import { inlineJobOptions, leaseExpiry, runWithRetry, type JobRunOptions } from 
 import { enqueueOutboxEvent } from "./outbox-service.js";
 import { createOffer, findOfferIdBySku, getListingFees, getPublishedListingId, publishOffer, updateOffer } from "./providers/ebay-inventory.js";
 import type { Marketplace } from "./types.js";
+import { recordAuditEvent } from "./audit-service.js";
 
 export class EbayOfferError extends Error {
   readonly status: number;
@@ -232,6 +233,15 @@ async function runPrepare(job: Prisma.EbayOfferJobGetPayload<{ include: typeof j
       aggregateId: offer.listingDraftId,
       payload: { draftId: offer.listingDraftId, offerId: offer.id, ebayOfferId: remoteOfferId, feeTotal: fees.total, feeCurrency: fees.currency },
     });
+    await recordAuditEvent(tx, {
+      organizationId: offer.organizationId,
+      actorUserId: job.createdById,
+      action: "ebay.offer.fees_ready",
+      resourceType: "EbayOffer",
+      resourceId: offer.id,
+      summary: `eBay fee preview is ready for ${offer.sku}`,
+      metadata: { ebayOfferId: remoteOfferId, feeTotal: fees.total, feeCurrency: fees.currency },
+    });
   });
 }
 
@@ -261,6 +271,15 @@ async function runPublish(job: Prisma.EbayOfferJobGetPayload<{ include: typeof j
       aggregateType: "ListingDraft",
       aggregateId: offer.listingDraftId,
       payload: { draftId: offer.listingDraftId, offerId: offer.id, ebayOfferId: offer.ebayOfferId, listingId },
+    });
+    await recordAuditEvent(tx, {
+      organizationId: offer.organizationId,
+      actorUserId: job.createdById,
+      action: "ebay.listing.published",
+      resourceType: "EbayOffer",
+      resourceId: offer.id,
+      summary: `Published ${offer.sku} to eBay`,
+      metadata: { listingId, ebayOfferId: offer.ebayOfferId, marketplace: offer.marketplace },
     });
   });
 }

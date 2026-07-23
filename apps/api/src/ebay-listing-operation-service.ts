@@ -5,6 +5,7 @@ import { inlineJobOptions, leaseExpiry, runWithRetry, type JobRunOptions } from 
 import { enqueueOutboxEvent } from "./outbox-service.js";
 import { getOfferSnapshot, updateOffer, withdrawOffer, type RemoteOfferSnapshot } from "./providers/ebay-inventory.js";
 import type { Marketplace } from "./types.js";
+import { recordAuditEvent } from "./audit-service.js";
 
 export class EbayListingOperationError extends Error {
   readonly status: number;
@@ -198,6 +199,16 @@ async function persistReconciliation(
       aggregateId: job.listingDraftId,
       payload: { offerId: job.ebayOffer.id, listingId: snapshot.listingId, listingStatus: snapshot.listingStatus, driftIssues },
     });
+    await recordAuditEvent(tx, {
+      organizationId: job.organizationId,
+      actorUserId: job.createdById,
+      action: driftIssues.length ? "ebay.listing.drift_detected" : "ebay.listing.reconciled",
+      resourceType: "EbayOffer",
+      resourceId: job.ebayOffer.id,
+      severity: driftIssues.length ? "WARNING" : "INFO",
+      summary: driftIssues.length ? `Detected ${driftIssues.length} eBay listing drift issue(s)` : "Reconciled eBay listing state",
+      metadata: { listingId: snapshot.listingId, listingStatus: snapshot.listingStatus, driftIssues },
+    });
   });
 }
 
@@ -256,6 +267,16 @@ async function runRevision(job: Prisma.EbayListingOperationJobGetPayload<{ inclu
       aggregateId: job.listingDraftId,
       payload: { offerId: job.ebayOffer.id, listingId: after.listingId, draftVersion: sync.draftVersion, driftIssues },
     });
+    await recordAuditEvent(tx, {
+      organizationId: job.organizationId,
+      actorUserId: job.createdById,
+      action: "ebay.listing.revised",
+      resourceType: "EbayOffer",
+      resourceId: job.ebayOffer.id,
+      severity: driftIssues.length ? "WARNING" : "INFO",
+      summary: `Revised eBay listing to draft version ${sync.draftVersion}`,
+      metadata: { listingId: after.listingId, draftVersion: sync.draftVersion, driftIssues },
+    });
   });
 }
 
@@ -296,6 +317,16 @@ async function runWithdrawal(job: Prisma.EbayListingOperationJobGetPayload<{ inc
       aggregateType: "ListingDraft",
       aggregateId: job.listingDraftId,
       payload: { offerId: job.ebayOffer.id, listingId: job.ebayOffer.ebayListingId, remoteStatus: snapshot.listingStatus },
+    });
+    await recordAuditEvent(tx, {
+      organizationId: job.organizationId,
+      actorUserId: job.createdById,
+      action: "ebay.listing.withdrawn",
+      resourceType: "EbayOffer",
+      resourceId: job.ebayOffer.id,
+      severity: "WARNING",
+      summary: "Withdrew eBay listing",
+      metadata: { listingId: job.ebayOffer.ebayListingId, remoteStatus: snapshot.listingStatus },
     });
   });
 }

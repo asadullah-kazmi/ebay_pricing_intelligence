@@ -1,5 +1,6 @@
 import { Prisma, type DeadLetterType } from "@prisma/client";
 import { prisma } from "./db.js";
+import { recordAuditEvent } from "./audit-service.js";
 
 export class DeadLetterError extends Error {
   constructor(message: string, readonly statusCode: 400 | 404 | 409 = 400) {
@@ -63,7 +64,7 @@ export async function listDeadLetters(
   });
 }
 
-export async function requeueDeadLetter(organizationId: string, entryId: string) {
+export async function requeueDeadLetter(organizationId: string, entryId: string, actor?: { userId: string; requestId?: string }) {
   const entry = await prisma.deadLetterEntry.findFirst({ where: { id: entryId, organizationId } });
   if (!entry) throw new DeadLetterError("Dead-letter entry not found", 404);
   if (entry.status !== "OPEN") throw new DeadLetterError("Only open dead-letter entries can be requeued", 409);
@@ -101,6 +102,17 @@ export async function requeueDeadLetter(organizationId: string, entryId: string)
             payload: { jobId: entry.jobId, itemId: entry.itemId, deadLetterId: entry.id },
           },
         });
+        await recordAuditEvent(tx, {
+          organizationId,
+          actorUserId: actor?.userId,
+          action: "admin.dead_letter.requeued",
+          resourceType: "DeadLetterEntry",
+          resourceId: entry.id,
+          severity: "WARNING",
+          summary: "Administrator requeued a failed pricing item",
+          metadata: { type: entry.type, jobId: entry.jobId, itemId: entry.itemId },
+          requestId: actor?.requestId,
+        });
       });
     } else {
       const item = await prisma.fitmentJobItem.findFirst({
@@ -133,6 +145,17 @@ export async function requeueDeadLetter(organizationId: string, entryId: string)
             aggregateId: entry.jobId,
             payload: { jobId: entry.jobId, itemId: entry.itemId, deadLetterId: entry.id },
           },
+        });
+        await recordAuditEvent(tx, {
+          organizationId,
+          actorUserId: actor?.userId,
+          action: "admin.dead_letter.requeued",
+          resourceType: "DeadLetterEntry",
+          resourceId: entry.id,
+          severity: "WARNING",
+          summary: "Administrator requeued a failed fitment item",
+          metadata: { type: entry.type, jobId: entry.jobId, itemId: entry.itemId },
+          requestId: actor?.requestId,
         });
       });
     }

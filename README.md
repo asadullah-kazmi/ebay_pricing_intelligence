@@ -93,6 +93,8 @@ See [eBay Seller Resources and Live Listing Validation](docs/EBAY_LIVE_METADATA.
 
 See [eBay Image Staging and Inventory Preparation](docs/EBAY_INVENTORY_PREPARATION.md) for Media API image uploads, worker jobs, immutable payload previews, compatibility JSON, and the boundary before Inventory API writes.
 
+See [Tenant Operations and Audit Console](docs/ADMIN_OPERATIONS.md) for owner/admin oversight, immutable audit evidence, worker/job health, and guarded retry controls.
+
 See [Production Release Checklist](docs/PRODUCTION_RELEASE.md) before deploying. It contains the Railway service commands, required variables, health checks, smoke test, rollback process, and current release limitations.
 
 ## API
@@ -148,6 +150,11 @@ See [Production Release Checklist](docs/PRODUCTION_RELEASE.md) before deploying.
 - `POST /api/ebay/offers/:id/reconcile` - compare local controlled fields with the remote offer
 - `GET /api/inventory-preparation-jobs/:id` - poll the worker job and retrieve its completed preparation
 - `GET /api/listing-drafts/:id/inventory-preparation` - retrieve the latest preparation for a draft
+- `GET /api/admin/overview` - retrieve tenant-scoped publishing, delivery, worker, and failure health
+- `GET /api/admin/failed-jobs` - inspect normalized failed jobs and their safe-retry policy
+- `GET /api/admin/publishing` - inspect current eBay offer/listing state and drift
+- `GET /api/admin/audit-events` - inspect immutable organization activity evidence
+- `POST /api/admin/jobs/:type/:id/retry` - retry only approved non-mutating/rebuild workflows
 - `GET /health`
 - `GET /health/live`
 - `GET /health/ready`

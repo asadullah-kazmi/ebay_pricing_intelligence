@@ -231,6 +231,17 @@ enum EbayListingOperationJobStatus {
   FAILED
 }
 
+enum AuditActorType {
+  USER
+  SYSTEM
+}
+
+enum AuditSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
 model Organization {
   id                   String                      @id @default(cuid())
   name                 String
@@ -270,6 +281,7 @@ model Organization {
   ebayOffers            EbayOffer[]
   ebayOfferJobs         EbayOfferJob[]
   ebayListingOperationJobs EbayListingOperationJob[]
+  auditEvents          OrganizationAuditEvent[]
   createdAt            DateTime                    @default(now())
   updatedAt            DateTime                    @updatedAt
 }
@@ -295,6 +307,7 @@ model User {
   createdEbayOfferJobs  EbayOfferJob[] @relation("EbayOfferJobCreator")
   approvedEbayOffers    EbayOffer[]    @relation("EbayOfferApprover")
   createdEbayListingOperationJobs EbayListingOperationJob[] @relation("EbayListingOperationJobCreator")
+  auditEvents          OrganizationAuditEvent[] @relation("AuditEventActor")
   createdAt           DateTime                 @default(now())
   updatedAt           DateTime                 @updatedAt
 }
@@ -905,6 +918,28 @@ model DeadLetterEntry {
   @@unique([type, itemId])
   @@index([organizationId, status, createdAt])
   @@index([jobId])
+}
+
+model OrganizationAuditEvent {
+  id             String          @id @default(cuid())
+  organizationId String
+  actorType      AuditActorType  @default(USER)
+  actorUserId    String?
+  action         String
+  resourceType   String
+  resourceId     String?
+  severity       AuditSeverity  @default(INFO)
+  summary        String
+  metadata       Json?
+  requestId      String?
+  occurredAt     DateTime       @default(now())
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actorUser      User?          @relation("AuditEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, occurredAt])
+  @@index([organizationId, action, occurredAt])
+  @@index([organizationId, severity, occurredAt])
+  @@index([resourceType, resourceId])
 }
 
 model ListingDraft {

@@ -1,6 +1,6 @@
 # Production release checklist
 
-This checklist releases the current catalog preparation milestone: authenticated organization context, spreadsheet staging, image mapping, import confirmation, catalog management, tenant-scoped competitor pricing and fitment, seller OAuth, and editable listing drafts with readiness checks. Live eBay publishing, complete login/onboarding, and the admin panel are later product phases. Do not market this build as the complete publishing SaaS yet.
+This checklist releases the current catalog-to-eBay operations milestone: authenticated organization context, catalog intake, image mapping, pricing, fitment, listing preparation, controlled publication and listing operations, plus tenant owner/admin oversight. Complete login/onboarding, billing, and platform support administration remain later phases.
 
 ## 1. Security prerequisites
 
@@ -78,6 +78,8 @@ Deploy the Step 18 seller-resource/category-metadata migration before exposing l
 
 Deploy the Step 19 preparation migration before exposing image-staging controls. Both API and worker need object-storage and eBay application credentials. Follow [eBay Image Staging and Inventory Preparation](EBAY_INVENTORY_PREPARATION.md) and confirm the worker is healthy before queueing a production preparation.
 
+Deploy `20260723090000_add_admin_audit` before exposing `/admin`. Follow [Tenant Operations and Audit Console](ADMIN_OPERATIONS.md), verify owner/admin authorization, and confirm external mutation failures cannot be retried from the console.
+
 ## 3. Railway web service
 
 Use the repository root as the service root.
@@ -153,8 +155,8 @@ Omit `API_ACCESS_TOKEN` to run only public health/security checks. The script ne
 - Login, password reset, invitations, and onboarding UI are not complete. The catalog UI currently relies on an existing refresh session or a short-lived development access token.
 - Rate limiting is per API process, not distributed.
 - Pricing and fitment jobs run in the dedicated worker in production and currently use PostgreSQL leases rather than a broker-backed queue.
-- Pricing recommendations are market statistics only. Cost floors, pricing rules, proposal approval, overrides, and audit events are not implemented yet.
-- Sensitive catalog changes do not yet have a durable audit-event model.
+- Pricing recommendations are market statistics only. Cost floors, pricing rules, proposal approval, and overrides are not implemented yet.
+- Step 23 audits publishing and administrative recovery actions; full field-level catalog/import/security audit coverage and archival policy remain future work.
 - Object-storage uploads performed immediately before a failed database transaction may require an orphan cleanup job.
 - Large import confirmation is transactional and synchronous; queue-based processing is still required before high-volume use.
-- Creating missing policies/locations, category suggestion, Inventory API writes, publishing/revision/withdrawal, and admin functionality remain unimplemented product phases.
+- Creating missing policies/locations and automatic category suggestion remain unimplemented product phases.
