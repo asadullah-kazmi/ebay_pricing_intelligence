@@ -3,6 +3,7 @@ import { prisma } from "./db.js";
 import { calculateAnalytics } from "./domain/analytics.js";
 import { matchListing, normalizePartNumber } from "./domain/matching.js";
 import { getConfig } from "./config.js";
+import { inlineJobOptions, leaseExpiry, runWithRetry, type JobRunOptions } from "./job-runtime.js";
 import { searchEbay } from "./providers/ebay.js";
 import type { ListingCondition, Marketplace, MatchedListing, RawListing } from "./types.js";
 
@@ -21,6 +22,10 @@ export interface CreatePricingJobInput {
 
 const terminalItemStatuses = new Set<PricingJobItemStatus>(["COMPLETED", "NO_MATCHES", "FAILED"]);
 const activeJobs = new Set<string>();
+
+export function getActivePricingJobCount(): number {
+  return activeJobs.size;
+}
 
 export function resolvePricingCondition(mode: PricingConditionMode, partCondition: PartCondition): ListingCondition {
   return mode === "MATCH_PART" ? partCondition : mode;
@@ -87,7 +92,11 @@ const jobInclude = {
 };
 
 export async function getPricingJob(organizationId: string, jobId: string) {
-  const job = await prisma.pricingJob.findFirst({ where: { id: jobId, organizationId }, include: jobInclude });
+  const job = await prisma.pricingJob.findFirst({
+    where: { id: jobId, organizationId },
+    omit: { leaseOwner: true, leaseExpiresAt: true },
+    include: jobInclude,
+  });
   if (!job) throw new PricingJobError("Pricing job not found", 404);
   return serializeJob(job);
 }
@@ -143,30 +152,41 @@ export async function createPricingJob(organizationId: string, createdById: stri
   }
 }
 
-async function refreshJobProgress(jobId: string) {
+async function refreshJobProgress(jobId: string, leaseOwner: string) {
   const items = await prisma.pricingJobItem.findMany({ where: { pricingJobId: jobId }, select: { status: true } });
   const statuses = items.map(({ status }) => status);
   const completedItems = statuses.filter((status) => status === "COMPLETED").length;
   const noMatchItems = statuses.filter((status) => status === "NO_MATCHES").length;
   const failedItems = statuses.filter((status) => status === "FAILED").length;
   const status = publicJobStatus(statuses);
-  await prisma.pricingJob.update({
-    where: { id: jobId },
+  const terminal = status === "COMPLETED" || status === "PARTIAL" || status === "FAILED";
+  await prisma.pricingJob.updateMany({
+    where: { id: jobId, status: "RUNNING", leaseOwner },
     data: {
       status,
       completedItems,
       noMatchItems,
       failedItems,
-      ...(status === "COMPLETED" || status === "PARTIAL" || status === "FAILED" ? { completedAt: new Date() } : {}),
+      ...(terminal ? { completedAt: new Date(), leaseOwner: null, leaseExpiresAt: null } : {}),
     },
   });
 }
 
-async function processPricingItem(item: { id: string; organizationId: string; queryPartNumber: string; condition: string }, marketplace: Marketplace) {
+async function processPricingItem(
+  item: { id: string; organizationId: string; queryPartNumber: string; condition: string },
+  marketplace: Marketplace,
+  options: JobRunOptions,
+) {
   await prisma.pricingJobItem.update({ where: { id: item.id }, data: { status: "RUNNING", startedAt: new Date(), error: null } });
   try {
-    const candidates = await searchEbay(item.queryPartNumber, marketplace, item.condition as ListingCondition);
-    const listings = selectExactCompetitors(candidates, item.queryPartNumber, getConfig().ownSellers);
+    const listings = await runWithRetry(async () => {
+      await prisma.pricingJobItem.update({ where: { id: item.id }, data: { attemptCount: { increment: 1 } } });
+      const candidates = await searchEbay(item.queryPartNumber, marketplace, item.condition as ListingCondition);
+      return selectExactCompetitors(candidates, item.queryPartNumber, getConfig().ownSellers);
+    }, options, async (error, attempt, delayMs) => {
+      const message = error instanceof Error ? error.message.slice(0, 500) : "Unknown pricing error";
+      await prisma.pricingJobItem.update({ where: { id: item.id }, data: { error: `Attempt ${attempt} failed; retrying in ${delayMs}ms: ${message}` } });
+    });
     const analytics = calculateAnalytics(listings);
     const completedAt = new Date();
     await prisma.$transaction(async (tx) => {
@@ -211,13 +231,21 @@ async function processPricingItem(item: { id: string; organizationId: string; qu
   }
 }
 
-export async function runPricingJob(jobId: string): Promise<void> {
+export async function runPricingJob(jobId: string, options: JobRunOptions = inlineJobOptions): Promise<void> {
   if (activeJobs.has(jobId)) return;
   activeJobs.add(jobId);
   try {
     const claimed = await prisma.pricingJob.updateMany({
       where: { id: jobId, status: "QUEUED" },
-      data: { status: "RUNNING", startedAt: new Date(), completedAt: null },
+      data: {
+        status: "RUNNING",
+        startedAt: new Date(),
+        completedAt: null,
+        attemptCount: { increment: 1 },
+        leaseOwner: options.leaseOwner,
+        leaseExpiresAt: leaseExpiry(options),
+        lastError: null,
+      },
     });
     if (!claimed.count) return;
     const job = await prisma.pricingJob.findUnique({
@@ -229,49 +257,63 @@ export async function runPricingJob(jobId: string): Promise<void> {
     });
     if (!job) return;
     for (const item of job.items) {
-      await processPricingItem(item, job.marketplace as Marketplace);
-      await refreshJobProgress(jobId);
+      await processPricingItem(item, job.marketplace as Marketplace, options);
+      await prisma.pricingJob.updateMany({
+        where: { id: jobId, status: "RUNNING", leaseOwner: options.leaseOwner },
+        data: { leaseExpiresAt: leaseExpiry(options) },
+      });
+      await refreshJobProgress(jobId, options.leaseOwner);
     }
   } catch (error) {
     console.error(JSON.stringify({ type: "pricing_job_error", jobId, error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : { name: "UnknownError" } }));
-    await prisma.pricingJob.updateMany({ where: { id: jobId, status: "RUNNING" }, data: { status: "FAILED", completedAt: new Date() } }).catch(() => undefined);
+    const message = error instanceof Error ? error.message.slice(0, 500) : "Unknown pricing job error";
+    await prisma.pricingJob.updateMany({
+      where: { id: jobId, status: "RUNNING", leaseOwner: options.leaseOwner },
+      data: { status: "FAILED", completedAt: new Date(), lastError: message, leaseOwner: null, leaseExpiresAt: null },
+    }).catch(() => undefined);
   } finally {
     activeJobs.delete(jobId);
   }
 }
 
-export function startPricingJob(jobId: string): void {
-  setImmediate(() => void runPricingJob(jobId));
+export function startPricingJob(jobId: string, options: JobRunOptions = inlineJobOptions): void {
+  setImmediate(() => void runPricingJob(jobId, options));
 }
 
-export async function startQueuedPricingJobs(): Promise<number> {
+export async function startQueuedPricingJobs(options: JobRunOptions = inlineJobOptions): Promise<number> {
   const queued = await prisma.pricingJob.findMany({
     where: { status: "QUEUED" },
     select: { id: true },
     orderBy: { createdAt: "asc" },
   });
-  queued.forEach(({ id }) => startPricingJob(id));
+  queued.forEach(({ id }) => startPricingJob(id, options));
   return queued.length;
 }
 
-export async function resumeInterruptedPricingJobs(): Promise<number> {
-  const pending = await prisma.pricingJob.findMany({
-    where: { status: { in: ["QUEUED", "RUNNING"] } },
+export async function resumeInterruptedPricingJobs(options: JobRunOptions = inlineJobOptions): Promise<number> {
+  const stale = await prisma.pricingJob.findMany({
+    where: {
+      status: "RUNNING",
+      OR: [{ leaseExpiresAt: null }, { leaseExpiresAt: { lt: new Date() } }],
+    },
     select: { id: true },
     orderBy: { createdAt: "asc" },
   });
-  if (!pending.length) return 0;
-  const jobIds = pending.map(({ id }) => id);
-  await prisma.$transaction([
-    prisma.pricingJobItem.updateMany({
-      where: { pricingJobId: { in: jobIds }, status: "RUNNING" },
-      data: { status: "QUEUED", startedAt: null },
-    }),
-    prisma.pricingJob.updateMany({
-      where: { id: { in: jobIds }, status: "RUNNING" },
-      data: { status: "QUEUED", startedAt: null },
-    }),
-  ]);
-  jobIds.forEach(startPricingJob);
-  return jobIds.length;
+  if (stale.length) {
+    for (const { id } of stale) {
+      await prisma.$transaction(async (tx) => {
+        const reclaimed = await tx.pricingJob.updateMany({
+          where: { id, status: "RUNNING", OR: [{ leaseExpiresAt: null }, { leaseExpiresAt: { lt: new Date() } }] },
+          data: { status: "QUEUED", startedAt: null, leaseOwner: null, leaseExpiresAt: null, lastError: "Worker lease expired; job requeued" },
+        });
+        if (reclaimed.count) {
+          await tx.pricingJobItem.updateMany({
+            where: { pricingJobId: id, status: "RUNNING" },
+            data: { status: "QUEUED", startedAt: null },
+          });
+        }
+      });
+    }
+  }
+  return startQueuedPricingJobs(options);
 }

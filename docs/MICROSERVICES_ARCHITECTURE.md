@@ -83,7 +83,7 @@ Create three Railway services from the same GitHub repository.
 - Start: `npm run start:worker`
 - Public domain: none
 - Replicas: exactly one in this phase
-- Variables: `JOB_EXECUTION_MODE=worker` and `WORKER_POLL_INTERVAL_MS=2000`
+- Variables: use the values documented in [Background Worker Operations](WORKER_OPERATIONS.md)
 
 The API and worker require the same `DATABASE_URL`, eBay variables, and provider settings used by job handlers. JWT, callback, seller OAuth, and storage secrets may be shared at the Railway project level for now. The web service must never receive server secrets.
 
@@ -115,15 +115,13 @@ Each extracted service must eventually own its data. API and worker share Prisma
 
 ## 7. Next infrastructure milestones
 
-1. Add a worker heartbeat and job metrics.
-2. Add stale-job leases instead of resetting every running job at startup.
-3. Introduce Redis/BullMQ when multiple workers or delayed provider retries are needed.
-4. Add idempotency keys and an outbox table before publishing to eBay.
-5. Split media processing first, then publishing; keep authentication and catalog ownership in the core API until usage proves another boundary is necessary.
+1. Introduce Redis/BullMQ when queue volume or delayed provider retries outgrow PostgreSQL polling.
+2. Add idempotency keys and an outbox table before publishing to eBay.
+3. Add dead-letter support and administrative job replay.
+4. Split media processing first, then publishing; keep authentication and catalog ownership in the core API until usage proves another boundary is necessary.
 
 ## 8. Current limitations
 
-- Run exactly one worker replica; startup recovery assumes a single job owner.
 - PostgreSQL polling adds up to `WORKER_POLL_INTERVAL_MS` latency.
-- Redis, dead-letter queues, delayed retries, and worker dashboards are not included yet.
+- Redis, dead-letter queues, and a worker dashboard are not included yet.
 - The API's in-memory rate limiter still requires one API replica.

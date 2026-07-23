@@ -24,6 +24,7 @@ import { createPricingJob, getPricingJob, listPricingJobs, PricingJobError, star
 import { approveFitmentCandidate, createFitmentJob, FitmentJobError, getFitmentJob, listFitmentJobs, startFitmentJob } from "./fitment-service.js";
 import { completeEbayAuthorization, createEbayAuthorization, disconnectEbayConnection, EbaySellerOAuthError, getEbayConnection } from "./ebay-seller-oauth.js";
 import { getTenantContext, requireOrganizationRoles, requireTenantContext } from "./tenant-context.js";
+import { getWorkerHealth } from "./worker-operations.js";
 
 const searchSchema = z.object({
   oem: z.string().trim().min(2).max(80),
@@ -120,6 +121,12 @@ app.use(requestLogMiddleware);
 app.use(generalRateLimit);
 app.use(express.json({ limit: "1mb" }));
 app.get("/health/live", (_req, res) => res.json({ status: "ok" }));
+app.get("/health/worker", async (_req, res, next) => {
+  try {
+    const health = await getWorkerHealth(getConfig().jobs.workerHealthMaxAgeMs);
+    res.status(health.status === "ok" ? 200 : 503).json(health);
+  } catch (error) { next(error); }
+});
 const readinessHandler: express.RequestHandler = async (_req, res) => {
   const config = getConfig();
   const databaseConnected = await databaseIsReachable();

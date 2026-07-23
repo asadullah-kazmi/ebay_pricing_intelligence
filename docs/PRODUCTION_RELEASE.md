@@ -68,7 +68,7 @@ Start command: npm run start:worker
 Replicas: exactly one
 ```
 
-Configure `JOB_EXECUTION_MODE=worker`, `WORKER_POLL_INTERVAL_MS=2000`, and the same `DATABASE_URL`, eBay credentials, and provider variables used by pricing and fitment. See [Microservice Architecture](MICROSERVICES_ARCHITECTURE.md) for the complete boundary and deployment rules.
+Configure the lease, heartbeat, retry, and shutdown variables in [Background Worker Operations](WORKER_OPERATIONS.md), plus the same `DATABASE_URL`, eBay credentials, and provider variables used by pricing and fitment. Monitor `GET /health/worker` from the public API domain. See [Microservice Architecture](MICROSERVICES_ARCHITECTURE.md) for the complete boundary and deployment rules.
 
 ## 3. Railway web service
 

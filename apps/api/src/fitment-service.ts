@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { Prisma, type FitmentJobItemStatus, type FitmentJobStatus } from "@prisma/client";
 import { prisma } from "./db.js";
 import { normalizePartNumber } from "./domain/matching.js";
+import { inlineJobOptions, leaseExpiry, runWithRetry, type JobRunOptions } from "./job-runtime.js";
 import { discoverEbayFitment, getEbayProductCompatibilities, type EbayFitmentCandidate } from "./providers/ebay-fitment.js";
 import type { Marketplace } from "./types.js";
 
@@ -16,6 +17,10 @@ export interface CreateFitmentJobInput { partIds: string[]; marketplace: Marketp
 export interface ScoredFitmentCandidate extends EbayFitmentCandidate { score: number; matchedOn: string[] }
 
 const activeJobs = new Set<string>();
+
+export function getActiveFitmentJobCount(): number {
+  return activeJobs.size;
+}
 const discoveryTerminalStatuses = new Set<FitmentJobItemStatus>(["REVIEW_REQUIRED", "NO_CANDIDATE", "APPROVED", "FAILED"]);
 
 function normalizedText(value: string | null | undefined): string {
@@ -59,7 +64,11 @@ const jobInclude = {
 };
 
 export async function getFitmentJob(organizationId: string, jobId: string) {
-  const job = await prisma.fitmentJob.findFirst({ where: { id: jobId, organizationId }, include: jobInclude });
+  const job = await prisma.fitmentJob.findFirst({
+    where: { id: jobId, organizationId },
+    omit: { leaseOwner: true, leaseExpiresAt: true },
+    include: jobInclude,
+  });
   if (!job) throw new FitmentJobError("Fitment job not found", 404);
   return job;
 }
@@ -109,26 +118,36 @@ function jobStatus(statuses: FitmentJobItemStatus[]): FitmentJobStatus {
   return "COMPLETED";
 }
 
-async function refreshFitmentJob(jobId: string) {
+async function refreshFitmentJob(jobId: string, leaseOwner?: string) {
   const items = await prisma.fitmentJobItem.findMany({ where: { fitmentJobId: jobId }, select: { status: true } });
   const statuses = items.map(({ status }) => status);
   const status = jobStatus(statuses);
   const discoveryFinished = statuses.every((itemStatus) => discoveryTerminalStatuses.has(itemStatus));
-  await prisma.fitmentJob.update({ where: { id: jobId }, data: {
+  await prisma.fitmentJob.updateMany({ where: { id: jobId, ...(leaseOwner ? { status: "RUNNING", leaseOwner } : {}) }, data: {
     status,
     reviewedItems: statuses.filter((itemStatus) => itemStatus === "APPROVED").length,
     noCandidateItems: statuses.filter((itemStatus) => itemStatus === "NO_CANDIDATE").length,
     failedItems: statuses.filter((itemStatus) => itemStatus === "FAILED").length,
-    ...(discoveryFinished ? { completedAt: new Date() } : {}),
+    ...(discoveryFinished ? { completedAt: new Date(), leaseOwner: null, leaseExpiresAt: null } : {}),
   } });
 }
 
 async function processFitmentItem(item: {
   id: string; organizationId: string; part: { primaryPartNumber: string; brand: string | null; partName: string | null };
-}, marketplace: Marketplace) {
+}, marketplace: Marketplace, options: JobRunOptions) {
   await prisma.fitmentJobItem.update({ where: { id: item.id }, data: { status: "RUNNING", startedAt: new Date(), error: null } });
   try {
-    const discovery = await discoverEbayFitment({ partNumber: item.part.primaryPartNumber, brand: item.part.brand, partName: item.part.partName }, marketplace);
+    const discovery = await runWithRetry(async () => {
+      await prisma.fitmentJobItem.update({ where: { id: item.id }, data: { attemptCount: { increment: 1 } } });
+      return discoverEbayFitment({
+        partNumber: item.part.primaryPartNumber,
+        brand: item.part.brand,
+        partName: item.part.partName,
+      }, marketplace);
+    }, options, async (error, attempt, delayMs) => {
+      const message = error instanceof Error ? error.message.slice(0, 500) : "Unknown fitment discovery error";
+      await prisma.fitmentJobItem.update({ where: { id: item.id }, data: { error: `Attempt ${attempt} failed; retrying in ${delayMs}ms: ${message}` } });
+    });
     const candidates = discovery.candidates.map((candidate) => scoreFitmentCandidate(candidate, { partNumber: item.part.primaryPartNumber, brand: item.part.brand })).filter(({ score }) => score > 0);
     await prisma.$transaction(async (tx) => {
       if (candidates.length) await tx.fitmentCandidate.createMany({ data: candidates.map((candidate) => ({
@@ -147,11 +166,22 @@ async function processFitmentItem(item: {
   }
 }
 
-export async function runFitmentJob(jobId: string): Promise<void> {
+export async function runFitmentJob(jobId: string, options: JobRunOptions = inlineJobOptions): Promise<void> {
   if (activeJobs.has(jobId)) return;
   activeJobs.add(jobId);
   try {
-    const claimed = await prisma.fitmentJob.updateMany({ where: { id: jobId, status: "QUEUED" }, data: { status: "RUNNING", startedAt: new Date(), completedAt: null } });
+    const claimed = await prisma.fitmentJob.updateMany({
+      where: { id: jobId, status: "QUEUED" },
+      data: {
+        status: "RUNNING",
+        startedAt: new Date(),
+        completedAt: null,
+        attemptCount: { increment: 1 },
+        leaseOwner: options.leaseOwner,
+        leaseExpiresAt: leaseExpiry(options),
+        lastError: null,
+      },
+    });
     if (!claimed.count) return;
     const job = await prisma.fitmentJob.findUnique({ where: { id: jobId }, select: {
       marketplace: true,
@@ -161,24 +191,34 @@ export async function runFitmentJob(jobId: string): Promise<void> {
     } });
     if (!job) return;
     for (const item of job.items) {
-      await processFitmentItem(item, job.marketplace as Marketplace);
-      await refreshFitmentJob(jobId);
+      await processFitmentItem(item, job.marketplace as Marketplace, options);
+      await prisma.fitmentJob.updateMany({
+        where: { id: jobId, status: "RUNNING", leaseOwner: options.leaseOwner },
+        data: { leaseExpiresAt: leaseExpiry(options) },
+      });
+      await refreshFitmentJob(jobId, options.leaseOwner);
     }
   } catch (error) {
     console.error(JSON.stringify({ type: "fitment_job_error", jobId, error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : { name: "UnknownError" } }));
-    await prisma.fitmentJob.updateMany({ where: { id: jobId, status: "RUNNING" }, data: { status: "FAILED", completedAt: new Date() } }).catch(() => undefined);
+    const message = error instanceof Error ? error.message.slice(0, 500) : "Unknown fitment job error";
+    await prisma.fitmentJob.updateMany({
+      where: { id: jobId, status: "RUNNING", leaseOwner: options.leaseOwner },
+      data: { status: "FAILED", completedAt: new Date(), lastError: message, leaseOwner: null, leaseExpiresAt: null },
+    }).catch(() => undefined);
   } finally { activeJobs.delete(jobId); }
 }
 
-export function startFitmentJob(jobId: string): void { setImmediate(() => void runFitmentJob(jobId)); }
+export function startFitmentJob(jobId: string, options: JobRunOptions = inlineJobOptions): void {
+  setImmediate(() => void runFitmentJob(jobId, options));
+}
 
-export async function startQueuedFitmentJobs(): Promise<number> {
+export async function startQueuedFitmentJobs(options: JobRunOptions = inlineJobOptions): Promise<number> {
   const queued = await prisma.fitmentJob.findMany({
     where: { status: "QUEUED" },
     select: { id: true },
     orderBy: { createdAt: "asc" },
   });
-  queued.forEach(({ id }) => startFitmentJob(id));
+  queued.forEach(({ id }) => startFitmentJob(id, options));
   return queued.length;
 }
 
@@ -209,14 +249,25 @@ export async function approveFitmentCandidate(organizationId: string, itemId: st
   return getFitmentJob(organizationId, item.fitmentJob.id);
 }
 
-export async function resumeInterruptedFitmentJobs(): Promise<number> {
-  const pending = await prisma.fitmentJob.findMany({ where: { status: { in: ["QUEUED", "RUNNING"] } }, select: { id: true }, orderBy: { createdAt: "asc" } });
-  if (!pending.length) return 0;
-  const jobIds = pending.map(({ id }) => id);
-  await prisma.$transaction([
-    prisma.fitmentJobItem.updateMany({ where: { fitmentJobId: { in: jobIds }, status: "RUNNING" }, data: { status: "QUEUED", startedAt: null } }),
-    prisma.fitmentJob.updateMany({ where: { id: { in: jobIds }, status: "RUNNING" }, data: { status: "QUEUED", startedAt: null } }),
-  ]);
-  jobIds.forEach(startFitmentJob);
-  return jobIds.length;
+export async function resumeInterruptedFitmentJobs(options: JobRunOptions = inlineJobOptions): Promise<number> {
+  const stale = await prisma.fitmentJob.findMany({
+    where: { status: "RUNNING", OR: [{ leaseExpiresAt: null }, { leaseExpiresAt: { lt: new Date() } }] },
+    select: { id: true },
+    orderBy: { createdAt: "asc" },
+  });
+  for (const { id } of stale) {
+    await prisma.$transaction(async (tx) => {
+      const reclaimed = await tx.fitmentJob.updateMany({
+        where: { id, status: "RUNNING", OR: [{ leaseExpiresAt: null }, { leaseExpiresAt: { lt: new Date() } }] },
+        data: { status: "QUEUED", startedAt: null, leaseOwner: null, leaseExpiresAt: null, lastError: "Worker lease expired; job requeued" },
+      });
+      if (reclaimed.count) {
+        await tx.fitmentJobItem.updateMany({
+          where: { fitmentJobId: id, status: "RUNNING" },
+          data: { status: "QUEUED", startedAt: null },
+        });
+      }
+    });
+  }
+  return startQueuedFitmentJobs(options);
 }

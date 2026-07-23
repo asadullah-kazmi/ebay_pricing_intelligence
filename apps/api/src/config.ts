@@ -6,6 +6,7 @@ export interface AppConfig {
   shutdownTimeoutMs: number;
   jobs: {
     executionMode: "inline" | "worker";
+    workerHealthMaxAgeMs: number;
   };
   jwt: {
     accessSecret?: string;
@@ -131,6 +132,10 @@ export function getConfig(): AppConfig {
   if (jobExecutionMode !== "inline" && jobExecutionMode !== "worker") {
     throw new Error("JOB_EXECUTION_MODE must be either inline or worker");
   }
+  const workerHealthMaxAgeMs = Number(process.env.WORKER_HEALTH_MAX_AGE_MS ?? 45_000);
+  if (!Number.isInteger(workerHealthMaxAgeMs) || workerHealthMaxAgeMs < 5_000 || workerHealthMaxAgeMs > 300_000) {
+    throw new Error("WORKER_HEALTH_MAX_AGE_MS must be an integer between 5000 and 300000");
+  }
 
   const storageBucket = process.env.STORAGE_BUCKET?.trim() || undefined;
   const storageRegion = process.env.STORAGE_REGION?.trim() || undefined;
@@ -193,7 +198,7 @@ export function getConfig(): AppConfig {
     port,
     databaseUrl,
     shutdownTimeoutMs,
-    jobs: { executionMode: jobExecutionMode },
+    jobs: { executionMode: jobExecutionMode, workerHealthMaxAgeMs },
     jwt: {
       accessSecret,
       refreshSecret,

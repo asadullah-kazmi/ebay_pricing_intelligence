@@ -528,6 +528,10 @@ model PricingJob {
   completedItems Int                  @default(0)
   noMatchItems   Int                  @default(0)
   failedItems    Int                  @default(0)
+  attemptCount   Int                  @default(0)
+  leaseOwner     String?
+  leaseExpiresAt DateTime?
+  lastError      String?
   startedAt      DateTime?
   completedAt    DateTime?
   organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -538,6 +542,7 @@ model PricingJob {
 
   @@index([organizationId, createdAt])
   @@index([organizationId, status])
+  @@index([status, leaseExpiresAt])
   @@index([createdById])
 }
 
@@ -557,6 +562,7 @@ model PricingJobItem {
   recommendedPrice Decimal?                    @db.Decimal(12, 2)
   currency         String?
   error            String?
+  attemptCount     Int                         @default(0)
   startedAt        DateTime?
   completedAt      DateTime?
   organization     Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -605,6 +611,10 @@ model FitmentJob {
   reviewedItems    Int              @default(0)
   noCandidateItems Int              @default(0)
   failedItems      Int              @default(0)
+  attemptCount     Int              @default(0)
+  leaseOwner       String?
+  leaseExpiresAt   DateTime?
+  lastError        String?
   startedAt        DateTime?
   completedAt      DateTime?
   organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -615,6 +625,7 @@ model FitmentJob {
 
   @@index([organizationId, createdAt])
   @@index([organizationId, status])
+  @@index([status, leaseExpiresAt])
 }
 
 model FitmentJobItem {
@@ -630,6 +641,7 @@ model FitmentJobItem {
   metadataVersion     String?
   applicationCount    Int                  @default(0)
   error               String?
+  attemptCount        Int                  @default(0)
   startedAt           DateTime?
   completedAt         DateTime?
   organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -644,6 +656,21 @@ model FitmentJobItem {
   @@unique([fitmentJobId, partId])
   @@index([organizationId, status])
   @@index([partId, completedAt])
+}
+
+model WorkerHeartbeat {
+  id          String   @id
+  service     String
+  status      String
+  startedAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+  stoppedAt   DateTime?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([service, lastSeenAt])
+  @@index([status, lastSeenAt])
 }
 
 model FitmentCandidate {

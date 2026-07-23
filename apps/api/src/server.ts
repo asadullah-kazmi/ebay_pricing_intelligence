@@ -20,6 +20,13 @@ if (jobs.executionMode === "inline") {
     .then((count) => { if (count) console.info(JSON.stringify({ type: "fitment_jobs_resumed", count })); })
     .catch((error) => console.error(JSON.stringify({ type: "fitment_job_recovery_failed", error: error instanceof Error ? { name: error.name, message: error.message } : { name: "UnknownError" } })));
 }
+const inlineRecoveryTimer = jobs.executionMode === "inline"
+  ? setInterval(() => {
+    void resumeInterruptedPricingJobs().catch((error) => console.error(JSON.stringify({ type: "pricing_job_recovery_failed", error: error instanceof Error ? { name: error.name, message: error.message } : { name: "UnknownError" } })));
+    void resumeInterruptedFitmentJobs().catch((error) => console.error(JSON.stringify({ type: "fitment_job_recovery_failed", error: error instanceof Error ? { name: error.name, message: error.message } : { name: "UnknownError" } })));
+  }, 30_000)
+  : undefined;
+inlineRecoveryTimer?.unref();
 
 let shuttingDown = false;
 async function shutdown(signal: string, exitCode = 0) {
@@ -32,6 +39,7 @@ async function shutdown(signal: string, exitCode = 0) {
   }, shutdownTimeoutMs);
   forcedExit.unref();
   server.closeIdleConnections?.();
+  if (inlineRecoveryTimer) clearInterval(inlineRecoveryTimer);
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await disconnectDatabase();
   clearTimeout(forcedExit);
