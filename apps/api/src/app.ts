@@ -32,6 +32,7 @@ import { listCachedSellerResources, refreshCategoryMetadata, syncSellerResources
 import { createInventoryPreparationJob, getInventoryPreparationJob, getLatestInventoryPreparation, InventoryPreparationError, startInventoryPreparationJob } from "./inventory-preparation-service.js";
 import { createEbayInventorySyncJob, EbayInventorySyncError, getEbayInventorySyncJob, getLatestEbayInventorySyncJob, startEbayInventorySyncJob } from "./ebay-inventory-sync-service.js";
 import { createOfferPreparationJob, createOfferPublishJob, EbayOfferError, getOffer, getOfferByDraft, getOfferJob, startOfferJob } from "./ebay-offer-service.js";
+import { createReconciliationJob, createRevisionJob, createWithdrawalJob, EbayListingOperationError, getListingOperationJob, startListingOperationJob } from "./ebay-listing-operation-service.js";
 
 const searchSchema = z.object({
   oem: z.string().trim().min(2).max(80),
@@ -738,6 +739,92 @@ app.get("/api/ebay/offer-jobs/:id", requireTenantContext, async (req, res, next)
   } catch (error) { next(error); }
 });
 
+app.post("/api/ebay/offers/:id/revise", writeRateLimit, requireTenantContext, listingDraftRoles, async (req, res, next) => {
+  try {
+    const offerId = req.params.id;
+    if (typeof offerId !== "string") return res.status(400).json({ error: "Invalid eBay offer ID" });
+    const body = z.object({
+      inventorySyncJobId: z.string().min(1),
+      confirmRevision: z.literal(true),
+      confirmation: z.literal("REVISE"),
+    }).strict().parse(req.body);
+    const tenant = getTenantContext(res);
+    const idempotencyKey = idempotencyKeySchema.parse(req.get("Idempotency-Key"));
+    if (!idempotencyKey) return res.status(400).json({ error: "Idempotency-Key is required for listing revision" });
+    const result = await executeIdempotent({
+      organizationId: tenant.organization.id,
+      operation: "ebay.listing.revise",
+      key: idempotencyKey,
+      request: { offerId, ...body },
+      responseStatus: 202,
+      execute: () => createRevisionJob({
+        organizationId: tenant.organization.id,
+        userId: tenant.user.id,
+        offerId,
+        inventorySyncJobId: body.inventorySyncJobId,
+        confirmRevision: true,
+      }),
+    });
+    res.set("Idempotency-Replayed", String(result.replayed)).status(202).json(result.value);
+    if (!result.replayed && getConfig().jobs.executionMode === "inline") startListingOperationJob(result.value.id);
+  } catch (error) { next(error); }
+});
+
+app.post("/api/ebay/offers/:id/withdraw", writeRateLimit, requireTenantContext, listingDraftRoles, async (req, res, next) => {
+  try {
+    const offerId = req.params.id;
+    if (typeof offerId !== "string") return res.status(400).json({ error: "Invalid eBay offer ID" });
+    const body = z.object({ confirmWithdraw: z.literal(true), confirmation: z.literal("WITHDRAW") }).strict().parse(req.body);
+    const tenant = getTenantContext(res);
+    const idempotencyKey = idempotencyKeySchema.parse(req.get("Idempotency-Key"));
+    if (!idempotencyKey) return res.status(400).json({ error: "Idempotency-Key is required for listing withdrawal" });
+    const result = await executeIdempotent({
+      organizationId: tenant.organization.id,
+      operation: "ebay.listing.withdraw",
+      key: idempotencyKey,
+      request: { offerId, ...body },
+      responseStatus: 202,
+      execute: () => createWithdrawalJob({
+        organizationId: tenant.organization.id,
+        userId: tenant.user.id,
+        offerId,
+        confirmWithdraw: true,
+      }),
+    });
+    res.set("Idempotency-Replayed", String(result.replayed)).status(202).json(result.value);
+    if (!result.replayed && getConfig().jobs.executionMode === "inline") startListingOperationJob(result.value.id);
+  } catch (error) { next(error); }
+});
+
+app.post("/api/ebay/offers/:id/reconcile", writeRateLimit, requireTenantContext, listingDraftRoles, async (req, res, next) => {
+  try {
+    const offerId = req.params.id;
+    if (typeof offerId !== "string") return res.status(400).json({ error: "Invalid eBay offer ID" });
+    z.object({}).strict().parse(req.body);
+    const tenant = getTenantContext(res);
+    const idempotencyKey = idempotencyKeySchema.parse(req.get("Idempotency-Key"));
+    if (!idempotencyKey) return res.status(400).json({ error: "Idempotency-Key is required for reconciliation" });
+    const result = await executeIdempotent({
+      organizationId: tenant.organization.id,
+      operation: "ebay.listing.reconcile",
+      key: idempotencyKey,
+      request: { offerId },
+      responseStatus: 202,
+      execute: () => createReconciliationJob({ organizationId: tenant.organization.id, userId: tenant.user.id, offerId }),
+    });
+    res.set("Idempotency-Replayed", String(result.replayed)).status(202).json(result.value);
+    if (!result.replayed && getConfig().jobs.executionMode === "inline") startListingOperationJob(result.value.id);
+  } catch (error) { next(error); }
+});
+
+app.get("/api/ebay/listing-operation-jobs/:id", requireTenantContext, async (req, res, next) => {
+  try {
+    const jobId = req.params.id;
+    if (typeof jobId !== "string") return res.status(400).json({ error: "Invalid eBay listing operation job ID" });
+    res.json(await getListingOperationJob(getTenantContext(res).organization.id, jobId));
+  } catch (error) { next(error); }
+});
+
 app.get("/api/admin/dead-letters", requireTenantContext, deadLetterRoles, async (req, res, next) => {
   try {
     const query = deadLetterQuerySchema.parse(req.query);
@@ -858,6 +945,7 @@ app.use((error: unknown, req: express.Request, res: express.Response, _next: exp
   if (error instanceof InventoryPreparationError) return response(error.statusCode, { error: error.message });
   if (error instanceof EbayInventorySyncError) return response(error.statusCode, { error: error.message });
   if (error instanceof EbayOfferError) return response(error.statusCode, { error: error.message });
+  if (error instanceof EbayListingOperationError) return response(error.statusCode, { error: error.message });
   if (error instanceof EbaySellerOAuthError) return response(error.statusCode, { error: error.message });
   if (typeof error === "object" && error !== null && "type" in error && error.type === "entity.too.large") {
     return response(413, { error: "Request body exceeds the configured upload limit" });

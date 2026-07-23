@@ -143,6 +143,9 @@ See [Production Release Checklist](docs/PRODUCTION_RELEASE.md) before deploying.
 - `POST /api/ebay/inventory-sync-jobs/:id/offer` - prepare an unpublished offer and expected fee preview
 - `POST /api/ebay/offers/:id/publish` - explicitly approve and queue live publication
 - `GET /api/ebay/offer-jobs/:id` - inspect offer preparation or publication
+- `POST /api/ebay/offers/:id/revise` - explicitly revise a live listing from a newer completed inventory sync
+- `POST /api/ebay/offers/:id/withdraw` - explicitly end a live listing while preserving its offer
+- `POST /api/ebay/offers/:id/reconcile` - compare local controlled fields with the remote offer
 - `GET /api/inventory-preparation-jobs/:id` - poll the worker job and retrieve its completed preparation
 - `GET /api/listing-drafts/:id/inventory-preparation` - retrieve the latest preparation for a draft
 - `GET /health`

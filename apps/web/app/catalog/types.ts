@@ -315,7 +315,7 @@ export interface EbayOffer {
   offerPayload: Record<string, unknown>;
   ebayOfferId: string | null;
   ebayListingId: string | null;
-  status: "PREPARING" | "FEES_READY" | "PUBLISH_QUEUED" | "PUBLISHED" | "FAILED";
+  status: "PREPARING" | "FEES_READY" | "PUBLISH_QUEUED" | "PUBLISHED" | "REVISION_QUEUED" | "WITHDRAW_QUEUED" | "WITHDRAWN" | "DRIFTED" | "FAILED";
   feeResponse: Record<string, unknown> | null;
   feeTotal: string | number | null;
   feeCurrency: string | null;
@@ -323,6 +323,29 @@ export interface EbayOffer {
   lastError: string | null;
   approvedAt: string | null;
   publishedAt: string | null;
+  lastRevisionAt: string | null;
+  revisionCount: number;
+  withdrawnAt: string | null;
+  remoteListingStatus: string | null;
+  remoteSnapshot: Record<string, unknown> | null;
+  driftIssues: string[] | null;
+  lastReconciledAt: string | null;
+}
+
+export interface EbayListingOperationJob {
+  id: string;
+  listingDraftId: string;
+  ebayOfferId: string;
+  inventorySyncJobId: string | null;
+  targetDraftVersion: number;
+  action: "REVISE" | "WITHDRAW" | "RECONCILE";
+  status: "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+  remoteSnapshot: Record<string, unknown> | null;
+  driftIssues: string[] | null;
+  attemptCount: number;
+  lastError: string | null;
+  completedAt: string | null;
+  ebayOffer: EbayOffer;
 }
 
 export interface EbayOfferJob {

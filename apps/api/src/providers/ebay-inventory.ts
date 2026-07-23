@@ -181,6 +181,34 @@ export async function publishOffer(organizationId: string, marketplace: Marketpl
 }
 
 export async function getPublishedListingId(organizationId: string, marketplace: Marketplace, offerId: string): Promise<string | null> {
+  const snapshot = await getOfferSnapshot(organizationId, marketplace, offerId);
+  return snapshot.listingId;
+}
+
+export interface RemoteOfferSnapshot {
+  offerId: string | null;
+  listingId: string | null;
+  listingStatus: string | null;
+  listingOnHold: boolean;
+  soldQuantity: number | null;
+  payload: Record<string, unknown>;
+}
+
+export function normalizeOfferSnapshot(response: Record<string, unknown>): RemoteOfferSnapshot {
+  const listing = typeof response.listing === "object" && response.listing !== null
+    ? response.listing as Record<string, unknown>
+    : {};
+  return {
+    offerId: typeof response.offerId === "string" ? response.offerId : null,
+    listingId: typeof listing.listingId === "string" ? listing.listingId : typeof response.listingId === "string" ? response.listingId : null,
+    listingStatus: typeof listing.listingStatus === "string" ? listing.listingStatus : null,
+    listingOnHold: listing.listingOnHold === true,
+    soldQuantity: typeof listing.soldQuantity === "number" ? listing.soldQuantity : null,
+    payload: response,
+  };
+}
+
+export async function getOfferSnapshot(organizationId: string, marketplace: Marketplace, offerId: string): Promise<RemoteOfferSnapshot> {
   const response = await offerRequest<Record<string, unknown>>({
     organizationId,
     marketplace,
@@ -188,9 +216,15 @@ export async function getPublishedListingId(organizationId: string, marketplace:
     method: "GET",
     operation: "eBay published offer reconciliation",
   });
-  if (typeof response.listingId === "string") return response.listingId;
-  if (typeof response.listing === "object" && response.listing !== null && typeof (response.listing as Record<string, unknown>).listingId === "string") {
-    return (response.listing as Record<string, unknown>).listingId as string;
-  }
-  return null;
+  return normalizeOfferSnapshot(response);
+}
+
+export async function withdrawOffer(organizationId: string, marketplace: Marketplace, offerId: string): Promise<void> {
+  await offerRequest<void>({
+    organizationId,
+    marketplace,
+    path: `/offer/${encodeURIComponent(offerId)}/withdraw`,
+    method: "POST",
+    operation: "eBay offer withdrawal",
+  });
 }

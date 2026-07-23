@@ -126,6 +126,8 @@ Step 20 keeps eBay inventory and compatibility mutations in the worker as durabl
 
 Step 21 adds the first publishing-service boundary: offer preparation/fee preview and publication are separate commands and jobs. Remote identifiers and approval evidence stay durable so this workflow can later move behind a queue without changing the catalog owner.
 
+Step 22 keeps published-listing revision, withdrawal, and reconciliation behind the same worker boundary. Each command persists its requested version and remote evidence, making a future publishing-service extraction an ownership move rather than a workflow rewrite.
+
 ## 8. Current limitations
 
 - PostgreSQL polling adds up to `WORKER_POLL_INTERVAL_MS` latency.

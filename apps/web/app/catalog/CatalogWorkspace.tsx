@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import styles from "./catalog.module.css";
-import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogStatus, EbayAspectRequirement, EbayConditionOption, EbayConnection, EbayInventorySyncJob, EbayOffer, EbayOfferJob, EbaySellerResources, FitmentJob, FitmentJobSummary, InventoryPreparation, InventoryPreparationJob, ListingDraft, LiveDraftValidation, PartCondition, PricingConditionMode, PricingJob, PricingJobSummary } from "./types";
+import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogStatus, EbayAspectRequirement, EbayConditionOption, EbayConnection, EbayInventorySyncJob, EbayListingOperationJob, EbayOffer, EbayOfferJob, EbaySellerResources, FitmentJob, FitmentJobSummary, InventoryPreparation, InventoryPreparationJob, ListingDraft, LiveDraftValidation, PartCondition, PricingConditionMode, PricingJob, PricingJobSummary } from "./types";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const statuses: CatalogStatus[] = ["IMPORTED", "NEEDS_IMAGES", "IMPORT_ERROR", "READY_FOR_ENRICHMENT", "ARCHIVED"];
@@ -84,6 +84,7 @@ export default function CatalogWorkspace() {
   const [inventorySyncJob, setInventorySyncJob] = useState<EbayInventorySyncJob | null>(null);
   const [ebayOffer, setEbayOffer] = useState<EbayOffer | null>(null);
   const [ebayOfferJob, setEbayOfferJob] = useState<EbayOfferJob | null>(null);
+  const [listingOperationJob, setListingOperationJob] = useState<EbayListingOperationJob | null>(null);
 
   useEffect(() => {
     const localDemo = process.env.NODE_ENV !== "production" && new URLSearchParams(window.location.search).get("demo") === "1";
@@ -324,6 +325,7 @@ export default function CatalogWorkspace() {
     setInventorySyncJob(null);
     setEbayOffer(null);
     setEbayOfferJob(null);
+    setListingOperationJob(null);
     try {
       const draft = await request(`/api/listing-drafts/${id}`) as ListingDraft;
       setDraftDetail(draft);
@@ -375,8 +377,9 @@ export default function CatalogWorkspace() {
       setInventoryPreparation(null);
       setInventoryPreparationJob(null);
       setInventorySyncJob(null);
-      setEbayOffer(null);
+      setEbayOffer((current) => current && ["PUBLISHED", "DRIFTED", "WITHDRAWN"].includes(current.status) ? current : null);
       setEbayOfferJob(null);
+      setListingOperationJob(null);
       setDrafts((current) => current.map((draft) => draft.id === updated.id ? updated : draft));
       setNotice(updated.status === "READY" ? "Draft is ready for the future publish step." : "Draft saved. Review the remaining blockers.");
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to save listing draft"); }
@@ -406,8 +409,9 @@ export default function CatalogWorkspace() {
       setInventoryPreparation(null);
       setInventoryPreparationJob(null);
       setInventorySyncJob(null);
-      setEbayOffer(null);
+      setEbayOffer((current) => current && ["PUBLISHED", "DRIFTED", "WITHDRAWN"].includes(current.status) ? current : null);
       setEbayOfferJob(null);
+      setListingOperationJob(null);
       setDrafts((current) => current.map((draft) => draft.id === result.draft.id ? result.draft : draft));
       setSellerResources(result.resources);
       setCategoryAspects(result.categoryMetadata.aspects);
@@ -454,7 +458,10 @@ export default function CatalogWorkspace() {
 
   async function applyInventoryToEbay() {
     if (!inventoryPreparation || !draftDetail || demo || draftBusy || inventoryPreparation.draftVersion !== draftDetail.version) return;
-    if (!window.confirm("This will create or replace this SKU and its compatibility data in the connected eBay seller inventory. It will not publish a listing. Continue?")) return;
+    const impact = ebayOffer?.publishedAt
+      ? "This SKU is already used by a published listing. The inventory and compatibility records will be replaced now; the offer-level revision remains a separate approval."
+      : "This does not create or publish an offer.";
+    if (!window.confirm(`This will create or replace this SKU and its compatibility data in the connected eBay seller inventory.\n\n${impact}\n\nContinue?`)) return;
     setDraftBusy(true); setError("");
     try {
       const job = await request(`/api/inventory-preparations/${inventoryPreparation.id}/apply`, {
@@ -533,6 +540,73 @@ export default function CatalogWorkspace() {
     }, 1500);
     return () => window.clearTimeout(timer);
   }, [demo, ebayOfferJob, request]);
+
+  async function reviseLiveListing() {
+    if (!ebayOffer || ebayOffer.status !== "PUBLISHED" || !inventorySyncJob || inventorySyncJob.status !== "COMPLETED" || demo || draftBusy) return;
+    if (!window.confirm(`Revise live eBay listing ${ebayOffer.ebayListingId} to draft version ${inventorySyncJob.draftVersion} now?\n\nThe current inventory, compatibility, price, quantity, policies, and offer settings will replace the live listing immediately.`)) return;
+    setDraftBusy(true); setError("");
+    try {
+      const job = await request(`/api/ebay/offers/${ebayOffer.id}/revise`, {
+        method: "POST",
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+        body: JSON.stringify({ inventorySyncJobId: inventorySyncJob.id, confirmRevision: true, confirmation: "REVISE" }),
+      }) as EbayListingOperationJob;
+      setListingOperationJob(job);
+      setEbayOffer(job.ebayOffer);
+      setNotice("The live listing revision was explicitly approved and queued.");
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to revise live listing"); }
+    finally { setDraftBusy(false); }
+  }
+
+  async function withdrawLiveListing() {
+    if (!ebayOffer || !["PUBLISHED", "DRIFTED"].includes(ebayOffer.status) || demo || draftBusy) return;
+    if (!window.confirm(`Withdraw eBay listing ${ebayOffer.ebayListingId} now?\n\nThis ends the active listing. The eBay offer is retained as unpublished for a future controlled relist workflow.`)) return;
+    setDraftBusy(true); setError("");
+    try {
+      const job = await request(`/api/ebay/offers/${ebayOffer.id}/withdraw`, {
+        method: "POST",
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+        body: JSON.stringify({ confirmWithdraw: true, confirmation: "WITHDRAW" }),
+      }) as EbayListingOperationJob;
+      setListingOperationJob(job);
+      setEbayOffer(job.ebayOffer);
+      setNotice("Listing withdrawal was explicitly approved and queued.");
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to withdraw live listing"); }
+    finally { setDraftBusy(false); }
+  }
+
+  async function reconcileLiveListing() {
+    if (!ebayOffer?.ebayOfferId || demo || draftBusy) return;
+    setDraftBusy(true); setError("");
+    try {
+      const job = await request(`/api/ebay/offers/${ebayOffer.id}/reconcile`, {
+        method: "POST",
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+        body: JSON.stringify({}),
+      }) as EbayListingOperationJob;
+      setListingOperationJob(job);
+      setNotice("Remote eBay offer reconciliation was queued.");
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to reconcile eBay listing"); }
+    finally { setDraftBusy(false); }
+  }
+
+  useEffect(() => {
+    if (!listingOperationJob || !["QUEUED", "RUNNING"].includes(listingOperationJob.status) || demo) return;
+    const timer = window.setTimeout(() => {
+      request(`/api/ebay/listing-operation-jobs/${listingOperationJob.id}`)
+        .then((value) => {
+          const job = value as EbayListingOperationJob;
+          setListingOperationJob(job);
+          setEbayOffer(job.ebayOffer);
+          if (job.status === "COMPLETED" && job.action === "REVISE") setNotice(`Live listing revised to draft version ${job.targetDraftVersion}.`);
+          else if (job.status === "COMPLETED" && job.action === "WITHDRAW") setNotice("The eBay listing is withdrawn and its offer is retained.");
+          else if (job.status === "COMPLETED" && job.action === "RECONCILE") setNotice(job.driftIssues?.length ? `Reconciliation found ${job.driftIssues.length} differences.` : "Local listing state matches eBay.");
+          else if (job.status === "FAILED") setError(job.lastError ?? "eBay listing operation failed");
+        })
+        .catch((caught) => setError(caught instanceof Error ? caught.message : "Unable to refresh eBay listing operation"));
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [demo, listingOperationJob, request]);
 
   async function connectEbay() {
     if (demo || connectionBusy) return;
@@ -664,16 +738,25 @@ export default function CatalogWorkspace() {
           {inventorySyncJob?.status === "COMPLETED" && (!ebayOffer || ["PREPARING", "FAILED"].includes(ebayOffer.status)) && <button type="button" onClick={() => void prepareEbayOffer()} disabled={draftBusy || Boolean(ebayOfferJob && ["QUEUED", "RUNNING"].includes(ebayOfferJob.status))}>
             {ebayOfferJob?.action === "PREPARE" && ["QUEUED", "RUNNING"].includes(ebayOfferJob.status) ? "Preparing offer..." : "Prepare offer & preview fees"}
           </button>}
-          {ebayOffer && <div className={styles.preparationStatus}>
-            <b>Offer: {ebayOffer.status.toLowerCase().replaceAll("_", " ")}</b>
-            {ebayOffer.ebayOfferId && <span>eBay offer ID: {ebayOffer.ebayOfferId}</span>}
-            {ebayOffer.feeTotal != null && <span>Expected listing fees: {money(ebayOffer.feeTotal, ebayOffer.feeCurrency ?? draftDetail.currency)}</span>}
-            {ebayOffer.status === "FEES_READY" && <button type="button" className={styles.primary} disabled={draftBusy} onClick={() => void publishEbayOffer()}>Approve fees & publish live</button>}
-            {ebayOffer.status === "PUBLISHED" && ebayOffer.ebayListingId && <a href={`https://${ebayOffer.marketplace === "EBAY_GB" ? "www.ebay.co.uk" : ebayOffer.marketplace === "EBAY_DE" ? "www.ebay.de" : "www.ebay.com"}/itm/${ebayOffer.ebayListingId}`} target="_blank" rel="noreferrer">Open live listing {ebayOffer.ebayListingId}</a>}
-            {ebayOffer.lastError && <span>{ebayOffer.lastError}</span>}
-            {ebayOffer.feeResponse && <details><summary>View eBay fee response</summary><pre>{JSON.stringify(ebayOffer.feeResponse, null, 2)}</pre></details>}
-          </div>}
         </section>}
+        {ebayOffer && <div className={styles.preparationStatus}>
+          <b>Offer: {ebayOffer.status.toLowerCase().replaceAll("_", " ")}</b>
+          {ebayOffer.ebayOfferId && <span>eBay offer ID: {ebayOffer.ebayOfferId}</span>}
+          {ebayOffer.ebayListingId && <span>Listing ID: {ebayOffer.ebayListingId}</span>}
+          {ebayOffer.feeTotal != null && <span>Expected listing fees: {money(ebayOffer.feeTotal, ebayOffer.feeCurrency ?? draftDetail.currency)}</span>}
+          {ebayOffer.remoteListingStatus && <span>Remote status: {humanStatus(ebayOffer.remoteListingStatus)}{ebayOffer.lastReconciledAt ? ` · checked ${new Date(ebayOffer.lastReconciledAt).toLocaleString()}` : ""}</span>}
+          {ebayOffer.revisionCount > 0 && <span>{ebayOffer.revisionCount} controlled revision{ebayOffer.revisionCount === 1 ? "" : "s"}</span>}
+          {ebayOffer.status === "FEES_READY" && <button type="button" className={styles.primary} disabled={draftBusy} onClick={() => void publishEbayOffer()}>Approve fees & publish live</button>}
+          {ebayOffer.status === "PUBLISHED" && inventorySyncJob?.status === "COMPLETED" && inventorySyncJob.draftVersion > ebayOffer.draftVersion && <button type="button" className={styles.primary} disabled={draftBusy || Boolean(listingOperationJob && ["QUEUED", "RUNNING"].includes(listingOperationJob.status))} onClick={() => void reviseLiveListing()}>Approve & revise live listing</button>}
+          {["PUBLISHED", "DRIFTED"].includes(ebayOffer.status) && <button type="button" disabled={draftBusy || Boolean(listingOperationJob && ["QUEUED", "RUNNING"].includes(listingOperationJob.status))} onClick={() => void withdrawLiveListing()}>Withdraw listing</button>}
+          {ebayOffer.ebayOfferId && <button type="button" disabled={draftBusy || Boolean(listingOperationJob && ["QUEUED", "RUNNING"].includes(listingOperationJob.status))} onClick={() => void reconcileLiveListing()}>Reconcile with eBay</button>}
+          {listingOperationJob && ["QUEUED", "RUNNING"].includes(listingOperationJob.status) && <span>{humanStatus(listingOperationJob.action)} job: {listingOperationJob.status.toLowerCase()}</span>}
+          {ebayOffer.ebayListingId && <a href={`https://${ebayOffer.marketplace === "EBAY_GB" ? "www.ebay.co.uk" : ebayOffer.marketplace === "EBAY_DE" ? "www.ebay.de" : "www.ebay.com"}/itm/${ebayOffer.ebayListingId}`} target="_blank" rel="noreferrer">Open eBay listing {ebayOffer.ebayListingId}</a>}
+          {ebayOffer.driftIssues?.map((issue) => <span key={issue} className={styles.warning}>DRIFT: {issue}</span>)}
+          {ebayOffer.lastError && <span>{ebayOffer.lastError}</span>}
+          {ebayOffer.feeResponse && <details><summary>View eBay fee response</summary><pre>{JSON.stringify(ebayOffer.feeResponse, null, 2)}</pre></details>}
+          {ebayOffer.remoteSnapshot && <details><summary>View last remote offer snapshot</summary><pre>{JSON.stringify(ebayOffer.remoteSnapshot, null, 2)}</pre></details>}
+        </div>}
         <form onSubmit={saveDraft}>
           <div className={styles.formGrid}>
             <label className={styles.wide}><span>Title ({draftDetail.title.length}/80)</span><input name="title" maxLength={120} defaultValue={draftDetail.title} required/></label>

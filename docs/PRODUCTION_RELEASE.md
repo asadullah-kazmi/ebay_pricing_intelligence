@@ -147,6 +147,7 @@ Omit `API_ACCESS_TOKEN` to run only public health/security checks. The script ne
 
 - Apply `20260723060000_add_inventory_sync`, deploy API/worker/web from one commit, and smoke-test one dedicated non-publishing SKU before enabling Step 20 for operators.
 - Apply `20260723070000_add_offer_publication` before Step 21. Prepare and inspect fees for a dedicated low-risk SKU before explicitly approving its first live publication.
+- Apply `20260723080000_add_listing_operations` before Step 22. Reconcile a test listing first, then verify one controlled revision and withdrawal.
 
 - The current Next.js 15 dependency pins PostCSS 8.4.31, which npm audit reports for a moderate CSS-stringification XSS advisory. This application does not stringify user-supplied CSS, so the vulnerable path is not currently exposed. Track the upstream Next.js fix and upgrade when a compatible release is available; do not use npm's suggested forced downgrade to Next 9.
 - Login, password reset, invitations, and onboarding UI are not complete. The catalog UI currently relies on an existing refresh session or a short-lived development access token.

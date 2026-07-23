@@ -199,6 +199,10 @@ enum EbayOfferStatus {
   FEES_READY
   PUBLISH_QUEUED
   PUBLISHED
+  REVISION_QUEUED
+  WITHDRAW_QUEUED
+  WITHDRAWN
+  DRIFTED
   FAILED
 }
 
@@ -208,6 +212,19 @@ enum EbayOfferJobAction {
 }
 
 enum EbayOfferJobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum EbayListingOperation {
+  REVISE
+  WITHDRAW
+  RECONCILE
+}
+
+enum EbayListingOperationJobStatus {
   QUEUED
   RUNNING
   COMPLETED
@@ -252,6 +269,7 @@ model Organization {
   ebayInventorySyncJobs EbayInventorySyncJob[]
   ebayOffers            EbayOffer[]
   ebayOfferJobs         EbayOfferJob[]
+  ebayListingOperationJobs EbayListingOperationJob[]
   createdAt            DateTime                    @default(now())
   updatedAt            DateTime                    @updatedAt
 }
@@ -276,6 +294,7 @@ model User {
   createdEbayInventorySyncJobs EbayInventorySyncJob[] @relation("EbayInventorySyncJobCreator")
   createdEbayOfferJobs  EbayOfferJob[] @relation("EbayOfferJobCreator")
   approvedEbayOffers    EbayOffer[]    @relation("EbayOfferApprover")
+  createdEbayListingOperationJobs EbayListingOperationJob[] @relation("EbayListingOperationJobCreator")
   createdAt           DateTime                 @default(now())
   updatedAt           DateTime                 @updatedAt
 }
@@ -923,6 +942,7 @@ model ListingDraft {
   ebayInventorySyncJobs EbayInventorySyncJob[]
   ebayOffers            EbayOffer[]
   ebayOfferJobs         EbayOfferJob[]
+  ebayListingOperationJobs EbayListingOperationJob[]
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
 
@@ -979,6 +999,7 @@ model EbayInventorySyncJob {
   createdAt              DateTime                   @default(now())
   updatedAt              DateTime                   @updatedAt
   offer                  EbayOffer?
+  listingOperationJobs   EbayListingOperationJob[]
 
   @@index([organizationId, createdAt])
   @@index([status, leaseExpiresAt])
@@ -1006,17 +1027,57 @@ model EbayOffer {
   approvedById       String?
   approvedAt         DateTime?
   publishedAt        DateTime?
+  lastRevisionAt     DateTime?
+  revisionCount      Int             @default(0)
+  withdrawnAt        DateTime?
+  remoteListingStatus String?
+  remoteSnapshot     Json?
+  driftIssues        Json?
+  lastReconciledAt   DateTime?
   organization       Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   listingDraft       ListingDraft    @relation(fields: [listingDraftId], references: [id], onDelete: Cascade)
   inventorySyncJob   EbayInventorySyncJob @relation(fields: [inventorySyncJobId], references: [id], onDelete: Restrict)
   approvedBy         User?           @relation("EbayOfferApprover", fields: [approvedById], references: [id], onDelete: SetNull)
   jobs               EbayOfferJob[]
+  listingOperationJobs EbayListingOperationJob[]
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
 
   @@index([organizationId, status, updatedAt])
   @@index([ebayOfferId])
   @@index([ebayListingId])
+}
+
+model EbayListingOperationJob {
+  id                 String                        @id @default(cuid())
+  organizationId     String
+  createdById        String
+  listingDraftId     String
+  ebayOfferId        String
+  inventorySyncJobId String?
+  targetDraftVersion Int
+  action             EbayListingOperation
+  status             EbayListingOperationJobStatus @default(QUEUED)
+  requestedPayload   Json?
+  remoteSnapshot     Json?
+  driftIssues        Json?
+  attemptCount       Int                           @default(0)
+  leaseOwner         String?
+  leaseExpiresAt     DateTime?
+  lastError          String?
+  startedAt          DateTime?
+  completedAt        DateTime?
+  organization       Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy          User                          @relation("EbayListingOperationJobCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  listingDraft       ListingDraft                  @relation(fields: [listingDraftId], references: [id], onDelete: Cascade)
+  ebayOffer          EbayOffer                     @relation(fields: [ebayOfferId], references: [id], onDelete: Cascade)
+  inventorySyncJob   EbayInventorySyncJob?         @relation(fields: [inventorySyncJobId], references: [id], onDelete: Restrict)
+  createdAt          DateTime                      @default(now())
+  updatedAt          DateTime                      @updatedAt
+
+  @@index([organizationId, createdAt])
+  @@index([status, leaseExpiresAt])
+  @@index([ebayOfferId, action, createdAt])
 }
 
 model EbayOfferJob {

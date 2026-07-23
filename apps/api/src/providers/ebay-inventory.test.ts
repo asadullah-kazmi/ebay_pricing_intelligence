@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contentLanguage, summarizeListingFees } from "./ebay-inventory.js";
+import { contentLanguage, normalizeOfferSnapshot, summarizeListingFees } from "./ebay-inventory.js";
 
 describe("eBay Inventory API localization", () => {
   it("uses the marketplace content language required by inventory writes", () => {
@@ -20,5 +20,14 @@ describe("eBay Inventory API localization", () => {
       }],
     };
     expect(summarizeListingFees(response)).toMatchObject({ total: 1.35, currency: "USD", warnings: [{ message: "Example warning" }] });
+  });
+
+  it("normalizes published listing state from getOffer", () => {
+    expect(normalizeOfferSnapshot({
+      offerId: "OFFER-1",
+      listing: { listingId: "123", listingStatus: "ACTIVE", listingOnHold: true, soldQuantity: 2 },
+    })).toMatchObject({
+      offerId: "OFFER-1", listingId: "123", listingStatus: "ACTIVE", listingOnHold: true, soldQuantity: 2,
+    });
   });
 });
