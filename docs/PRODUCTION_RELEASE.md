@@ -1,6 +1,6 @@
 # Production release checklist
 
-This checklist releases the current Catalog and Pricing milestone: authenticated organization context, spreadsheet staging, image mapping, import confirmation, catalog management, and tenant-scoped bulk competitor pricing. Fitment, seller OAuth, listing drafts, publishing, complete login/onboarding, and the admin panel are later product phases. Do not market this build as the complete publishing SaaS yet.
+This checklist releases the current catalog preparation milestone: authenticated organization context, spreadsheet staging, image mapping, import confirmation, catalog management, tenant-scoped competitor pricing and fitment, seller OAuth, and editable listing drafts with readiness checks. Live eBay publishing, complete login/onboarding, and the admin panel are later product phases. Do not market this build as the complete publishing SaaS yet.
 
 ## 1. Security prerequisites
 
@@ -72,6 +72,8 @@ Configure the lease, heartbeat, retry, and shutdown variables in [Background Wor
 
 Deploy the delivery-safety migration before the API/worker release. See [Idempotency, Outbox, and Dead-letter Handling](DELIVERY_SAFETY.md) for command headers, event delivery, operator replay, and deployment order.
 
+Deploy the listing-draft migration before exposing the Step 17 web controls. See [Listing Drafts and Publication Readiness](LISTING_DRAFTS.md). Draft validation is local preparation only and does not authorize or perform an eBay publish operation.
+
 ## 3. Railway web service
 
 Use the repository root as the service root.
@@ -142,9 +144,9 @@ Omit `API_ACCESS_TOKEN` to run only public health/security checks. The script ne
 - The current Next.js 15 dependency pins PostCSS 8.4.31, which npm audit reports for a moderate CSS-stringification XSS advisory. This application does not stringify user-supplied CSS, so the vulnerable path is not currently exposed. Track the upstream Next.js fix and upgrade when a compatible release is available; do not use npm's suggested forced downgrade to Next 9.
 - Login, password reset, invitations, and onboarding UI are not complete. The catalog UI currently relies on an existing refresh session or a short-lived development access token.
 - Rate limiting is per API process, not distributed.
-- Pricing jobs run asynchronously inside the API process and are limited to 25 parts. Move them to a durable queue before enabling multiple API replicas or high-volume pricing.
+- Pricing and fitment jobs run in the dedicated worker in production and currently use PostgreSQL leases rather than a broker-backed queue.
 - Pricing recommendations are market statistics only. Cost floors, pricing rules, proposal approval, overrides, and audit events are not implemented yet.
 - Sensitive catalog changes do not yet have a durable audit-event model.
 - Object-storage uploads performed immediately before a failed database transaction may require an orphan cleanup job.
 - Large import confirmation is transactional and synchronous; queue-based processing is still required before high-volume use.
-- Fitment, eBay seller OAuth, listing drafts, shipping policies, publishing, and admin functionality remain unimplemented product phases.
+- Business-policy/location discovery, live eBay category/aspect validation, publishing/revision/withdrawal, and admin functionality remain unimplemented product phases.

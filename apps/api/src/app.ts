@@ -27,6 +27,7 @@ import { getTenantContext, requireOrganizationRoles, requireTenantContext } from
 import { getWorkerHealth } from "./worker-operations.js";
 import { executeIdempotent, IdempotencyError } from "./idempotency-service.js";
 import { DeadLetterError, listDeadLetters, requeueDeadLetter } from "./dead-letter-service.js";
+import { createListingDrafts, getListingDraft, ListingDraftError, listListingDrafts, updateListingDraft } from "./listing-draft-service.js";
 
 const searchSchema = z.object({
   oem: z.string().trim().min(2).max(80),
@@ -107,6 +108,32 @@ const deadLetterQuerySchema = z.object({
   status: z.enum(["OPEN", "REQUEUED", "RESOLVED"]).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
+const listingDraftRoles = requireOrganizationRoles("OWNER", "ADMIN", "MANAGER", "PUBLISHER");
+const createListingDraftsSchema = z.object({
+  partIds: z.array(z.string().min(1)).min(1).max(25).transform((ids) => [...new Set(ids)]),
+  marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).default("EBAY_US"),
+}).strict();
+const listingDraftListSchema = z.object({
+  marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).optional(),
+  status: z.enum(["DRAFT", "BLOCKED", "READY"]).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+const listingDraftPatchSchema = z.object({
+  expectedVersion: z.number().int().positive(),
+  reason: z.string().trim().max(200).optional(),
+  title: z.string().trim().min(1).max(120).optional(),
+  description: z.string().trim().max(100_000).nullable().optional(),
+  categoryId: z.string().trim().max(50).nullable().optional(),
+  condition: z.enum(["NEW", "USED"]).optional(),
+  price: z.number().positive().max(10_000_000).nullable().optional(),
+  currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).optional(),
+  quantity: z.number().int().min(0).max(1_000_000).optional(),
+  aspects: z.record(z.string().trim().min(1).max(100), z.array(z.string().trim().min(1).max(500)).max(50)).optional(),
+  paymentPolicyId: z.string().trim().max(100).nullable().optional(),
+  returnPolicyId: z.string().trim().max(100).nullable().optional(),
+  shippingPolicyId: z.string().trim().max(100).nullable().optional(),
+  merchantLocationKey: z.string().trim().max(100).nullable().optional(),
+}).strict();
 const ebayConnectionRoles = requireOrganizationRoles("OWNER", "ADMIN");
 const ebayOAuthCallbackSchema = z.object({
   state: z.string().min(1).max(200),
@@ -458,6 +485,60 @@ app.post("/api/fitment/items/:id/approve", searchRateLimit, requireTenantContext
   } catch (error) { next(error); }
 });
 
+app.post("/api/listing-drafts", writeRateLimit, requireTenantContext, listingDraftRoles, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const input = createListingDraftsSchema.parse(req.body);
+    const result = await executeIdempotent({
+      organizationId: tenant.organization.id,
+      operation: "listing-drafts.create",
+      key: idempotencyKeySchema.parse(req.get("idempotency-key")),
+      request: input,
+      responseStatus: 201,
+      execute: () => createListingDrafts({
+        organizationId: tenant.organization.id,
+        userId: tenant.user.id,
+        partIds: input.partIds,
+        marketplace: input.marketplace,
+      }),
+    });
+    res.set("Idempotency-Replayed", String(result.replayed)).status(result.replayed ? 200 : 201).json(result.value);
+  } catch (error) { next(error); }
+});
+
+app.get("/api/listing-drafts", requireTenantContext, async (req, res, next) => {
+  try {
+    res.json(await listListingDrafts(getTenantContext(res).organization.id, listingDraftListSchema.parse(req.query)));
+  } catch (error) { next(error); }
+});
+
+app.get("/api/listing-drafts/:id", requireTenantContext, async (req, res, next) => {
+  try {
+    const draftId = req.params.id;
+    if (typeof draftId !== "string") return res.status(400).json({ error: "Invalid listing draft ID" });
+    res.json(await getListingDraft(getTenantContext(res).organization.id, draftId));
+  } catch (error) { next(error); }
+});
+
+app.patch("/api/listing-drafts/:id", writeRateLimit, requireTenantContext, listingDraftRoles, async (req, res, next) => {
+  try {
+    const draftId = req.params.id;
+    if (typeof draftId !== "string") return res.status(400).json({ error: "Invalid listing draft ID" });
+    const tenant = getTenantContext(res);
+    res.json(await updateListingDraft(tenant.organization.id, tenant.user.id, draftId, listingDraftPatchSchema.parse(req.body)));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/listing-drafts/:id/validate", writeRateLimit, requireTenantContext, listingDraftRoles, async (req, res, next) => {
+  try {
+    const draftId = req.params.id;
+    if (typeof draftId !== "string") return res.status(400).json({ error: "Invalid listing draft ID" });
+    const tenant = getTenantContext(res);
+    const { expectedVersion } = z.object({ expectedVersion: z.number().int().positive() }).strict().parse(req.body);
+    res.json(await updateListingDraft(tenant.organization.id, tenant.user.id, draftId, { expectedVersion, reason: "Readiness revalidated" }));
+  } catch (error) { next(error); }
+});
+
 app.get("/api/admin/dead-letters", requireTenantContext, deadLetterRoles, async (req, res, next) => {
   try {
     const query = deadLetterQuerySchema.parse(req.query);
@@ -574,6 +655,7 @@ app.use((error: unknown, req: express.Request, res: express.Response, _next: exp
   if (error instanceof FitmentJobError) return response(error.statusCode, { error: error.message });
   if (error instanceof IdempotencyError) return response(error.statusCode, { error: error.message });
   if (error instanceof DeadLetterError) return response(error.statusCode, { error: error.message });
+  if (error instanceof ListingDraftError) return response(error.statusCode, { error: error.message });
   if (error instanceof EbaySellerOAuthError) return response(error.statusCode, { error: error.message });
   if (typeof error === "object" && error !== null && "type" in error && error.type === "entity.too.large") {
     return response(413, { error: "Request body exceeds the configured upload limit" });

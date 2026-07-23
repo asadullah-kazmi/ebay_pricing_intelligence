@@ -87,6 +87,8 @@ See [Bulk Pricing Jobs](docs/BULK_PRICING.md) for selected-part eBay pricing, co
 
 See [eBay Seller Connection Setup](docs/EBAY_SELLER_OAUTH.md) for production RuName configuration, encrypted OAuth token storage, Railway variables, connection endpoints, and troubleshooting.
 
+See [Listing Drafts and Publication Readiness](docs/LISTING_DRAFTS.md) for draft creation, editing, version history, readiness blockers, and the boundary before live eBay publication.
+
 See [Production Release Checklist](docs/PRODUCTION_RELEASE.md) before deploying. It contains the Railway service commands, required variables, health checks, smoke test, rollback process, and current release limitations.
 
 ## API
@@ -124,6 +126,10 @@ See [Production Release Checklist](docs/PRODUCTION_RELEASE.md) before deploying.
 - `POST /api/ebay/connection/authorize` - start owner/admin eBay seller consent
 - `GET /api/ebay/oauth/callback` - validate eBay consent and store encrypted seller credentials
 - `DELETE /api/ebay/connection` - disconnect the organization and delete local token material
+- `POST /api/listing-drafts` - create idempotent, tenant-scoped listing drafts for selected catalog parts
+- `GET /api/listing-drafts` / `GET /api/listing-drafts/:id` - list drafts or retrieve one with version history
+- `PATCH /api/listing-drafts/:id` - edit a draft using optimistic concurrency
+- `POST /api/listing-drafts/:id/validate` - rerun publication-readiness checks without publishing
 - `GET /health`
 - `GET /health/live`
 - `GET /health/ready`

@@ -176,3 +176,44 @@ export interface FitmentJob extends FitmentJobSummary {
     applications: Array<{ id: string; fingerprint: string; properties: Record<string, string>; approvedAt: string }>;
   }>;
 }
+
+export type ListingDraftStatus = "DRAFT" | "BLOCKED" | "READY";
+
+export interface ListingReadinessIssue {
+  code: string;
+  severity: "BLOCKER" | "WARNING";
+  field: string;
+  message: string;
+}
+
+export interface ListingDraft {
+  id: string;
+  partId: string;
+  marketplace: string;
+  status: ListingDraftStatus;
+  title: string;
+  description: string | null;
+  categoryId: string | null;
+  condition: PartCondition;
+  price: number | null;
+  currency: string;
+  quantity: number;
+  aspects: Record<string, string[]>;
+  paymentPolicyId: string | null;
+  returnPolicyId: string | null;
+  shippingPolicyId: string | null;
+  merchantLocationKey: string | null;
+  validationIssues: ListingReadinessIssue[] | null;
+  validatedAt: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  part: { sku: string; primaryPartNumber: string; partName: string | null };
+  versions?: Array<{
+    id: string;
+    version: number;
+    reason: string | null;
+    createdAt: string;
+    createdBy: { id: string; email: string; name: string | null };
+  }>;
+}

@@ -103,7 +103,7 @@ Do not generate a public domain for the worker.
 | Core API | JWT authorization, tenancy, catalog commands, job creation, callbacks | Long-running eBay or image work |
 | Worker (current) | Pricing and fitment job execution and recovery | Public HTTP routes |
 | Media service (later) | Image ingestion, deduplication, transformation, storage metadata | Catalog business rules |
-| Publishing service (later) | Draft validation, eBay inventory/offer/publish/revise/withdraw | Pricing decisions |
+| Publishing service (later) | Consume validated draft events; eBay inventory/offer/publish/revise/withdraw | Pricing decisions or catalog ownership |
 | Notification service (later) | eBay webhooks, signature verification, deletion events | Interactive catalog APIs |
 | Admin service (later) | Cross-tenant support actions, audit views, retries | Normal tenant workflows |
 
@@ -119,6 +119,8 @@ Each extracted service must eventually own its data. API and worker share Prisma
 2. Connect the transactional outbox to a message broker when another service needs event consumption.
 3. Add platform-level dead-letter dashboards and audit history.
 4. Split media processing first, then publishing; keep authentication and catalog ownership in the core API until usage proves another boundary is necessary.
+
+Step 17 keeps listing drafts and synchronous readiness validation in the core API while the model is still evolving. Its transactional `listing.draft.created` and `listing.draft.updated` outbox events provide the future extraction seam; no publishing service should write catalog-owned part records directly.
 
 ## 8. Current limitations
 

@@ -843,7 +843,8 @@ Acceptance criteria:
 Implementation:
 
 - Build catalog table, gallery, filters, saved views, and export.
-- Implement listing draft and version history.
+- **Step 17 delivered:** selected catalog parts can now become tenant-scoped, marketplace-specific listing drafts with generated starting values, editable publication fields, optimistic concurrency, immutable version snapshots, role checks, readiness blockers/warnings, idempotent creation, transactional outbox events, and catalog UI controls. This step does not call eBay publication APIs.
+- Continue expanding the listing editor and version-history views.
 - Build image ordering/editor.
 - Implement bulk editing and assignments.
 - Add validation issue framework and state machine.
@@ -902,7 +903,9 @@ Acceptance criteria:
 
 **Estimate:** 4–7 weeks
 
-**Step 13 delivered:** the seller-connection foundation now provides one production or sandbox eBay connection per organization, owner/admin consent controls, one-use hashed OAuth state, server-side authorization-code exchange, AES-256-GCM encrypted token storage, automatic access-token refresh, sanitized status, reconnection, and local disconnect. Policy discovery, listing readiness, and publication remain later steps in this phase.
+**Step 13 delivered:** the seller-connection foundation now provides one production or sandbox eBay connection per organization, owner/admin consent controls, one-use hashed OAuth state, server-side authorization-code exchange, AES-256-GCM encrypted token storage, automatic access-token refresh, sanitized status, reconnection, and local disconnect.
+
+**Step 17 delivered:** publication readiness is represented by versioned listing drafts with explicit blockers and warnings. Policy/location discovery, live category/aspect validation, Inventory API operations, and publication remain later steps in this phase.
 
 Implementation:
 
