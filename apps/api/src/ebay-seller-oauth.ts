@@ -198,11 +198,14 @@ export async function getEbayConnection(organizationId: string) {
 export async function disconnectEbayConnection(organizationId: string) {
   const connection = await prisma.ebaySellerConnection.findUnique({ where: { organizationId }, select: { id: true } });
   if (!connection) return { connected: false, status: "NOT_CONNECTED" as const };
-  await prisma.ebaySellerConnection.update({ where: { id: connection.id }, data: {
-    status: "DISCONNECTED", accessTokenCiphertext: null, accessTokenIv: null, accessTokenTag: null,
-    refreshTokenCiphertext: null, refreshTokenIv: null, refreshTokenTag: null, accessTokenExpiresAt: null,
-    refreshTokenExpiresAt: null, disconnectedAt: new Date(), lastError: null,
-  } });
+  await prisma.$transaction([
+    prisma.ebaySellerConnection.update({ where: { id: connection.id }, data: {
+      status: "DISCONNECTED", accessTokenCiphertext: null, accessTokenIv: null, accessTokenTag: null,
+      refreshTokenCiphertext: null, refreshTokenIv: null, refreshTokenTag: null, accessTokenExpiresAt: null,
+      refreshTokenExpiresAt: null, disconnectedAt: new Date(), lastError: null,
+    } }),
+    prisma.ebaySellerResource.deleteMany({ where: { organizationId } }),
+  ]);
   return getEbayConnection(organizationId);
 }
 

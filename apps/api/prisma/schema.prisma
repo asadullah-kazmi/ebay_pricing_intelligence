@@ -167,6 +167,13 @@ enum ListingDraftStatus {
   READY
 }
 
+enum EbaySellerResourceType {
+  PAYMENT_POLICY
+  RETURN_POLICY
+  FULFILLMENT_POLICY
+  INVENTORY_LOCATION
+}
+
 model Organization {
   id                   String                      @id @default(cuid())
   name                 String
@@ -198,6 +205,7 @@ model Organization {
   deadLetterEntries    DeadLetterEntry[]
   listingDrafts        ListingDraft[]
   listingDraftVersions ListingDraftVersion[]
+  ebaySellerResources  EbaySellerResource[]
   createdAt            DateTime                    @default(now())
   updatedAt            DateTime                    @updatedAt
 }
@@ -295,6 +303,37 @@ model EbayOAuthState {
 
   @@index([organizationId, expiresAt])
   @@index([expiresAt])
+}
+
+model EbaySellerResource {
+  id             String                 @id @default(cuid())
+  organizationId String
+  marketplace    String
+  type           EbaySellerResourceType
+  remoteId       String
+  name           String?
+  enabled        Boolean                @default(true)
+  payload        Json
+  fetchedAt      DateTime               @default(now())
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  @@unique([organizationId, marketplace, type, remoteId])
+  @@index([organizationId, marketplace, type])
+}
+
+model EbayCategoryMetadata {
+  id          String   @id @default(cuid())
+  marketplace String
+  categoryId  String
+  aspects     Json
+  fetchedAt   DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([marketplace, categoryId])
+  @@index([fetchedAt])
 }
 
 model LegacyPricingPart {
@@ -793,6 +832,7 @@ model ListingDraft {
   merchantLocationKey String?
   validationIssues    Json?
   validatedAt         DateTime?
+  liveValidatedAt     DateTime?
   version             Int                @default(1)
   createdById         String
   updatedById         String

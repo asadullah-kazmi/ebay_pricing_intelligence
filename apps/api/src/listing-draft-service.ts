@@ -1,6 +1,9 @@
 import { Prisma, type ListingDraft, type PartCondition } from "@prisma/client";
 import { prisma } from "./db.js";
 import { enqueueOutboxEvent } from "./outbox-service.js";
+import { getCachedReadinessMetadata, refreshCategoryMetadata, syncSellerResources } from "./ebay-resource-service.js";
+import type { EbayAspectRequirement } from "./providers/ebay-selling.js";
+import type { Marketplace } from "./types.js";
 
 export class ListingDraftError extends Error {
   constructor(message: string, readonly statusCode: 400 | 404 | 409 = 400) {
@@ -35,6 +38,13 @@ export interface DraftReadinessContext {
   sellerConnected: boolean;
   approvedImageCount: number;
   fitmentApplicationCount: number;
+  sellerResources?: {
+    paymentPolicyIds: Set<string>;
+    returnPolicyIds: Set<string>;
+    fulfillmentPolicyIds: Set<string>;
+    inventoryLocationKeys: Set<string>;
+  } | null;
+  categoryRequirements?: EbayAspectRequirement[] | null;
 }
 
 export function evaluateListingReadiness(values: DraftValues, context: DraftReadinessContext): ReadinessIssue[] {
@@ -54,10 +64,37 @@ export function evaluateListingReadiness(values: DraftValues, context: DraftRead
   if (!values.returnPolicyId?.trim()) blocker("RETURN_POLICY_REQUIRED", "returnPolicyId", "Assign an eBay return policy.");
   if (!values.shippingPolicyId?.trim()) blocker("SHIPPING_POLICY_REQUIRED", "shippingPolicyId", "Assign an eBay shipping policy.");
   if (!values.merchantLocationKey?.trim()) blocker("LOCATION_REQUIRED", "merchantLocationKey", "Assign an eBay merchant location.");
+  if (context.sellerResources) {
+    if (values.paymentPolicyId && !context.sellerResources.paymentPolicyIds.has(values.paymentPolicyId)) blocker("PAYMENT_POLICY_INVALID", "paymentPolicyId", "The payment policy is not available for this seller and marketplace.");
+    if (values.returnPolicyId && !context.sellerResources.returnPolicyIds.has(values.returnPolicyId)) blocker("RETURN_POLICY_INVALID", "returnPolicyId", "The return policy is not available for this seller and marketplace.");
+    if (values.shippingPolicyId && !context.sellerResources.fulfillmentPolicyIds.has(values.shippingPolicyId)) blocker("SHIPPING_POLICY_INVALID", "shippingPolicyId", "The fulfillment policy is not available for this seller and marketplace.");
+    if (values.merchantLocationKey && !context.sellerResources.inventoryLocationKeys.has(values.merchantLocationKey)) blocker("LOCATION_INVALID", "merchantLocationKey", "The inventory location is unavailable or disabled.");
+  }
   const mpn = values.aspects["Manufacturer Part Number"] ?? values.aspects.MPN ?? [];
   if (!mpn.some((value) => value.trim())) blocker("MPN_REQUIRED", "aspects", "Manufacturer Part Number item specific is required.");
   if (!context.fitmentApplicationCount) warning("FITMENT_NOT_APPROVED", "fitment", "No approved vehicle compatibility is attached.");
-  warning("CATEGORY_METADATA_PENDING", "categoryId", "Required eBay category aspects will be confirmed against live metadata before publishing.");
+  if (context.categoryRequirements) {
+    const valueFor = (name: string) => Object.entries(values.aspects).find(([key]) => key.toLowerCase() === name.toLowerCase())?.[1] ?? [];
+    for (const requirement of context.categoryRequirements) {
+      const entered = valueFor(requirement.name).map((value) => value.trim()).filter(Boolean);
+      if (requirement.required && !entered.length) {
+        blocker("REQUIRED_ASPECT_MISSING", `aspects.${requirement.name}`, `Required eBay item specific "${requirement.name}" is missing.`);
+      } else if (requirement.recommended && !entered.length) {
+        warning("RECOMMENDED_ASPECT_MISSING", `aspects.${requirement.name}`, `Recommended eBay item specific "${requirement.name}" is missing.`);
+      }
+      if (entered.length && requirement.mode === "SELECTION_ONLY" && requirement.values.length) {
+        const allowed = new Set(requirement.values.map((value) => value.toLowerCase()));
+        if (entered.some((value) => !allowed.has(value.toLowerCase()))) {
+          blocker("ASPECT_VALUE_INVALID", `aspects.${requirement.name}`, `"${requirement.name}" must use a value allowed by eBay.`);
+        }
+      }
+      if (entered.length > 1 && requirement.cardinality === "SINGLE") {
+        blocker("ASPECT_CARDINALITY_INVALID", `aspects.${requirement.name}`, `"${requirement.name}" accepts only one value.`);
+      }
+    }
+  } else {
+    warning("CATEGORY_METADATA_PENDING", "categoryId", "Required eBay category aspects have not been confirmed against live metadata.");
+  }
   return issues;
 }
 
@@ -240,7 +277,14 @@ export async function updateListingDraft(organizationId: string, userId: string,
   if (current.version !== input.expectedVersion) throw new ListingDraftError("Listing draft changed; reload it before saving", 409);
   const { expectedVersion: _expectedVersion, reason, ...changes } = input;
   const values = { ...valuesFromDraft(current), ...changes };
-  const issues = evaluateListingReadiness(values, contextFromDraft(current));
+  const cached = await getCachedReadinessMetadata(organizationId, current.marketplace as Marketplace, values.categoryId);
+  const issues = evaluateListingReadiness(values, {
+    ...contextFromDraft(current),
+    ...cached,
+    ...(current.liveValidatedAt && !cached.sellerResources ? {
+      sellerResources: { paymentPolicyIds: new Set(), returnPolicyIds: new Set(), fulfillmentPolicyIds: new Set(), inventoryLocationKeys: new Set() },
+    } : {}),
+  });
   const status = issues.some(({ severity }) => severity === "BLOCKER") ? "BLOCKED" as const : "READY" as const;
   const nextVersion = current.version + 1;
   await prisma.$transaction(async (tx) => {
@@ -252,6 +296,7 @@ export async function updateListingDraft(organizationId: string, userId: string,
         status,
         validationIssues: asJson(issues),
         validatedAt: new Date(),
+        liveValidatedAt: null,
         updatedById: userId,
         version: nextVersion,
       },
@@ -276,6 +321,72 @@ export async function updateListingDraft(organizationId: string, userId: string,
     });
   });
   return getListingDraft(organizationId, draftId);
+}
+
+function sellerResourceContext(resources: Awaited<ReturnType<typeof syncSellerResources>>) {
+  return {
+    paymentPolicyIds: new Set(resources.paymentPolicies.filter(({ enabled }) => enabled).map(({ remoteId }) => remoteId)),
+    returnPolicyIds: new Set(resources.returnPolicies.filter(({ enabled }) => enabled).map(({ remoteId }) => remoteId)),
+    fulfillmentPolicyIds: new Set(resources.fulfillmentPolicies.filter(({ enabled }) => enabled).map(({ remoteId }) => remoteId)),
+    inventoryLocationKeys: new Set(resources.inventoryLocations.filter(({ enabled }) => enabled).map(({ remoteId }) => remoteId)),
+  };
+}
+
+export async function validateListingDraftLive(organizationId: string, userId: string, draftId: string, expectedVersion: number) {
+  const current = await prisma.listingDraft.findFirst({ where: { id: draftId, organizationId }, include: contextInclude });
+  if (!current) throw new ListingDraftError("Listing draft not found", 404);
+  if (current.version !== expectedVersion) throw new ListingDraftError("Listing draft changed; reload it before validating", 409);
+  if (!current.categoryId) throw new ListingDraftError("Set an eBay category ID before live validation");
+  const marketplace = current.marketplace as Marketplace;
+  const [resources, categoryMetadata] = await Promise.all([
+    syncSellerResources(organizationId, marketplace),
+    refreshCategoryMetadata(marketplace, current.categoryId),
+  ]);
+  const values = valuesFromDraft(current);
+  const issues = evaluateListingReadiness(values, {
+    ...contextFromDraft(current),
+    sellerResources: sellerResourceContext(resources),
+    categoryRequirements: categoryMetadata.aspects,
+  });
+  const status = issues.some(({ severity }) => severity === "BLOCKER") ? "BLOCKED" as const : "READY" as const;
+  const nextVersion = current.version + 1;
+  const now = new Date();
+  await prisma.$transaction(async (tx) => {
+    const updated = await tx.listingDraft.updateMany({
+      where: { id: draftId, organizationId, version: current.version },
+      data: {
+        status,
+        validationIssues: asJson(issues),
+        validatedAt: now,
+        liveValidatedAt: now,
+        updatedById: userId,
+        version: nextVersion,
+      },
+    });
+    if (!updated.count) throw new ListingDraftError("Listing draft changed; reload it before validating", 409);
+    await tx.listingDraftVersion.create({
+      data: {
+        organizationId,
+        listingDraftId: draftId,
+        version: nextVersion,
+        snapshot: snapshot(values, status, issues),
+        reason: "Validated against live eBay seller resources and category metadata",
+        createdById: userId,
+      },
+    });
+    await enqueueOutboxEvent(tx, {
+      organizationId,
+      topic: "listing.draft.live_validated",
+      aggregateType: "ListingDraft",
+      aggregateId: draftId,
+      payload: { draftId, version: nextVersion, status, marketplace, categoryId: current.categoryId },
+    });
+  });
+  return {
+    draft: await getListingDraft(organizationId, draftId),
+    resources,
+    categoryMetadata,
+  };
 }
 
 export async function listListingDrafts(

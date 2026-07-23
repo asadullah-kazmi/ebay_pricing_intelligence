@@ -205,6 +205,7 @@ export interface ListingDraft {
   merchantLocationKey: string | null;
   validationIssues: ListingReadinessIssue[] | null;
   validatedAt: string | null;
+  liveValidatedAt: string | null;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -216,4 +217,41 @@ export interface ListingDraft {
     createdAt: string;
     createdBy: { id: string; email: string; name: string | null };
   }>;
+}
+
+export interface EbaySellerResource {
+  type: "PAYMENT_POLICY" | "RETURN_POLICY" | "FULFILLMENT_POLICY" | "INVENTORY_LOCATION";
+  remoteId: string;
+  name: string | null;
+  enabled: boolean;
+  fetchedAt: string;
+}
+
+export interface EbaySellerResources {
+  marketplace: string;
+  paymentPolicies: EbaySellerResource[];
+  returnPolicies: EbaySellerResource[];
+  fulfillmentPolicies: EbaySellerResource[];
+  inventoryLocations: EbaySellerResource[];
+}
+
+export interface EbayAspectRequirement {
+  name: string;
+  required: boolean;
+  recommended: boolean;
+  mode: string | null;
+  dataType: string | null;
+  cardinality: string | null;
+  values: string[];
+}
+
+export interface LiveDraftValidation {
+  draft: ListingDraft;
+  resources: EbaySellerResources;
+  categoryMetadata: {
+    marketplace: string;
+    categoryId: string;
+    aspects: EbayAspectRequirement[];
+    fetchedAt: string;
+  };
 }

@@ -25,7 +25,7 @@ A draft is `READY` only when it has:
 - a merchant location key; and
 - an MPN item specific.
 
-Missing approved fitment is currently a warning because some parts or categories do not require vehicle compatibility. Live eBay category/aspect verification is also a warning in Step 17 and must become a final pre-publication check before publishing is enabled.
+Missing approved fitment is currently a warning because some parts or categories do not require vehicle compatibility. Until Step 18 live validation succeeds, eBay category/aspect verification is shown as pending. Step 18 replaces that warning with concrete required/recommended aspect and seller-resource results.
 
 ## Version safety
 
@@ -60,8 +60,6 @@ Deploy the API before the web application so the new catalog controls do not cal
 
 ## Not yet included
 
-- eBay business-policy and inventory-location discovery;
-- live Taxonomy/Metadata validation of category aspects;
 - EPS or image publication;
 - Inventory API item/offer creation;
 - publish, revise, withdraw, or listing-ID persistence; and

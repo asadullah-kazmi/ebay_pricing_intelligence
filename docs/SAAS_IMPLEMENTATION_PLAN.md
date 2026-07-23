@@ -907,6 +907,8 @@ Acceptance criteria:
 
 **Step 17 delivered:** publication readiness is represented by versioned listing drafts with explicit blockers and warnings. Policy/location discovery, live category/aspect validation, Inventory API operations, and publication remain later steps in this phase.
 
+**Step 18 delivered:** the connected seller's payment, return, and fulfillment policies and enabled inventory locations can be synchronized per marketplace. Drafts can be checked against live automotive Taxonomy aspect requirements, invalid seller-resource IDs, selection-only values, and aspect cardinality. Results are cached, versioned, timestamped, and emitted through the outbox. Inventory item, offer, and publish operations remain later steps.
+
 Implementation:
 
 - Add seller OAuth Authorization Code Grant.

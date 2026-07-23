@@ -74,6 +74,8 @@ Deploy the delivery-safety migration before the API/worker release. See [Idempot
 
 Deploy the listing-draft migration before exposing the Step 17 web controls. See [Listing Drafts and Publication Readiness](LISTING_DRAFTS.md). Draft validation is local preparation only and does not authorize or perform an eBay publish operation.
 
+Deploy the Step 18 seller-resource/category-metadata migration before exposing live validation controls. Verify the connected seller granted both `sell.account` and `sell.inventory`, then follow [eBay Seller Resources and Live Listing Validation](EBAY_LIVE_METADATA.md). Live validation still does not publish.
+
 ## 3. Railway web service
 
 Use the repository root as the service root.
@@ -149,4 +151,4 @@ Omit `API_ACCESS_TOKEN` to run only public health/security checks. The script ne
 - Sensitive catalog changes do not yet have a durable audit-event model.
 - Object-storage uploads performed immediately before a failed database transaction may require an orphan cleanup job.
 - Large import confirmation is transactional and synchronous; queue-based processing is still required before high-volume use.
-- Business-policy/location discovery, live eBay category/aspect validation, publishing/revision/withdrawal, and admin functionality remain unimplemented product phases.
+- Creating missing policies/locations, category suggestion, publishing/revision/withdrawal, and admin functionality remain unimplemented product phases.

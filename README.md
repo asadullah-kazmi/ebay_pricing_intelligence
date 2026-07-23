@@ -89,6 +89,8 @@ See [eBay Seller Connection Setup](docs/EBAY_SELLER_OAUTH.md) for production RuN
 
 See [Listing Drafts and Publication Readiness](docs/LISTING_DRAFTS.md) for draft creation, editing, version history, readiness blockers, and the boundary before live eBay publication.
 
+See [eBay Seller Resources and Live Listing Validation](docs/EBAY_LIVE_METADATA.md) for policy/location synchronization, category item specifics, OAuth scope requirements, and the live validation workflow.
+
 See [Production Release Checklist](docs/PRODUCTION_RELEASE.md) before deploying. It contains the Railway service commands, required variables, health checks, smoke test, rollback process, and current release limitations.
 
 ## API
@@ -130,6 +132,9 @@ See [Production Release Checklist](docs/PRODUCTION_RELEASE.md) before deploying.
 - `GET /api/listing-drafts` / `GET /api/listing-drafts/:id` - list drafts or retrieve one with version history
 - `PATCH /api/listing-drafts/:id` - edit a draft using optimistic concurrency
 - `POST /api/listing-drafts/:id/validate` - rerun publication-readiness checks without publishing
+- `GET /api/ebay/resources` / `POST /api/ebay/resources/sync` - read or refresh seller policies and inventory locations
+- `POST /api/ebay/categories/:categoryId/aspects/refresh` - retrieve and cache live category item specifics
+- `POST /api/listing-drafts/:id/validate-live` - validate a versioned draft against live eBay metadata
 - `GET /health`
 - `GET /health/live`
 - `GET /health/ready`

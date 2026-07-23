@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import styles from "./catalog.module.css";
-import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogStatus, EbayConnection, FitmentJob, FitmentJobSummary, ListingDraft, PartCondition, PricingConditionMode, PricingJob, PricingJobSummary } from "./types";
+import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogStatus, EbayAspectRequirement, EbayConnection, EbaySellerResources, FitmentJob, FitmentJobSummary, ListingDraft, LiveDraftValidation, PartCondition, PricingConditionMode, PricingJob, PricingJobSummary } from "./types";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const statuses: CatalogStatus[] = ["IMPORTED", "NEEDS_IMAGES", "IMPORT_ERROR", "READY_FOR_ENRICHMENT", "ARCHIVED"];
@@ -76,6 +76,8 @@ export default function CatalogWorkspace() {
   const [drafts, setDrafts] = useState<ListingDraft[]>([]);
   const [draftDetail, setDraftDetail] = useState<ListingDraft | null>(null);
   const [draftBusy, setDraftBusy] = useState(false);
+  const [sellerResources, setSellerResources] = useState<EbaySellerResources | null>(null);
+  const [categoryAspects, setCategoryAspects] = useState<EbayAspectRequirement[]>([]);
 
   useEffect(() => {
     const localDemo = process.env.NODE_ENV !== "production" && new URLSearchParams(window.location.search).get("demo") === "1";
@@ -309,7 +311,12 @@ export default function CatalogWorkspace() {
 
   async function openDraft(id: string) {
     setError("");
-    try { setDraftDetail(await request(`/api/listing-drafts/${id}`) as ListingDraft); }
+    setCategoryAspects([]);
+    try {
+      const draft = await request(`/api/listing-drafts/${id}`) as ListingDraft;
+      setDraftDetail(draft);
+      setSellerResources(await request(`/api/ebay/resources?marketplace=${encodeURIComponent(draft.marketplace)}`) as EbaySellerResources);
+    }
     catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to open listing draft"); }
   }
 
@@ -317,6 +324,12 @@ export default function CatalogWorkspace() {
     event.preventDefault();
     if (!draftDetail || demo || draftBusy) return;
     const form = new FormData(event.currentTarget);
+    const aspects = { ...draftDetail.aspects };
+    categoryAspects.forEach((requirement, index) => {
+      const value = String(form.get(`aspect-${index}`) ?? "").trim();
+      if (value) aspects[requirement.name] = requirement.cardinality === "MULTI" ? value.split("|").map((item) => item.trim()).filter(Boolean) : [value];
+      else delete aspects[requirement.name];
+    });
     const body = {
       expectedVersion: draftDetail.version,
       reason: "Listing editor update",
@@ -331,6 +344,7 @@ export default function CatalogWorkspace() {
       returnPolicyId: String(form.get("returnPolicyId")) || null,
       shippingPolicyId: String(form.get("shippingPolicyId")) || null,
       merchantLocationKey: String(form.get("merchantLocationKey")) || null,
+      aspects,
     };
     setDraftBusy(true); setError("");
     try {
@@ -339,6 +353,34 @@ export default function CatalogWorkspace() {
       setDrafts((current) => current.map((draft) => draft.id === updated.id ? updated : draft));
       setNotice(updated.status === "READY" ? "Draft is ready for the future publish step." : "Draft saved. Review the remaining blockers.");
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to save listing draft"); }
+    finally { setDraftBusy(false); }
+  }
+
+  async function syncResources() {
+    if (!draftDetail || demo || draftBusy) return;
+    setDraftBusy(true); setError("");
+    try {
+      setSellerResources(await request("/api/ebay/resources/sync", {
+        method: "POST", body: JSON.stringify({ marketplace: draftDetail.marketplace }),
+      }) as EbaySellerResources);
+      setNotice("eBay business policies and inventory locations refreshed.");
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to refresh eBay seller resources"); }
+    finally { setDraftBusy(false); }
+  }
+
+  async function validateDraftLive() {
+    if (!draftDetail || demo || draftBusy) return;
+    setDraftBusy(true); setError("");
+    try {
+      const result = await request(`/api/listing-drafts/${draftDetail.id}/validate-live`, {
+        method: "POST", body: JSON.stringify({ expectedVersion: draftDetail.version }),
+      }) as LiveDraftValidation;
+      setDraftDetail(result.draft);
+      setDrafts((current) => current.map((draft) => draft.id === result.draft.id ? result.draft : draft));
+      setSellerResources(result.resources);
+      setCategoryAspects(result.categoryMetadata.aspects);
+      setNotice(result.draft.status === "READY" ? "Draft passed live eBay validation." : "Live eBay metadata loaded. Resolve the displayed blockers and validate again.");
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to validate with eBay"); }
     finally { setDraftBusy(false); }
   }
 
@@ -442,6 +484,44 @@ export default function CatalogWorkspace() {
       </section>
     </section>
     {detail && <div className={styles.modalBackdrop} role="presentation"><section className={styles.drawer} role="dialog" aria-modal="true" aria-labelledby="edit-part-title"><header><div><span className={styles.eyebrow}>CATALOG EDITOR</span><h2 id="edit-part-title">Edit {detail.sku}</h2></div><button aria-label="Close editor" onClick={() => setDetail(null)}>×</button></header><form onSubmit={savePart}><div className={styles.formGrid}><label><span>SKU</span><input name="sku" defaultValue={detail.sku} required/></label><label><span>Primary part number</span><input name="primaryPartNumber" defaultValue={detail.primaryPartNumber} required/></label><label><span>Brand</span><input name="brand" defaultValue={detail.brand ?? ""}/></label><label><span>Part name</span><input name="partName" defaultValue={detail.partName ?? ""}/></label><label><span>Condition</span><select name="condition" defaultValue={detail.condition}><option value="NEW">New</option><option value="USED">Used</option></select></label><label><span>Catalog status</span><select name="status" defaultValue={detail.status}>{statuses.map((value) => <option key={value} value={value}>{humanStatus(value)}</option>)}</select></label><label><span>Quantity</span><input name="quantity" type="number" min="0" defaultValue={detail.inventoryItem?.quantity ?? 0}/></label><label><span>Cost</span><input name="cost" type="number" min="0" step="0.01" defaultValue={Number(detail.inventoryItem?.cost ?? 0)}/></label><label><span>Currency</span><input name="currency" maxLength={3} defaultValue={detail.inventoryItem?.currency ?? "USD"}/></label><label><span>Warehouse</span><input name="warehouseCode" defaultValue={detail.inventoryItem?.warehouse?.code ?? ""}/></label><label><span>Bin location</span><input name="binLocation" defaultValue={detail.inventoryItem?.binLocation?.code ?? ""}/></label><label><span>Placement</span><input name="placement" defaultValue={detail.placement ?? ""}/></label><label><span>Weight</span><input name="weight" type="number" min="0" step="0.001" defaultValue={detail.inventoryItem?.weight == null ? "" : Number(detail.inventoryItem.weight)}/></label><label><span>Weight unit</span><select name="weightUnit" defaultValue={detail.inventoryItem?.weightUnit ?? "LB"}><option value="LB">lb</option><option value="KG">kg</option></select></label><label><span>Length</span><input name="length" type="number" min="0" step="0.01" defaultValue={detail.inventoryItem?.length == null ? "" : Number(detail.inventoryItem.length)}/></label><label><span>Width</span><input name="width" type="number" min="0" step="0.01" defaultValue={detail.inventoryItem?.width == null ? "" : Number(detail.inventoryItem.width)}/></label><label><span>Height</span><input name="height" type="number" min="0" step="0.01" defaultValue={detail.inventoryItem?.height == null ? "" : Number(detail.inventoryItem.height)}/></label><label><span>Dimension unit</span><select name="dimensionUnit" defaultValue={detail.inventoryItem?.dimensionUnit ?? "IN"}><option value="IN">in</option><option value="CM">cm</option></select></label><label className={styles.wide}><span>Description</span><textarea name="description" defaultValue={detail.description ?? ""}/></label><label className={styles.wide}><span>Internal notes</span><textarea name="notes" defaultValue={detail.notes ?? ""}/></label></div><div className={styles.formActions}><button type="button" onClick={() => setDetail(null)}>Cancel</button><button className={styles.primary} disabled={saving}>{saving ? "Saving..." : demo ? "Close preview" : "Save changes"}</button></div></form></section></div>}
-    {draftDetail && <div className={styles.modalBackdrop} role="presentation"><section className={styles.drawer} role="dialog" aria-modal="true" aria-labelledby="edit-draft-title"><header><div><span className={styles.eyebrow}>EBAY LISTING DRAFT · VERSION {draftDetail.version}</span><h2 id="edit-draft-title">{draftDetail.part.sku}</h2></div><button aria-label="Close draft editor" onClick={() => setDraftDetail(null)}>×</button></header><div className={styles.readinessBox}><b>{draftDetail.status === "READY" ? "Ready for publication workflow" : "Publication blocked"}</b>{(draftDetail.validationIssues ?? []).map((issue) => <span key={issue.code} className={issue.severity === "BLOCKER" ? styles.blocker : styles.warning}>{issue.severity}: {issue.message}</span>)}</div><form onSubmit={saveDraft}><div className={styles.formGrid}><label className={styles.wide}><span>Title ({draftDetail.title.length}/80)</span><input name="title" maxLength={120} defaultValue={draftDetail.title} required/></label><label><span>eBay category ID</span><input name="categoryId" defaultValue={draftDetail.categoryId ?? ""}/></label><label><span>Condition</span><select name="condition" defaultValue={draftDetail.condition}><option value="NEW">New</option><option value="USED">Used</option></select></label><label><span>Price</span><input name="price" type="number" min="0.01" step="0.01" defaultValue={draftDetail.price ?? ""}/></label><label><span>Currency</span><input name="currency" maxLength={3} defaultValue={draftDetail.currency}/></label><label><span>Quantity</span><input name="quantity" type="number" min="0" defaultValue={draftDetail.quantity}/></label><label><span>Merchant location key</span><input name="merchantLocationKey" defaultValue={draftDetail.merchantLocationKey ?? ""}/></label><label><span>Payment policy ID</span><input name="paymentPolicyId" defaultValue={draftDetail.paymentPolicyId ?? ""}/></label><label><span>Return policy ID</span><input name="returnPolicyId" defaultValue={draftDetail.returnPolicyId ?? ""}/></label><label><span>Shipping policy ID</span><input name="shippingPolicyId" defaultValue={draftDetail.shippingPolicyId ?? ""}/></label><label className={styles.wide}><span>Description</span><textarea name="description" defaultValue={draftDetail.description ?? ""}/></label></div><div className={styles.formActions}><button type="button" onClick={() => setDraftDetail(null)}>Close</button><button className={styles.primary} disabled={draftBusy}>{draftBusy ? "Validating..." : "Save & validate"}</button></div></form></section></div>}
+    {draftDetail && <div className={styles.modalBackdrop} role="presentation">
+      <section className={styles.drawer} role="dialog" aria-modal="true" aria-labelledby="edit-draft-title">
+        <header>
+          <div><span className={styles.eyebrow}>EBAY LISTING DRAFT · VERSION {draftDetail.version}</span><h2 id="edit-draft-title">{draftDetail.part.sku}</h2></div>
+          <button aria-label="Close draft editor" onClick={() => setDraftDetail(null)}>×</button>
+        </header>
+        <div className={styles.readinessBox}>
+          <b>{draftDetail.status === "READY" ? "Ready for publication workflow" : "Publication blocked"}</b>
+          <span>{draftDetail.liveValidatedAt ? `Last checked with eBay ${new Date(draftDetail.liveValidatedAt).toLocaleString()}` : "Live eBay validation is still required."}</span>
+          {(draftDetail.validationIssues ?? []).map((issue) => <span key={`${issue.code}-${issue.field}`} className={issue.severity === "BLOCKER" ? styles.blocker : styles.warning}>{issue.severity}: {issue.message}</span>)}
+        </div>
+        <div className={styles.metadataActions}>
+          <button type="button" disabled={draftBusy} onClick={() => void syncResources()}>Refresh policies & locations</button>
+          <button type="button" className={styles.primary} disabled={draftBusy || !draftDetail.categoryId} onClick={() => void validateDraftLive()}>{draftBusy ? "Contacting eBay..." : "Validate with eBay"}</button>
+        </div>
+        <form onSubmit={saveDraft}>
+          <div className={styles.formGrid}>
+            <label className={styles.wide}><span>Title ({draftDetail.title.length}/80)</span><input name="title" maxLength={120} defaultValue={draftDetail.title} required/></label>
+            <label><span>eBay category ID</span><input name="categoryId" defaultValue={draftDetail.categoryId ?? ""}/></label>
+            <label><span>Condition</span><select name="condition" defaultValue={draftDetail.condition}><option value="NEW">New</option><option value="USED">Used</option></select></label>
+            <label><span>Price</span><input name="price" type="number" min="0.01" step="0.01" defaultValue={draftDetail.price ?? ""}/></label>
+            <label><span>Currency</span><input name="currency" maxLength={3} defaultValue={draftDetail.currency}/></label>
+            <label><span>Quantity</span><input name="quantity" type="number" min="0" defaultValue={draftDetail.quantity}/></label>
+            <label><span>Merchant location</span><select name="merchantLocationKey" defaultValue={draftDetail.merchantLocationKey ?? ""}><option value="">Select location</option>{sellerResources?.inventoryLocations.filter(({ enabled }) => enabled).map((resource) => <option key={resource.remoteId} value={resource.remoteId}>{resource.name ?? resource.remoteId}</option>)}</select></label>
+            <label><span>Payment policy</span><select name="paymentPolicyId" defaultValue={draftDetail.paymentPolicyId ?? ""}><option value="">Select payment policy</option>{sellerResources?.paymentPolicies.filter(({ enabled }) => enabled).map((resource) => <option key={resource.remoteId} value={resource.remoteId}>{resource.name ?? resource.remoteId}</option>)}</select></label>
+            <label><span>Return policy</span><select name="returnPolicyId" defaultValue={draftDetail.returnPolicyId ?? ""}><option value="">Select return policy</option>{sellerResources?.returnPolicies.filter(({ enabled }) => enabled).map((resource) => <option key={resource.remoteId} value={resource.remoteId}>{resource.name ?? resource.remoteId}</option>)}</select></label>
+            <label><span>Shipping policy</span><select name="shippingPolicyId" defaultValue={draftDetail.shippingPolicyId ?? ""}><option value="">Select fulfillment policy</option>{sellerResources?.fulfillmentPolicies.filter(({ enabled }) => enabled).map((resource) => <option key={resource.remoteId} value={resource.remoteId}>{resource.name ?? resource.remoteId}</option>)}</select></label>
+            {categoryAspects.map((requirement, index) => <label key={requirement.name} className={requirement.cardinality === "MULTI" ? styles.wide : undefined}>
+              <span>{requirement.name}{requirement.required ? " *" : requirement.recommended ? " (recommended)" : ""}</span>
+              {requirement.mode === "SELECTION_ONLY" && requirement.values.length && requirement.cardinality === "SINGLE"
+                ? <select name={`aspect-${index}`} defaultValue={draftDetail.aspects[requirement.name]?.[0] ?? ""}><option value="">Select value</option>{requirement.values.map((value) => <option key={value} value={value}>{value}</option>)}</select>
+                : <input name={`aspect-${index}`} defaultValue={(draftDetail.aspects[requirement.name] ?? []).join(" | ")} placeholder={requirement.cardinality === "MULTI" ? "Separate multiple values with |" : undefined}/>}
+            </label>)}
+            <label className={styles.wide}><span>Description</span><textarea name="description" defaultValue={draftDetail.description ?? ""}/></label>
+          </div>
+          <div className={styles.formActions}><button type="button" onClick={() => setDraftDetail(null)}>Close</button><button className={styles.primary} disabled={draftBusy}>{draftBusy ? "Validating..." : "Save & validate"}</button></div>
+        </form>
+      </section>
+    </div>}
   </main>;
 }

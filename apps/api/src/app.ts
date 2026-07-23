@@ -27,7 +27,8 @@ import { getTenantContext, requireOrganizationRoles, requireTenantContext } from
 import { getWorkerHealth } from "./worker-operations.js";
 import { executeIdempotent, IdempotencyError } from "./idempotency-service.js";
 import { DeadLetterError, listDeadLetters, requeueDeadLetter } from "./dead-letter-service.js";
-import { createListingDrafts, getListingDraft, ListingDraftError, listListingDrafts, updateListingDraft } from "./listing-draft-service.js";
+import { createListingDrafts, getListingDraft, ListingDraftError, listListingDrafts, updateListingDraft, validateListingDraftLive } from "./listing-draft-service.js";
+import { listCachedSellerResources, refreshCategoryMetadata, syncSellerResources } from "./ebay-resource-service.js";
 
 const searchSchema = z.object({
   oem: z.string().trim().min(2).max(80),
@@ -118,6 +119,9 @@ const listingDraftListSchema = z.object({
   status: z.enum(["DRAFT", "BLOCKED", "READY"]).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
+const ebayMarketplaceSchema = z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]);
+const sellerResourceQuerySchema = z.object({ marketplace: ebayMarketplaceSchema.default("EBAY_US") });
+const sellerResourceSyncSchema = z.object({ marketplace: ebayMarketplaceSchema.default("EBAY_US") }).strict();
 const listingDraftPatchSchema = z.object({
   expectedVersion: z.number().int().positive(),
   reason: z.string().trim().max(200).optional(),
@@ -212,6 +216,29 @@ app.delete("/api/ebay/connection", writeRateLimit, requireTenantContext, ebayCon
   try {
     assertTrustedAuthOrigin(req);
     res.json(await disconnectEbayConnection(getTenantContext(res).organization.id));
+  } catch (error) { next(error); }
+});
+
+app.get("/api/ebay/resources", requireTenantContext, async (req, res, next) => {
+  try {
+    const { marketplace } = sellerResourceQuerySchema.parse(req.query);
+    res.json(await listCachedSellerResources(getTenantContext(res).organization.id, marketplace));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/ebay/resources/sync", writeRateLimit, requireTenantContext, listingDraftRoles, async (req, res, next) => {
+  try {
+    const { marketplace } = sellerResourceSyncSchema.parse(req.body);
+    res.json(await syncSellerResources(getTenantContext(res).organization.id, marketplace));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/ebay/categories/:categoryId/aspects/refresh", writeRateLimit, requireTenantContext, listingDraftRoles, async (req, res, next) => {
+  try {
+    const categoryId = req.params.categoryId;
+    if (typeof categoryId !== "string" || !/^[A-Za-z0-9_-]{1,50}$/.test(categoryId)) return res.status(400).json({ error: "Invalid category ID" });
+    const { marketplace } = sellerResourceSyncSchema.parse(req.body);
+    res.json(await refreshCategoryMetadata(marketplace, categoryId));
   } catch (error) { next(error); }
 });
 
@@ -536,6 +563,16 @@ app.post("/api/listing-drafts/:id/validate", writeRateLimit, requireTenantContex
     const tenant = getTenantContext(res);
     const { expectedVersion } = z.object({ expectedVersion: z.number().int().positive() }).strict().parse(req.body);
     res.json(await updateListingDraft(tenant.organization.id, tenant.user.id, draftId, { expectedVersion, reason: "Readiness revalidated" }));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/listing-drafts/:id/validate-live", writeRateLimit, requireTenantContext, listingDraftRoles, async (req, res, next) => {
+  try {
+    const draftId = req.params.id;
+    if (typeof draftId !== "string") return res.status(400).json({ error: "Invalid listing draft ID" });
+    const tenant = getTenantContext(res);
+    const { expectedVersion } = z.object({ expectedVersion: z.number().int().positive() }).strict().parse(req.body);
+    res.json(await validateListingDraftLive(tenant.organization.id, tenant.user.id, draftId, expectedVersion));
   } catch (error) { next(error); }
 });
 

@@ -34,4 +34,28 @@ describe("listing publication readiness", () => {
     ]));
     expect(issues).toContainEqual(expect.objectContaining({ code: "FITMENT_NOT_APPROVED", severity: "WARNING" }));
   });
+
+  it("validates selected seller resources and live category requirements", () => {
+    const issues = evaluateListingReadiness(complete, {
+      sellerConnected: true,
+      approvedImageCount: 2,
+      fitmentApplicationCount: 1,
+      sellerResources: {
+        paymentPolicyIds: new Set(["PAY"]),
+        returnPolicyIds: new Set(["RET"]),
+        fulfillmentPolicyIds: new Set(["OTHER"]),
+        inventoryLocationKeys: new Set(["MAIN"]),
+      },
+      categoryRequirements: [
+        { name: "Brand", required: true, recommended: false, mode: "SELECTION_ONLY", dataType: "STRING", cardinality: "SINGLE", values: ["BMW", "Audi"] },
+        { name: "Type", required: true, recommended: false, mode: "FREE_TEXT", dataType: "STRING", cardinality: "SINGLE", values: [] },
+      ],
+    });
+    expect(issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "SHIPPING_POLICY_INVALID", severity: "BLOCKER" }),
+      expect.objectContaining({ code: "ASPECT_VALUE_INVALID", field: "aspects.Brand" }),
+      expect.objectContaining({ code: "REQUIRED_ASPECT_MISSING", field: "aspects.Type" }),
+    ]));
+    expect(issues.some(({ code }) => code === "CATEGORY_METADATA_PENDING")).toBe(false);
+  });
 });
