@@ -3,6 +3,8 @@ import { Prisma, type FitmentJobItemStatus, type FitmentJobStatus } from "@prism
 import { prisma } from "./db.js";
 import { normalizePartNumber } from "./domain/matching.js";
 import { inlineJobOptions, leaseExpiry, runWithRetry, type JobRunOptions } from "./job-runtime.js";
+import { captureDeadLetter, resolveDeadLetter } from "./dead-letter-service.js";
+import { enqueueOutboxEvent } from "./outbox-service.js";
 import { discoverEbayFitment, getEbayProductCompatibilities, type EbayFitmentCandidate } from "./providers/ebay-fitment.js";
 import type { Marketplace } from "./types.js";
 
@@ -93,12 +95,22 @@ export async function createFitmentJob(organizationId: string, createdById: stri
   });
   if (parts.length !== partIds.length) throw new FitmentJobError("One or more selected parts are unavailable or archived", 404);
   try {
-    return await prisma.fitmentJob.create({
-      data: {
-        organizationId, createdById, marketplace: input.marketplace, totalItems: parts.length,
-        items: { create: parts.map((part) => ({ organizationId, partId: part.id, query: [part.brand, part.partName, part.primaryPartNumber].filter(Boolean).join(" ") })) },
-      },
-      include: jobInclude,
+    return await prisma.$transaction(async (tx) => {
+      const created = await tx.fitmentJob.create({
+        data: {
+          organizationId, createdById, marketplace: input.marketplace, totalItems: parts.length,
+          items: { create: parts.map((part) => ({ organizationId, partId: part.id, query: [part.brand, part.partName, part.primaryPartNumber].filter(Boolean).join(" ") })) },
+        },
+        include: jobInclude,
+      });
+      await enqueueOutboxEvent(tx, {
+        organizationId,
+        topic: "fitment.job.created",
+        aggregateType: "FitmentJob",
+        aggregateId: created.id,
+        payload: { jobId: created.id, organizationId, marketplace: input.marketplace, partIds },
+      });
+      return created;
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
@@ -159,10 +171,30 @@ async function processFitmentItem(item: {
         status: candidates.length ? "REVIEW_REQUIRED" : "NO_CANDIDATE",
         categoryId: discovery.categoryId, categoryName: discovery.categoryName, completedAt: new Date(),
       } });
+      await resolveDeadLetter(tx, "FITMENT_ITEM", item.id);
     }, { maxWait: 10_000, timeout: 60_000 });
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 500) : "Unknown fitment discovery error";
-    await prisma.fitmentJobItem.update({ where: { id: item.id }, data: { status: "FAILED", error: message, completedAt: new Date() } });
+    await prisma.$transaction(async (tx) => {
+      const failed = await tx.fitmentJobItem.update({
+        where: { id: item.id },
+        data: { status: "FAILED", error: message, completedAt: new Date() },
+      });
+      await captureDeadLetter(tx, {
+        organizationId: item.organizationId,
+        type: "FITMENT_ITEM",
+        jobId: failed.fitmentJobId,
+        itemId: item.id,
+        payload: {
+          partNumber: item.part.primaryPartNumber,
+          brand: item.part.brand,
+          partName: item.part.partName,
+          marketplace,
+        },
+        error: message,
+        attempts: failed.attemptCount,
+      });
+    });
   }
 }
 

@@ -116,12 +116,12 @@ Each extracted service must eventually own its data. API and worker share Prisma
 ## 7. Next infrastructure milestones
 
 1. Introduce Redis/BullMQ when queue volume or delayed provider retries outgrow PostgreSQL polling.
-2. Add idempotency keys and an outbox table before publishing to eBay.
-3. Add dead-letter support and administrative job replay.
+2. Connect the transactional outbox to a message broker when another service needs event consumption.
+3. Add platform-level dead-letter dashboards and audit history.
 4. Split media processing first, then publishing; keep authentication and catalog ownership in the core API until usage proves another boundary is necessary.
 
 ## 8. Current limitations
 
 - PostgreSQL polling adds up to `WORKER_POLL_INTERVAL_MS` latency.
-- Redis, dead-letter queues, and a worker dashboard are not included yet.
+- Redis, an external event broker, and a platform-wide worker dashboard are not included yet.
 - The API's in-memory rate limiter still requires one API replica.

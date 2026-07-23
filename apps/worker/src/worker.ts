@@ -5,6 +5,7 @@ import {
   getActiveFitmentJobCount,
   getActivePricingJobCount,
   markWorkerStopped,
+  publishOutboxEvents,
   recordWorkerHeartbeat,
   renewWorkerJobLeases,
   resumeInterruptedFitmentJobs,
@@ -26,6 +27,8 @@ const leaseDurationMs = integerEnv("WORKER_LEASE_DURATION_MS", 60_000, 15_000, 6
 const maxAttempts = integerEnv("WORKER_MAX_ATTEMPTS", 3, 1, 10);
 const retryBaseDelayMs = integerEnv("WORKER_RETRY_BASE_DELAY_MS", 1_000, 100, 30_000);
 const shutdownTimeoutMs = integerEnv("WORKER_SHUTDOWN_TIMEOUT_MS", 30_000, 5_000, 120_000);
+const outboxMaxAttempts = integerEnv("OUTBOX_MAX_ATTEMPTS", 5, 1, 20);
+const outboxBatchSize = integerEnv("OUTBOX_BATCH_SIZE", 25, 1, 100);
 if (heartbeatIntervalMs * 3 > leaseDurationMs) {
   throw new Error("WORKER_LEASE_DURATION_MS must be at least three times WORKER_HEARTBEAT_INTERVAL_MS");
 }
@@ -39,7 +42,14 @@ let stopping = false;
 let pollInProgress = false;
 let pollTimer: NodeJS.Timeout | undefined;
 let heartbeatTimer: NodeJS.Timeout | undefined;
-const metrics = { polls: 0, pollFailures: 0, pricingJobsDispatched: 0, fitmentJobsDispatched: 0 };
+const metrics = {
+  polls: 0,
+  pollFailures: 0,
+  pricingJobsDispatched: 0,
+  fitmentJobsDispatched: 0,
+  outboxPublished: 0,
+  outboxFailed: 0,
+};
 
 function activeJobs(): number {
   return getActivePricingJobCount() + getActiveFitmentJobCount();
@@ -62,12 +72,31 @@ async function poll(): Promise<void> {
   pollInProgress = true;
   metrics.polls += 1;
   try {
-    const [pricingJobs, fitmentJobs] = await Promise.all([
+    const [pricingJobs, fitmentJobs, outbox] = await Promise.all([
       resumeInterruptedPricingJobs(jobOptions),
       resumeInterruptedFitmentJobs(jobOptions),
+      publishOutboxEvents({
+        instanceId,
+        leaseDurationMs,
+        maxAttempts: outboxMaxAttempts,
+        batchSize: outboxBatchSize,
+        publish: async (event) => {
+          console.info(JSON.stringify({
+            type: "outbox_event",
+            eventId: event.id,
+            topic: event.topic,
+            aggregateType: event.aggregateType,
+            aggregateId: event.aggregateId,
+            occurredAt: event.createdAt,
+            payload: event.payload,
+          }));
+        },
+      }),
     ]);
     metrics.pricingJobsDispatched += pricingJobs;
     metrics.fitmentJobsDispatched += fitmentJobs;
+    metrics.outboxPublished += outbox.published;
+    metrics.outboxFailed += outbox.failed;
     if (pricingJobs || fitmentJobs) {
       console.info(JSON.stringify({ type: "jobs_dispatched", pricingJobs, fitmentJobs, activeJobs: activeJobs() }));
     }

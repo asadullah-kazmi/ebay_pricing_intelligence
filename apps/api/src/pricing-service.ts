@@ -4,6 +4,8 @@ import { calculateAnalytics } from "./domain/analytics.js";
 import { matchListing, normalizePartNumber } from "./domain/matching.js";
 import { getConfig } from "./config.js";
 import { inlineJobOptions, leaseExpiry, runWithRetry, type JobRunOptions } from "./job-runtime.js";
+import { captureDeadLetter, resolveDeadLetter } from "./dead-letter-service.js";
+import { enqueueOutboxEvent } from "./outbox-service.js";
 import { searchEbay } from "./providers/ebay.js";
 import type { ListingCondition, Marketplace, MatchedListing, RawListing } from "./types.js";
 
@@ -125,23 +127,33 @@ export async function createPricingJob(organizationId: string, createdById: stri
   if (parts.length !== partIds.length) throw new PricingJobError("One or more selected parts are unavailable or archived", 404);
 
   try {
-    const job = await prisma.pricingJob.create({
-      data: {
-        organizationId,
-        createdById,
-        marketplace: input.marketplace,
-        conditionMode: input.conditionMode,
-        totalItems: parts.length,
-        items: {
-          create: parts.map((part) => ({
-            organizationId,
-            partId: part.id,
-            queryPartNumber: part.normalizedPartNumber || normalizePartNumber(part.primaryPartNumber),
-            condition: resolvePricingCondition(input.conditionMode, part.condition),
-          })),
+    const job = await prisma.$transaction(async (tx) => {
+      const created = await tx.pricingJob.create({
+        data: {
+          organizationId,
+          createdById,
+          marketplace: input.marketplace,
+          conditionMode: input.conditionMode,
+          totalItems: parts.length,
+          items: {
+            create: parts.map((part) => ({
+              organizationId,
+              partId: part.id,
+              queryPartNumber: part.normalizedPartNumber || normalizePartNumber(part.primaryPartNumber),
+              condition: resolvePricingCondition(input.conditionMode, part.condition),
+            })),
+          },
         },
-      },
-      include: jobInclude,
+        include: jobInclude,
+      });
+      await enqueueOutboxEvent(tx, {
+        organizationId,
+        topic: "pricing.job.created",
+        aggregateType: "PricingJob",
+        aggregateId: created.id,
+        payload: { jobId: created.id, organizationId, marketplace: input.marketplace, partIds },
+      });
+      return created;
     });
     return serializeJob(job);
   } catch (error) {
@@ -224,10 +236,25 @@ async function processPricingItem(
           completedAt,
         },
       });
+      await resolveDeadLetter(tx, "PRICING_ITEM", item.id);
     }, { maxWait: 10_000, timeout: 60_000 });
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 500) : "Unknown pricing error";
-    await prisma.pricingJobItem.update({ where: { id: item.id }, data: { status: "FAILED", error: message, completedAt: new Date() } });
+    await prisma.$transaction(async (tx) => {
+      const failed = await tx.pricingJobItem.update({
+        where: { id: item.id },
+        data: { status: "FAILED", error: message, completedAt: new Date() },
+      });
+      await captureDeadLetter(tx, {
+        organizationId: item.organizationId,
+        type: "PRICING_ITEM",
+        jobId: failed.pricingJobId,
+        itemId: item.id,
+        payload: { queryPartNumber: item.queryPartNumber, condition: item.condition, marketplace },
+        error: message,
+        attempts: failed.attemptCount,
+      });
+    });
   }
 }
 

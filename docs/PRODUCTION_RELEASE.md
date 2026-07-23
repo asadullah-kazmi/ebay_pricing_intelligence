@@ -70,6 +70,8 @@ Replicas: exactly one
 
 Configure the lease, heartbeat, retry, and shutdown variables in [Background Worker Operations](WORKER_OPERATIONS.md), plus the same `DATABASE_URL`, eBay credentials, and provider variables used by pricing and fitment. Monitor `GET /health/worker` from the public API domain. See [Microservice Architecture](MICROSERVICES_ARCHITECTURE.md) for the complete boundary and deployment rules.
 
+Deploy the delivery-safety migration before the API/worker release. See [Idempotency, Outbox, and Dead-letter Handling](DELIVERY_SAFETY.md) for command headers, event delivery, operator replay, and deployment order.
+
 ## 3. Railway web service
 
 Use the repository root as the service root.

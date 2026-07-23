@@ -24,6 +24,8 @@ WORKER_LEASE_DURATION_MS=60000
 WORKER_MAX_ATTEMPTS=3
 WORKER_RETRY_BASE_DELAY_MS=1000
 WORKER_SHUTDOWN_TIMEOUT_MS=30000
+OUTBOX_MAX_ATTEMPTS=5
+OUTBOX_BATCH_SIZE=25
 ```
 
 Set this on the API service:
@@ -51,7 +53,7 @@ It returns HTTP 200 only when the latest background-worker heartbeat is recent. 
 - `stale`: the last heartbeat is older than `WORKER_HEALTH_MAX_AGE_MS`;
 - `stopped`: the latest worker shut down cleanly.
 
-The response includes heartbeat age, active-job count, poll count, poll failures, and dispatched pricing/fitment job counts. It does not expose the instance ID, credentials, provider payloads, or tenant information.
+The response includes heartbeat age, active-job count, poll failures, dispatched job counts, and outbox delivery counts. It does not expose the instance ID, credentials, provider payloads, or tenant information.
 
 Use an external uptime monitor against `/health/worker`. Keep `/health/ready` as the API/database readiness probe so Railway does not restart a healthy API merely because the separate worker is being deployed.
 

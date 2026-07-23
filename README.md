@@ -22,6 +22,8 @@ For the production API/worker split, set `JOB_EXECUTION_MODE=worker` on both ser
 
 The worker uses renewable database leases, bounded eBay retries, graceful shutdown, and persisted heartbeats. Monitor `GET /health/worker`; see [Background Worker Operations](docs/WORKER_OPERATIONS.md) for variables, alerting, and recovery behavior.
 
+State-changing job commands support idempotency keys, job creation emits transactional outbox events, and exhausted items enter an operator-controlled dead-letter queue. See [Delivery Safety](docs/DELIVERY_SAFETY.md).
+
 Run `npm run db:check` to test the configured PostgreSQL connection without starting the applications.
 Run `npm run ebay:check` to verify the configured eBay credentials without performing a listing search.
 

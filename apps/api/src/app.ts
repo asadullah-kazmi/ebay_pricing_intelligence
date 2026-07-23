@@ -25,6 +25,8 @@ import { approveFitmentCandidate, createFitmentJob, FitmentJobError, getFitmentJ
 import { completeEbayAuthorization, createEbayAuthorization, disconnectEbayConnection, EbaySellerOAuthError, getEbayConnection } from "./ebay-seller-oauth.js";
 import { getTenantContext, requireOrganizationRoles, requireTenantContext } from "./tenant-context.js";
 import { getWorkerHealth } from "./worker-operations.js";
+import { executeIdempotent, IdempotencyError } from "./idempotency-service.js";
+import { DeadLetterError, listDeadLetters, requeueDeadLetter } from "./dead-letter-service.js";
 
 const searchSchema = z.object({
   oem: z.string().trim().min(2).max(80),
@@ -99,6 +101,12 @@ const createFitmentJobSchema = z.object({
 }).strict();
 const approveFitmentSchema = z.object({ candidateId: z.string().min(1) }).strict();
 const fitmentRoles = requireOrganizationRoles("OWNER", "ADMIN", "MANAGER", "CATALOG_OPERATOR");
+const deadLetterRoles = requireOrganizationRoles("OWNER", "ADMIN", "MANAGER");
+const idempotencyKeySchema = z.string().trim().min(8).max(200).regex(/^[A-Za-z0-9._:-]+$/).optional();
+const deadLetterQuerySchema = z.object({
+  status: z.enum(["OPEN", "REQUEUED", "RESOLVED"]).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
 const ebayConnectionRoles = requireOrganizationRoles("OWNER", "ADMIN");
 const ebayOAuthCallbackSchema = z.object({
   state: z.string().min(1).max(200),
@@ -380,9 +388,17 @@ app.patch("/api/parts/:id", writeRateLimit, requireTenantContext, mediaUploadRol
 app.post("/api/pricing/jobs", searchRateLimit, requireTenantContext, pricingRoles, async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
-    const job = await createPricingJob(tenant.organization.id, tenant.user.id, createPricingJobSchema.parse(req.body));
-    res.status(202).json(job);
-    if (getConfig().jobs.executionMode === "inline") startPricingJob(job.id);
+    const input = createPricingJobSchema.parse(req.body);
+    const result = await executeIdempotent({
+      organizationId: tenant.organization.id,
+      operation: "pricing.jobs.create",
+      key: idempotencyKeySchema.parse(req.get("idempotency-key")),
+      request: input,
+      responseStatus: 202,
+      execute: () => createPricingJob(tenant.organization.id, tenant.user.id, input),
+    });
+    res.set("Idempotency-Replayed", String(result.replayed)).status(202).json(result.value);
+    if (!result.replayed && getConfig().jobs.executionMode === "inline") startPricingJob(result.value.id);
   } catch (error) { next(error); }
 });
 
@@ -404,9 +420,17 @@ app.get("/api/pricing/jobs/:id", requireTenantContext, async (req, res, next) =>
 app.post("/api/fitment/jobs", searchRateLimit, requireTenantContext, fitmentRoles, async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
-    const job = await createFitmentJob(tenant.organization.id, tenant.user.id, createFitmentJobSchema.parse(req.body));
-    res.status(202).json(job);
-    if (getConfig().jobs.executionMode === "inline") startFitmentJob(job.id);
+    const input = createFitmentJobSchema.parse(req.body);
+    const result = await executeIdempotent({
+      organizationId: tenant.organization.id,
+      operation: "fitment.jobs.create",
+      key: idempotencyKeySchema.parse(req.get("idempotency-key")),
+      request: input,
+      responseStatus: 202,
+      execute: () => createFitmentJob(tenant.organization.id, tenant.user.id, input),
+    });
+    res.set("Idempotency-Replayed", String(result.replayed)).status(202).json(result.value);
+    if (!result.replayed && getConfig().jobs.executionMode === "inline") startFitmentJob(result.value.id);
   } catch (error) { next(error); }
 });
 
@@ -431,6 +455,21 @@ app.post("/api/fitment/items/:id/approve", searchRateLimit, requireTenantContext
     if (typeof itemId !== "string") return res.status(400).json({ error: "Invalid fitment item ID" });
     const { candidateId } = approveFitmentSchema.parse(req.body);
     res.json(await approveFitmentCandidate(getTenantContext(res).organization.id, itemId, candidateId));
+  } catch (error) { next(error); }
+});
+
+app.get("/api/admin/dead-letters", requireTenantContext, deadLetterRoles, async (req, res, next) => {
+  try {
+    const query = deadLetterQuerySchema.parse(req.query);
+    res.json(await listDeadLetters(getTenantContext(res).organization.id, query));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/admin/dead-letters/:id/requeue", writeRateLimit, requireTenantContext, deadLetterRoles, async (req, res, next) => {
+  try {
+    const entryId = req.params.id;
+    if (typeof entryId !== "string") return res.status(400).json({ error: "Invalid dead-letter entry ID" });
+    res.json(await requeueDeadLetter(getTenantContext(res).organization.id, entryId));
   } catch (error) { next(error); }
 });
 
@@ -533,6 +572,8 @@ app.use((error: unknown, req: express.Request, res: express.Response, _next: exp
   if (error instanceof CatalogError) return response(error.statusCode, { error: error.message });
   if (error instanceof PricingJobError) return response(error.statusCode, { error: error.message });
   if (error instanceof FitmentJobError) return response(error.statusCode, { error: error.message });
+  if (error instanceof IdempotencyError) return response(error.statusCode, { error: error.message });
+  if (error instanceof DeadLetterError) return response(error.statusCode, { error: error.message });
   if (error instanceof EbaySellerOAuthError) return response(error.statusCode, { error: error.message });
   if (typeof error === "object" && error !== null && "type" in error && error.type === "entity.too.large") {
     return response(413, { error: "Request body exceeds the configured upload limit" });

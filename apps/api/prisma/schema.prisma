@@ -138,6 +138,29 @@ enum EbayConnectionStatus {
   DISCONNECTED
 }
 
+enum IdempotencyStatus {
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSING
+  PUBLISHED
+  FAILED
+}
+
+enum DeadLetterStatus {
+  OPEN
+  REQUEUED
+  RESOLVED
+}
+
+enum DeadLetterType {
+  PRICING_ITEM
+  FITMENT_ITEM
+}
+
 model Organization {
   id                   String                      @id @default(cuid())
   name                 String
@@ -164,6 +187,9 @@ model Organization {
   fitmentApplications  FitmentApplication[]
   ebaySellerConnection EbaySellerConnection?
   ebayOAuthStates      EbayOAuthState[]
+  idempotencyRecords   IdempotencyRecord[]
+  outboxEvents         OutboxEvent[]
+  deadLetterEntries    DeadLetterEntry[]
   createdAt            DateTime                    @default(now())
   updatedAt            DateTime                    @updatedAt
 }
@@ -671,6 +697,68 @@ model WorkerHeartbeat {
 
   @@index([service, lastSeenAt])
   @@index([status, lastSeenAt])
+}
+
+model IdempotencyRecord {
+  id             String            @id @default(cuid())
+  organizationId String
+  operation      String
+  key            String
+  requestHash    String
+  status         IdempotencyStatus @default(IN_PROGRESS)
+  responseStatus Int?
+  responseBody   Json?
+  expiresAt      DateTime
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@unique([organizationId, operation, key])
+  @@index([expiresAt])
+}
+
+model OutboxEvent {
+  id             String       @id @default(cuid())
+  organizationId String
+  topic          String
+  aggregateType  String
+  aggregateId    String
+  payload        Json
+  status         OutboxStatus @default(PENDING)
+  attemptCount   Int          @default(0)
+  nextAttemptAt  DateTime     @default(now())
+  leaseOwner     String?
+  leaseExpiresAt DateTime?
+  lastError      String?
+  publishedAt    DateTime?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([aggregateType, aggregateId])
+  @@index([organizationId, createdAt])
+}
+
+model DeadLetterEntry {
+  id             String           @id @default(cuid())
+  organizationId String
+  type           DeadLetterType
+  jobId          String
+  itemId         String
+  payload        Json
+  error          String
+  attempts       Int
+  status         DeadLetterStatus @default(OPEN)
+  requeuedAt     DateTime?
+  resolvedAt     DateTime?
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([type, itemId])
+  @@index([organizationId, status, createdAt])
+  @@index([jobId])
 }
 
 model FitmentCandidate {
