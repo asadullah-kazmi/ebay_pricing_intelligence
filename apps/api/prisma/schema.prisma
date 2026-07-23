@@ -139,6 +139,19 @@ enum FitmentJobItemStatus {
   FAILED
 }
 
+enum FitmentApplicationSource {
+  EBAY_CATALOG
+  MANUAL
+  DONOR_VEHICLE
+}
+
+enum FitmentApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUPERSEDED
+}
+
 enum EbayConnectionStatus {
   ACTIVE
   ERROR
@@ -289,6 +302,7 @@ model Organization {
   fitmentJobItems      FitmentJobItem[]
   fitmentCandidates    FitmentCandidate[]
   fitmentApplications  FitmentApplication[]
+  fitmentApplicationRevisions FitmentApplicationRevision[]
   ebaySellerConnection EbaySellerConnection?
   ebayOAuthStates      EbayOAuthState[]
   idempotencyRecords   IdempotencyRecord[]
@@ -322,6 +336,9 @@ model User {
   createdPricingJobs  PricingJob[]             @relation("PricingJobCreator")
   updatedPricingRules PricingRule[]             @relation("PricingRuleUpdater")
   decidedPricingProposals PricingProposal[]     @relation("PricingProposalDecider")
+  createdFitmentApplications FitmentApplication[] @relation("FitmentApplicationCreator")
+  approvedFitmentApplications FitmentApplication[] @relation("FitmentApplicationApprover")
+  fitmentApplicationRevisions FitmentApplicationRevision[] @relation("FitmentApplicationRevisionCreator")
   createdFitmentJobs  FitmentJob[]             @relation("FitmentJobCreator")
   createdListingDrafts ListingDraft[]           @relation("ListingDraftCreator")
   updatedListingDrafts ListingDraft[]           @relation("ListingDraftUpdater")
@@ -604,6 +621,7 @@ model Vehicle {
   bodyStyle      String?
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   parts          Part[]
+  fitmentApplications FitmentApplication[] @relation("FitmentSourceVehicle")
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -1365,20 +1383,56 @@ model FitmentCandidate {
 }
 
 model FitmentApplication {
-  id               String         @id @default(cuid())
+  id               String                   @id @default(cuid())
   organizationId   String
-  fitmentJobItemId String
+  fitmentJobItemId String?
   partId           String
+  marketplace      String                   @default("EBAY_US")
+  source           FitmentApplicationSource @default(EBAY_CATALOG)
+  status           FitmentApplicationStatus @default(APPROVED)
   fingerprint      String
   properties       Json
   notes            String?
-  organization     Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  fitmentJobItem   FitmentJobItem @relation(fields: [fitmentJobItemId], references: [id], onDelete: Cascade)
-  part             Part           @relation(fields: [partId], references: [id], onDelete: Cascade)
-  approvedAt       DateTime       @default(now())
+  sourceVehicleId  String?
+  sourceEvidence   Json?
+  revision         Int                      @default(1)
+  createdById      String?
+  approvedById     String?
+  decisionReason   String?
+  organization     Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  fitmentJobItem   FitmentJobItem?           @relation(fields: [fitmentJobItemId], references: [id], onDelete: Cascade)
+  part             Part                     @relation(fields: [partId], references: [id], onDelete: Cascade)
+  sourceVehicle    Vehicle?                  @relation("FitmentSourceVehicle", fields: [sourceVehicleId], references: [id], onDelete: SetNull)
+  createdBy        User?                     @relation("FitmentApplicationCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  approvedBy       User?                     @relation("FitmentApplicationApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  revisions        FitmentApplicationRevision[]
+  approvedAt       DateTime?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
 
   @@unique([fitmentJobItemId, fingerprint])
-  @@index([organizationId, partId])
+  @@index([organizationId, partId, marketplace, status])
+  @@index([sourceVehicleId])
+  @@index([createdById])
+  @@index([approvedById])
+}
+
+model FitmentApplicationRevision {
+  id                    String                 @id @default(cuid())
+  organizationId        String
+  fitmentApplicationId  String
+  revision              Int
+  snapshot              Json
+  reason                String?
+  createdById           String?
+  organization          Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  fitmentApplication    FitmentApplication     @relation(fields: [fitmentApplicationId], references: [id], onDelete: Cascade)
+  createdBy             User?                  @relation("FitmentApplicationRevisionCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt             DateTime               @default(now())
+
+  @@unique([fitmentApplicationId, revision])
+  @@index([organizationId, createdAt])
+  @@index([createdById])
 }
 
 model Search {

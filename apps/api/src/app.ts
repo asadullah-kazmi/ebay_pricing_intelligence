@@ -39,6 +39,7 @@ import { acceptOrganizationInvitation, changeOrganizationMemberRole, createOrgan
 import { AccountAuthError, beginMfaSetup, changeAccountPassword, completeMfaLogin, confirmMfaSetup, disableMfa, getAccountSecurity, loginAccount, passwordMeetsPolicy, recoverAccount, regenerateMfaRecoveryCodes, registerAccount, requestAccountRecovery, requestEmailVerification, requestPasswordReset, resetAccountPassword, verifyAccountEmail } from "./account-auth-service.js";
 import { EmailDeliveryError, verifyEmailTransport } from "./email-service.js";
 import { decidePricingProposal, getOrganizationPricingRule, listPricingProposals, PricingGovernanceError, updateOrganizationPricingRule } from "./pricing-governance-service.js";
+import { createManualFitment, decideManualFitment, listPartFitment, ManualFitmentError, reviseManualFitment } from "./manual-fitment-service.js";
 
 const searchSchema = z.object({
   oem: z.string().trim().min(2).max(80),
@@ -131,6 +132,29 @@ const createFitmentJobSchema = z.object({
 }).strict();
 const approveFitmentSchema = z.object({ candidateId: z.string().min(1) }).strict();
 const fitmentRoles = requireOrganizationRoles("OWNER", "ADMIN", "MANAGER", "CATALOG_OPERATOR");
+const fitmentPropertiesSchema = z.record(
+  z.string().trim().min(1).max(100),
+  z.string().trim().max(200),
+).refine((properties) => Object.keys(properties).length <= 50, "At most 50 compatibility properties are allowed");
+const manualFitmentQuerySchema = z.object({
+  marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).default("EBAY_US"),
+});
+const createManualFitmentSchema = z.object({
+  marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).default("EBAY_US"),
+  source: z.enum(["MANUAL", "DONOR_VEHICLE"]),
+  properties: fitmentPropertiesSchema,
+  notes: z.string().trim().max(1000).optional(),
+}).strict();
+const reviseManualFitmentSchema = z.object({
+  properties: fitmentPropertiesSchema,
+  notes: z.string().trim().max(1000).nullable().optional(),
+  reason: z.string().trim().min(3).max(500),
+}).strict();
+const manualFitmentDecisionSchema = z.object({
+  action: z.enum(["APPROVE", "REJECT", "SUPERSEDE"]),
+  reason: z.string().trim().min(3).max(500),
+  replaceExisting: z.boolean().optional(),
+}).strict();
 const deadLetterRoles = requireOrganizationRoles("OWNER", "ADMIN", "MANAGER");
 const adminOperationsRoles = requireOrganizationRoles("OWNER", "ADMIN");
 const teamManagementRoles = requireOrganizationRoles("OWNER", "ADMIN");
@@ -821,12 +845,68 @@ app.get("/api/fitment/jobs/:id", requireTenantContext, async (req, res, next) =>
   } catch (error) { next(error); }
 });
 
+app.get("/api/parts/:id/fitment", requireTenantContext, async (req, res, next) => {
+  try {
+    const partId = req.params.id;
+    if (typeof partId !== "string") return res.status(400).json({ error: "Invalid catalog part ID" });
+    const { marketplace } = manualFitmentQuerySchema.parse(req.query);
+    res.json(await listPartFitment(getTenantContext(res).organization.id, partId, marketplace));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/parts/:id/fitment", writeRateLimit, requireTenantContext, fitmentRoles, async (req, res, next) => {
+  try {
+    const partId = req.params.id;
+    if (typeof partId !== "string") return res.status(400).json({ error: "Invalid catalog part ID" });
+    const tenant = getTenantContext(res);
+    res.status(201).json(await createManualFitment({
+      organizationId: tenant.organization.id,
+      userId: tenant.user.id,
+      partId,
+      ...createManualFitmentSchema.parse(req.body),
+      requestId: res.locals.requestId,
+    }));
+  } catch (error) { next(error); }
+});
+
+app.patch("/api/fitment/applications/:id", writeRateLimit, requireTenantContext, fitmentRoles, async (req, res, next) => {
+  try {
+    const applicationId = req.params.id;
+    if (typeof applicationId !== "string") return res.status(400).json({ error: "Invalid fitment application ID" });
+    const tenant = getTenantContext(res);
+    res.json(await reviseManualFitment({
+      organizationId: tenant.organization.id,
+      userId: tenant.user.id,
+      applicationId,
+      ...reviseManualFitmentSchema.parse(req.body),
+      requestId: res.locals.requestId,
+    }));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/fitment/applications/:id/decision", writeRateLimit, requireTenantContext, fitmentRoles, async (req, res, next) => {
+  try {
+    const applicationId = req.params.id;
+    if (typeof applicationId !== "string") return res.status(400).json({ error: "Invalid fitment application ID" });
+    const tenant = getTenantContext(res);
+    res.json(await decideManualFitment({
+      organizationId: tenant.organization.id,
+      userId: tenant.user.id,
+      role: tenant.role,
+      applicationId,
+      ...manualFitmentDecisionSchema.parse(req.body),
+      requestId: res.locals.requestId,
+    }));
+  } catch (error) { next(error); }
+});
+
 app.post("/api/fitment/items/:id/approve", searchRateLimit, requireTenantContext, fitmentRoles, async (req, res, next) => {
   try {
     const itemId = req.params.id;
     if (typeof itemId !== "string") return res.status(400).json({ error: "Invalid fitment item ID" });
     const { candidateId } = approveFitmentSchema.parse(req.body);
-    res.json(await approveFitmentCandidate(getTenantContext(res).organization.id, itemId, candidateId));
+    const tenant = getTenantContext(res);
+    res.json(await approveFitmentCandidate(tenant.organization.id, tenant.user.id, itemId, candidateId, res.locals.requestId));
   } catch (error) { next(error); }
 });
 
@@ -1366,6 +1446,7 @@ app.use((error: unknown, req: express.Request, res: express.Response, _next: exp
   if (error instanceof PricingJobError) return response(error.statusCode, { error: error.message });
   if (error instanceof PricingGovernanceError) return response(error.statusCode, { error: error.message });
   if (error instanceof FitmentJobError) return response(error.statusCode, { error: error.message });
+  if (error instanceof ManualFitmentError) return response(error.statusCode, { error: error.message });
   if (error instanceof IdempotencyError) return response(error.statusCode, { error: error.message });
   if (error instanceof DeadLetterError) return response(error.statusCode, { error: error.message });
   if (error instanceof ListingDraftError) return response(error.statusCode, { error: error.message });

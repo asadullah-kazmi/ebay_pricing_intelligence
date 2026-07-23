@@ -85,6 +85,42 @@ export interface CatalogPartDetail extends Omit<CatalogPartCard, "media" | "inve
   media: Array<{ id: string; displayOrder: number; mediaAsset: { id: string; originalFilename: string; mimeType: string } }>;
 }
 
+export type ManualFitmentStatus = "PENDING" | "APPROVED" | "REJECTED" | "SUPERSEDED";
+export type ManualFitmentSource = "EBAY_CATALOG" | "MANUAL" | "DONOR_VEHICLE";
+
+export interface ManualFitmentApplication {
+  id: string;
+  marketplace: string;
+  source: ManualFitmentSource;
+  status: ManualFitmentStatus;
+  properties: Record<string, string>;
+  notes: string | null;
+  revision: number;
+  decisionReason: string | null;
+  approvedAt: string | null;
+  sourceVehicle: { id: string; vin: string; year: number | null; make: string | null; model: string | null; trim: string | null; engine: string | null } | null;
+  createdBy: { id: string; email: string; name: string | null } | null;
+  approvedBy: { id: string; email: string; name: string | null } | null;
+  revisions: Array<{
+    id: string;
+    revision: number;
+    reason: string | null;
+    createdAt: string;
+    createdBy: { id: string; email: string; name: string | null } | null;
+  }>;
+}
+
+export interface PartFitment {
+  part: {
+    id: string;
+    sku: string;
+    primaryPartNumber: string;
+    donorVehicle: { id: string; vin: string; year: number | null; make: string | null; model: string | null; trim: string | null; engine: string | null } | null;
+  };
+  marketplace: string;
+  applications: ManualFitmentApplication[];
+}
+
 export type PricingJobStatus = "QUEUED" | "RUNNING" | "COMPLETED" | "PARTIAL" | "FAILED";
 export type PricingJobItemStatus = "QUEUED" | "RUNNING" | "COMPLETED" | "NO_MATCHES" | "FAILED";
 export type PricingConditionMode = "MATCH_PART" | "ANY" | "NEW" | "USED";

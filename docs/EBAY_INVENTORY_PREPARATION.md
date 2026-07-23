@@ -51,7 +51,7 @@ At most the first 24 approved images are staged. Extra images create a warning r
 
 ## Generated compatibility payload
 
-Approved fitment applications become:
+Approved fitment applications for the listing's exact marketplace become:
 
 ```json
 {
@@ -68,6 +68,7 @@ Approved fitment applications become:
 ```
 
 No approved fitment produces a warning and a null compatibility payload.
+Pending, rejected, superseded, or other-marketplace applications are excluded.
 
 ## API
 

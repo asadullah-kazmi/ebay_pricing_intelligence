@@ -159,7 +159,7 @@ export async function prepareInventoryItem(input: {
             orderBy: { displayOrder: "asc" },
             include: { mediaAsset: true },
           },
-          fitmentApplications: { orderBy: { approvedAt: "asc" } },
+          fitmentApplications: { where: { status: "APPROVED" }, orderBy: { approvedAt: "asc" } },
         },
       },
       inventoryPreparations: { where: { draftVersion: input.expectedVersion }, take: 1 },
@@ -196,7 +196,9 @@ export async function prepareInventoryItem(input: {
     height: decimal(inventory.height),
     dimensionUnit: inventory.dimensionUnit,
   });
-  const compatibilityPayload = buildCompatibilityPayload(draft.part.fitmentApplications.map(({ properties }) => propertyRecord(properties)));
+  const compatibilityPayload = buildCompatibilityPayload(draft.part.fitmentApplications
+    .filter(({ marketplace }) => marketplace === draft.marketplace)
+    .map(({ properties }) => propertyRecord(properties)));
   const warnings = [
     ...built.warnings,
     ...(draft.part.media.length > 24 ? [`Only the first 24 of ${draft.part.media.length} approved images were staged.`] : []),

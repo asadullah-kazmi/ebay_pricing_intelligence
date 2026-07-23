@@ -92,6 +92,8 @@ Deploy `20260723110000_add_complete_authentication` before exposing registration
 
 Deploy `20260724100000_add_pricing_governance` before enabling new pricing runs or publication. Follow [Pricing Governance and Publication Floors](PRICING_GOVERNANCE.md), configure the organization rule, and verify that an unapproved or changed price cannot reach inventory preparation or publication.
 
+Deploy `20260724110000_add_manual_fitment` before exposing the part fitment editor. Follow [Manual Fitment and Donor-VIN Fallback](MANUAL_FITMENT.md), verify donor VIN provenance, and confirm that changing approved compatibility invalidates the prior live validation and preparation version.
+
 ## 3. Railway web service
 
 Use the repository root as the service root.

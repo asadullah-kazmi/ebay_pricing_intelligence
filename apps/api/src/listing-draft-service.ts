@@ -153,7 +153,7 @@ const contextInclude = {
   part: {
     include: {
       media: { where: { approved: true, mediaAsset: { status: "READY" as const } }, select: { id: true } },
-      fitmentApplications: { select: { id: true } },
+      fitmentApplications: { where: { status: "APPROVED" }, select: { id: true, marketplace: true } },
     },
   },
   organization: { select: { ebaySellerConnection: { select: { status: true } } } },
@@ -163,7 +163,7 @@ function contextFromDraft(draft: Prisma.ListingDraftGetPayload<{ include: typeof
   return {
     sellerConnected: draft.organization.ebaySellerConnection?.status === "ACTIVE",
     approvedImageCount: draft.part.media.length,
-    fitmentApplicationCount: draft.part.fitmentApplications.length,
+    fitmentApplicationCount: draft.part.fitmentApplications.filter(({ marketplace }) => marketplace === draft.marketplace).length,
   };
 }
 
@@ -198,7 +198,7 @@ export async function createListingDrafts(input: {
       include: {
         inventoryItem: true,
         media: { where: { approved: true, mediaAsset: { status: "READY" } }, select: { id: true } },
-        fitmentApplications: { select: { id: true } },
+        fitmentApplications: { where: { status: "APPROVED", marketplace: input.marketplace }, select: { id: true } },
         pricingJobItems: {
           where: { status: "COMPLETED", pricingJob: { marketplace: input.marketplace } },
           orderBy: { completedAt: "desc" },

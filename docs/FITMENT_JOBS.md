@@ -33,7 +33,7 @@ Discovery returns HTTP `202`; the web client polls while the job is `QUEUED` or 
 - Job: `QUEUED`, `RUNNING`, `REVIEW_REQUIRED`, `COMPLETED`, `PARTIAL`, `FAILED`.
 - Item: `QUEUED`, `RUNNING`, `REVIEW_REQUIRED`, `NO_CANDIDATE`, `APPROVED`, `FAILED`.
 
-`NO_CANDIDATE` is a safe outcome, not an automatic match. That part remains available for a future manual compatibility editor.
+`NO_CANDIDATE` is a safe outcome, not an automatic match. Step 28 lets the operator open the part's fitment editor and create a reviewed manual or donor-VIN application. See [Manual Fitment and Donor-VIN Fallback](MANUAL_FITMENT.md).
 
 ## Runtime and deployment
 
@@ -45,6 +45,6 @@ Discovery returns HTTP `202`; the web client polls while the job is `QUEUED` or 
 
 ## Known boundaries
 
-- Approved applications are catalog enrichment records; Step 12 does not publish them to an eBay offer.
-- A candidate cannot be replaced after approval in this slice. A manual override/revision workflow should be added before publishing.
+- Approved applications are catalog enrichment records; the later inventory workflow writes them to eBay.
+- Automatic eBay catalog applications remain immutable, but Step 28 can replace them with an audited manual application.
 - Category suggestions and catalog coverage vary by marketplace and product family.

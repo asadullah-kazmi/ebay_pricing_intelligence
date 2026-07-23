@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import styles from "./catalog.module.css";
-import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogStatus, EbayAspectRequirement, EbayConditionOption, EbayConnection, EbayInventorySyncJob, EbayListingOperationJob, EbayOffer, EbayOfferJob, EbaySellerResources, FitmentJob, FitmentJobSummary, InventoryPreparation, InventoryPreparationJob, ListingDraft, LiveDraftValidation, PartCondition, PricingConditionMode, PricingJob, PricingJobSummary, PricingRule } from "./types";
+import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogStatus, EbayAspectRequirement, EbayConditionOption, EbayConnection, EbayInventorySyncJob, EbayListingOperationJob, EbayOffer, EbayOfferJob, EbaySellerResources, FitmentJob, FitmentJobSummary, InventoryPreparation, InventoryPreparationJob, ListingDraft, LiveDraftValidation, ManualFitmentApplication, PartCondition, PartFitment, PricingConditionMode, PricingJob, PricingJobSummary, PricingRule } from "./types";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const statuses: CatalogStatus[] = ["IMPORTED", "NEEDS_IMAGES", "IMPORT_ERROR", "READY_FOR_ENRICHMENT", "ARCHIVED"];
@@ -73,6 +73,8 @@ export default function CatalogWorkspace() {
   const [fitmentJob, setFitmentJob] = useState<FitmentJob | null>(null);
   const [fitmentBusy, setFitmentBusy] = useState(false);
   const [latestFitmentLoaded, setLatestFitmentLoaded] = useState(false);
+  const [fitmentEditor, setFitmentEditor] = useState<PartFitment | null>(null);
+  const [manualFitmentBusy, setManualFitmentBusy] = useState(false);
   const [ebayConnection, setEbayConnection] = useState<EbayConnection>({ connected: false, status: "NOT_CONNECTED" });
   const [connectionBusy, setConnectionBusy] = useState(false);
   const [drafts, setDrafts] = useState<ListingDraft[]>([]);
@@ -351,6 +353,85 @@ export default function CatalogWorkspace() {
       await loadCatalog();
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to approve fitment candidate"); }
     finally { setFitmentBusy(false); }
+  }
+
+  async function openManualFitment(partId: string) {
+    if (demo) return;
+    setError("");
+    try {
+      setFitmentEditor(await request(`/api/parts/${partId}/fitment?marketplace=${encodeURIComponent(pricingMarketplace)}`) as PartFitment);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to load fitment applications"); }
+  }
+
+  async function refreshManualFitment() {
+    if (!fitmentEditor) return;
+    setFitmentEditor(await request(`/api/parts/${fitmentEditor.part.id}/fitment?marketplace=${encodeURIComponent(fitmentEditor.marketplace)}`) as PartFitment);
+  }
+
+  async function createManualApplication(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!fitmentEditor || manualFitmentBusy) return;
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const source = String(form.get("source"));
+    setManualFitmentBusy(true); setError("");
+    try {
+      await request(`/api/parts/${fitmentEditor.part.id}/fitment`, {
+        method: "POST",
+        body: JSON.stringify({
+          marketplace: fitmentEditor.marketplace,
+          source,
+          properties: {
+            Year: String(form.get("year") || ""),
+            Make: String(form.get("make") || ""),
+            Model: String(form.get("model") || ""),
+            Trim: String(form.get("trim") || ""),
+            Engine: String(form.get("engine") || ""),
+          },
+          notes: String(form.get("notes") || "") || undefined,
+        }),
+      });
+      await refreshManualFitment();
+      formElement.reset();
+      setNotice("Fitment application created for review. Approve it before publication.");
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to create fitment application"); }
+    finally { setManualFitmentBusy(false); }
+  }
+
+  async function decideManualApplication(application: ManualFitmentApplication, action: "APPROVE" | "REJECT" | "SUPERSEDE", replaceExisting = false) {
+    const reason = window.prompt(action === "APPROVE" ? "Approval reason:" : action === "REJECT" ? "Rejection reason:" : "Reason for removing this approved fitment:")?.trim();
+    if (!reason || manualFitmentBusy) return;
+    setManualFitmentBusy(true); setError("");
+    try {
+      await request(`/api/fitment/applications/${application.id}/decision`, {
+        method: "POST",
+        body: JSON.stringify({ action, reason, ...(action === "APPROVE" ? { replaceExisting } : {}) }),
+      });
+      await refreshManualFitment();
+      setNotice(action === "APPROVE" ? "Fitment approved. Existing listing drafts require live validation again." : "Fitment decision recorded.");
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to decide fitment application"); }
+    finally { setManualFitmentBusy(false); }
+  }
+
+  async function reviseManualApplication(application: ManualFitmentApplication) {
+    if (application.source === "EBAY_CATALOG" || manualFitmentBusy) return;
+    const value = (name: string) => window.prompt(name, application.properties[name] ?? "")?.trim();
+    const year = value("Year"); if (year === undefined) return;
+    const make = value("Make"); if (make === undefined) return;
+    const model = value("Model"); if (model === undefined) return;
+    const trim = value("Trim"); if (trim === undefined) return;
+    const engine = value("Engine"); if (engine === undefined) return;
+    const reason = window.prompt("Reason for this revision:")?.trim(); if (!reason) return;
+    setManualFitmentBusy(true); setError("");
+    try {
+      await request(`/api/fitment/applications/${application.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ properties: { Year: year, Make: make, Model: model, Trim: trim, Engine: engine }, notes: application.notes, reason }),
+      });
+      await refreshManualFitment();
+      setNotice("Fitment revised and returned to pending review.");
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to revise fitment application"); }
+    finally { setManualFitmentBusy(false); }
   }
 
   async function createDrafts() {
@@ -781,11 +862,37 @@ export default function CatalogWorkspace() {
         </div>
         {selected.size > 0 && <div className={styles.bulkBar}><b>{selected.size} selected</b><span>{selected.size > 10 ? "Fitment supports 10; pricing and drafts support 25 parts." : "Selection can continue across result pages."}</span><select aria-label="eBay marketplace" value={pricingMarketplace} onChange={(event) => setPricingMarketplace(event.target.value)}><option value="EBAY_US">eBay US</option><option value="EBAY_GB">eBay UK</option><option value="EBAY_DE">eBay Germany</option></select><select aria-label="Pricing condition" value={pricingCondition} onChange={(event) => setPricingCondition(event.target.value as PricingConditionMode)}><option value="MATCH_PART">Match each part</option><option value="ANY">Any condition</option><option value="NEW">New only</option><option value="USED">Used only</option></select><button className={styles.priceButton} disabled={selected.size > 25 || pricingBusy || Boolean(pricingJob && ["QUEUED", "RUNNING"].includes(pricingJob.status))} onClick={() => void priceSelected()}>{selected.size > 25 ? "Maximum 25" : pricingBusy ? "Starting..." : "Price selected"}</button><button className={styles.fitmentButton} disabled={selected.size > 10 || fitmentBusy || Boolean(fitmentJob && ["QUEUED", "RUNNING"].includes(fitmentJob.status))} onClick={() => void findFitment()}>{selected.size > 10 ? "Maximum 10" : fitmentBusy ? "Working..." : "Find fitment"}</button><button className={styles.draftButton} disabled={selected.size > 25 || draftBusy} onClick={() => void createDrafts()}>{draftBusy ? "Preparing..." : "Create drafts"}</button><button onClick={() => void archiveSelected()}>Archive</button><button onClick={() => setSelected(new Set())}>Clear</button></div>}
         {loading ? <div className={styles.loadingRows}>Refreshing catalog...</div> : catalog.parts.length === 0 ? <div className={styles.empty}><b>No parts found</b><span>Adjust your filters or confirm a catalog import.</span></div> : view === "table" ?
-          <div className={styles.tableWrap}><table><thead><tr><th><input aria-label="Select current page" type="checkbox" checked={allPageSelected} onChange={togglePage}/></th><th>Part</th><th>SKU / OEM</th><th>Status</th><th>Condition</th><th>Market</th><th>Location</th><th>Qty</th><th>Cost</th><th/></tr></thead><tbody>{catalog.parts.map((part) => { const latestPrice = part.pricingJobItems[0]; return <tr key={part.id}><td><input aria-label={`Select ${part.sku}`} type="checkbox" checked={selected.has(part.id)} onChange={() => togglePart(part.id)}/></td><td><div className={styles.partCell}><CatalogImage mediaId={part.media[0]?.mediaAsset.id} token={token} demo={demo}/><div><b>{part.partName || "Unnamed automotive part"}</b><span>{part.brand || "Brand not set"} · {part._count.media} image{part._count.media === 1 ? "" : "s"}</span></div></div></td><td><b className={styles.mono}>{part.sku}</b><span className={styles.subtle}>{part.primaryPartNumber}</span></td><td><span className={`${styles.statusPill} ${styles[part.status.toLowerCase()]}`}>{humanStatus(part.status)}</span></td><td><span className={styles.condition}>{part.condition}</span></td><td>{latestPrice?.recommendedPrice != null ? <><b>{money(latestPrice.recommendedPrice, latestPrice.currency!)}</b><span className={styles.subtle}>{latestPrice.competitorCount} matches</span></> : <span className={styles.subtle}>{latestPrice ? "No matches" : "Not priced"}</span>}</td><td>{part.inventoryItem?.warehouse?.code || "—"}<span className={styles.subtle}>{part.inventoryItem?.binLocation?.code || "Unassigned"}</span></td><td>{part.inventoryItem?.quantity ?? 0}</td><td>{part.inventoryItem ? money(part.inventoryItem.cost, part.inventoryItem.currency) : "—"}</td><td><button className={styles.editButton} onClick={() => void openPart(part.id)}>Edit</button></td></tr>; })}</tbody></table></div> :
-          <div className={styles.gallery}>{catalog.parts.map((part) => <article key={part.id} className={styles.partCard}><button className={styles.cardSelect} aria-label={`Select ${part.sku}`} onClick={() => togglePart(part.id)}>{selected.has(part.id) ? "✓" : "+"}</button><CatalogImage mediaId={part.media[0]?.mediaAsset.id} token={token} demo={demo}/><span className={`${styles.statusPill} ${styles[part.status.toLowerCase()]}`}>{humanStatus(part.status)}</span><h3>{part.partName || "Unnamed automotive part"}</h3><p>{part.brand || "Brand not set"} · {part.condition}</p><div><b>{part.sku}</b><span>{part.primaryPartNumber}</span></div><footer><span>{part.inventoryItem?.quantity ?? 0} in stock</span><button onClick={() => void openPart(part.id)}>Edit part</button></footer></article>)}</div>}
+          <div className={styles.tableWrap}><table><thead><tr><th><input aria-label="Select current page" type="checkbox" checked={allPageSelected} onChange={togglePage}/></th><th>Part</th><th>SKU / OEM</th><th>Status</th><th>Condition</th><th>Market</th><th>Location</th><th>Qty</th><th>Cost</th><th/></tr></thead><tbody>{catalog.parts.map((part) => { const latestPrice = part.pricingJobItems[0]; return <tr key={part.id}><td><input aria-label={`Select ${part.sku}`} type="checkbox" checked={selected.has(part.id)} onChange={() => togglePart(part.id)}/></td><td><div className={styles.partCell}><CatalogImage mediaId={part.media[0]?.mediaAsset.id} token={token} demo={demo}/><div><b>{part.partName || "Unnamed automotive part"}</b><span>{part.brand || "Brand not set"} · {part._count.media} image{part._count.media === 1 ? "" : "s"}</span></div></div></td><td><b className={styles.mono}>{part.sku}</b><span className={styles.subtle}>{part.primaryPartNumber}</span></td><td><span className={`${styles.statusPill} ${styles[part.status.toLowerCase()]}`}>{humanStatus(part.status)}</span></td><td><span className={styles.condition}>{part.condition}</span></td><td>{latestPrice?.recommendedPrice != null ? <><b>{money(latestPrice.recommendedPrice, latestPrice.currency!)}</b><span className={styles.subtle}>{latestPrice.competitorCount} matches</span></> : <span className={styles.subtle}>{latestPrice ? "No matches" : "Not priced"}</span>}</td><td>{part.inventoryItem?.warehouse?.code || "—"}<span className={styles.subtle}>{part.inventoryItem?.binLocation?.code || "Unassigned"}</span></td><td>{part.inventoryItem?.quantity ?? 0}</td><td>{part.inventoryItem ? money(part.inventoryItem.cost, part.inventoryItem.currency) : "—"}</td><td><button className={styles.editButton} onClick={() => void openPart(part.id)}>Edit</button><button className={styles.editButton} onClick={() => void openManualFitment(part.id)}>Fitment</button></td></tr>; })}</tbody></table></div> :
+          <div className={styles.gallery}>{catalog.parts.map((part) => <article key={part.id} className={styles.partCard}><button className={styles.cardSelect} aria-label={`Select ${part.sku}`} onClick={() => togglePart(part.id)}>{selected.has(part.id) ? "✓" : "+"}</button><CatalogImage mediaId={part.media[0]?.mediaAsset.id} token={token} demo={demo}/><span className={`${styles.statusPill} ${styles[part.status.toLowerCase()]}`}>{humanStatus(part.status)}</span><h3>{part.partName || "Unnamed automotive part"}</h3><p>{part.brand || "Brand not set"} · {part.condition}</p><div><b>{part.sku}</b><span>{part.primaryPartNumber}</span></div><footer><span>{part.inventoryItem?.quantity ?? 0} in stock</span><button onClick={() => void openManualFitment(part.id)}>Fitment</button><button onClick={() => void openPart(part.id)}>Edit part</button></footer></article>)}</div>}
         <div className={styles.pagination}><span>Page {catalog.pagination.page} of {Math.max(catalog.pagination.totalPages, 1)}</span><div><button disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>Previous</button><button disabled={page >= catalog.pagination.totalPages} onClick={() => setPage((value) => value + 1)}>Next</button></div></div>
       </section>
     </section>
+    {fitmentEditor && <div className={styles.modalBackdrop} role="presentation"><section className={`${styles.drawer} ${styles.fitmentManager}`} role="dialog" aria-modal="true" aria-labelledby="fitment-editor-title"><header><div><span className={styles.eyebrow}>FITMENT REVIEW</span><h2 id="fitment-editor-title">{fitmentEditor.part.sku} · {fitmentEditor.marketplace}</h2></div><button aria-label="Close fitment editor" onClick={() => setFitmentEditor(null)}>×</button></header>
+      {fitmentEditor.part.donorVehicle && <div className={styles.donorEvidence}><b>Donor VIN {fitmentEditor.part.donorVehicle.vin}</b><span>{[fitmentEditor.part.donorVehicle.year, fitmentEditor.part.donorVehicle.make, fitmentEditor.part.donorVehicle.model, fitmentEditor.part.donorVehicle.trim, fitmentEditor.part.donorVehicle.engine].filter(Boolean).join(" · ")}</span></div>}
+      <form onSubmit={createManualApplication}><span className={styles.eyebrow}>NEW APPLICATION</span><div className={styles.formGrid}>
+        <label><span>Source</span><select name="source" defaultValue={fitmentEditor.part.donorVehicle ? "DONOR_VEHICLE" : "MANUAL"}><option value="MANUAL">Manual research</option>{fitmentEditor.part.donorVehicle && <option value="DONOR_VEHICLE">Donor VIN vehicle</option>}</select></label>
+        <label><span>Year</span><input name="year" defaultValue={fitmentEditor.part.donorVehicle?.year ?? ""} required/></label>
+        <label><span>Make</span><input name="make" defaultValue={fitmentEditor.part.donorVehicle?.make ?? ""} required/></label>
+        <label><span>Model</span><input name="model" defaultValue={fitmentEditor.part.donorVehicle?.model ?? ""} required/></label>
+        <label><span>Trim</span><input name="trim" defaultValue={fitmentEditor.part.donorVehicle?.trim ?? ""}/></label>
+        <label><span>Engine</span><input name="engine" defaultValue={fitmentEditor.part.donorVehicle?.engine ?? ""}/></label>
+        <label className={styles.wide}><span>Evidence / notes</span><textarea name="notes" placeholder="Source, catalog, VIN decoder, or validation notes"/></label>
+      </div><button className={styles.primary} disabled={manualFitmentBusy}>{manualFitmentBusy ? "Saving..." : "Create pending application"}</button></form>
+      <div className={styles.applicationCards}>{fitmentEditor.applications.map((application) => <article key={application.id} className={styles.applicationCard}>
+        <div><span className={`${styles.jobStatus} ${application.status === "APPROVED" ? styles.job_completed : application.status === "PENDING" ? styles.job_queued : styles.job_failed}`}>{humanStatus(application.status)}</span><small>{humanStatus(application.source)} · revision {application.revision}</small></div>
+        <h3>{application.properties.Year} {application.properties.Make} {application.properties.Model}</h3>
+        <p>{Object.entries(application.properties).map(([name, value]) => `${name}: ${value}`).join(" · ")}</p>
+        {application.sourceVehicle && <small>Evidence VIN: {application.sourceVehicle.vin}</small>}
+        {application.notes && <small>{application.notes}</small>}
+        {application.decisionReason && <small>Decision: {application.decisionReason}</small>}
+        <div className={styles.applicationActions}>
+          {application.status === "PENDING" && <><button disabled={manualFitmentBusy} onClick={() => void decideManualApplication(application, "APPROVE")}>Approve & add</button><button disabled={manualFitmentBusy} onClick={() => void decideManualApplication(application, "APPROVE", true)}>Approve & replace</button><button disabled={manualFitmentBusy} onClick={() => void decideManualApplication(application, "REJECT")}>Reject</button></>}
+          {application.status === "APPROVED" && <button disabled={manualFitmentBusy} onClick={() => void decideManualApplication(application, "SUPERSEDE")}>Remove approval</button>}
+          {application.source !== "EBAY_CATALOG" && application.status !== "SUPERSEDED" && <button disabled={manualFitmentBusy} onClick={() => void reviseManualApplication(application)}>Revise</button>}
+        </div>
+        {application.revisions.length > 0 && <details><summary>Revision history</summary>{application.revisions.map((revision) => <small key={revision.id}>v{revision.revision} · {revision.reason || "Updated"} · {new Date(revision.createdAt).toLocaleString()}</small>)}</details>}
+      </article>)}</div>
+    </section></div>}
     {detail && <div className={styles.modalBackdrop} role="presentation"><section className={styles.drawer} role="dialog" aria-modal="true" aria-labelledby="edit-part-title"><header><div><span className={styles.eyebrow}>CATALOG EDITOR</span><h2 id="edit-part-title">Edit {detail.sku}</h2></div><button aria-label="Close editor" onClick={() => setDetail(null)}>×</button></header><form onSubmit={savePart}><div className={styles.formGrid}><label><span>SKU</span><input name="sku" defaultValue={detail.sku} required/></label><label><span>Primary part number</span><input name="primaryPartNumber" defaultValue={detail.primaryPartNumber} required/></label><label><span>Brand</span><input name="brand" defaultValue={detail.brand ?? ""}/></label><label><span>Part name</span><input name="partName" defaultValue={detail.partName ?? ""}/></label><label><span>Condition</span><select name="condition" defaultValue={detail.condition}><option value="NEW">New</option><option value="USED">Used</option></select></label><label><span>Catalog status</span><select name="status" defaultValue={detail.status}>{statuses.map((value) => <option key={value} value={value}>{humanStatus(value)}</option>)}</select></label><label><span>Quantity</span><input name="quantity" type="number" min="0" defaultValue={detail.inventoryItem?.quantity ?? 0}/></label><label><span>Cost</span><input name="cost" type="number" min="0" step="0.01" defaultValue={Number(detail.inventoryItem?.cost ?? 0)}/></label><label><span>Currency</span><input name="currency" maxLength={3} defaultValue={detail.inventoryItem?.currency ?? "USD"}/></label><label><span>Warehouse</span><input name="warehouseCode" defaultValue={detail.inventoryItem?.warehouse?.code ?? ""}/></label><label><span>Bin location</span><input name="binLocation" defaultValue={detail.inventoryItem?.binLocation?.code ?? ""}/></label><label><span>Placement</span><input name="placement" defaultValue={detail.placement ?? ""}/></label><label><span>Weight</span><input name="weight" type="number" min="0" step="0.001" defaultValue={detail.inventoryItem?.weight == null ? "" : Number(detail.inventoryItem.weight)}/></label><label><span>Weight unit</span><select name="weightUnit" defaultValue={detail.inventoryItem?.weightUnit ?? "LB"}><option value="LB">lb</option><option value="KG">kg</option></select></label><label><span>Length</span><input name="length" type="number" min="0" step="0.01" defaultValue={detail.inventoryItem?.length == null ? "" : Number(detail.inventoryItem.length)}/></label><label><span>Width</span><input name="width" type="number" min="0" step="0.01" defaultValue={detail.inventoryItem?.width == null ? "" : Number(detail.inventoryItem.width)}/></label><label><span>Height</span><input name="height" type="number" min="0" step="0.01" defaultValue={detail.inventoryItem?.height == null ? "" : Number(detail.inventoryItem.height)}/></label><label><span>Dimension unit</span><select name="dimensionUnit" defaultValue={detail.inventoryItem?.dimensionUnit ?? "IN"}><option value="IN">in</option><option value="CM">cm</option></select></label><label className={styles.wide}><span>Description</span><textarea name="description" defaultValue={detail.description ?? ""}/></label><label className={styles.wide}><span>Internal notes</span><textarea name="notes" defaultValue={detail.notes ?? ""}/></label></div><div className={styles.formActions}><button type="button" onClick={() => setDetail(null)}>Cancel</button><button className={styles.primary} disabled={saving}>{saving ? "Saving..." : demo ? "Close preview" : "Save changes"}</button></div></form></section></div>}
     {draftDetail && <div className={styles.modalBackdrop} role="presentation">
       <section className={styles.drawer} role="dialog" aria-modal="true" aria-labelledby="edit-draft-title">

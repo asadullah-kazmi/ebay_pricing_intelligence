@@ -89,6 +89,8 @@ See [Pricing Governance and Publication Floors](docs/PRICING_GOVERNANCE.md) for 
 
 See [eBay Seller Connection Setup](docs/EBAY_SELLER_OAUTH.md) for production RuName configuration, encrypted OAuth token storage, Railway variables, connection endpoints, and troubleshooting.
 
+See [Manual Fitment and Donor-VIN Fallback](docs/MANUAL_FITMENT.md) for reviewed compatibility creation, revision history, replacement controls, provenance, and publication invalidation.
+
 See [Listing Drafts and Publication Readiness](docs/LISTING_DRAFTS.md) for draft creation, editing, version history, readiness blockers, and the boundary before live eBay publication.
 
 See [eBay Seller Resources and Live Listing Validation](docs/EBAY_LIVE_METADATA.md) for policy/location synchronization, category item specifics, OAuth scope requirements, and the live validation workflow.
@@ -145,6 +147,9 @@ See [Production Release Checklist](docs/PRODUCTION_RELEASE.md) before deploying.
 - `POST /api/fitment/jobs` - discover scored eBay catalog fitment candidates for up to 10 selected parts
 - `GET /api/fitment/jobs` / `GET /api/fitment/jobs/:id` - list and poll tenant-scoped fitment jobs
 - `POST /api/fitment/items/:id/approve` - approve an ePID candidate and import its compatibility applications
+- `GET` / `POST /api/parts/:id/fitment` - inspect or create manual/donor-vehicle compatibility
+- `PATCH /api/fitment/applications/:id` - revise a manual application and return it to review
+- `POST /api/fitment/applications/:id/decision` - approve, reject, replace, or supersede compatibility
 - `GET /api/ebay/connection` - retrieve the organization's sanitized eBay seller connection status
 - `POST /api/ebay/connection/authorize` - start owner/admin eBay seller consent
 - `GET /api/ebay/oauth/callback` - validate eBay consent and store encrypted seller credentials

@@ -7,6 +7,8 @@ import { captureDeadLetter, resolveDeadLetter } from "./dead-letter-service.js";
 import { enqueueOutboxEvent } from "./outbox-service.js";
 import { discoverEbayFitment, getEbayProductCompatibilities, type EbayFitmentCandidate } from "./providers/ebay-fitment.js";
 import type { Marketplace } from "./types.js";
+import { recordAuditEvent } from "./audit-service.js";
+import { invalidateFitmentDrafts } from "./manual-fitment-service.js";
 
 export class FitmentJobError extends Error {
   constructor(message: string, readonly statusCode: 400 | 404 | 409 | 502 = 400) {
@@ -254,7 +256,7 @@ export async function startQueuedFitmentJobs(options: JobRunOptions = inlineJobO
   return queued.length;
 }
 
-export async function approveFitmentCandidate(organizationId: string, itemId: string, candidateId: string) {
+export async function approveFitmentCandidate(organizationId: string, userId: string, itemId: string, candidateId: string, requestId?: string) {
   const item = await prisma.fitmentJobItem.findFirst({ where: { id: itemId, organizationId }, include: {
     fitmentJob: { select: { id: true, marketplace: true } }, candidates: { where: { id: candidateId } },
   } });
@@ -269,13 +271,48 @@ export async function approveFitmentCandidate(organizationId: string, itemId: st
   const applications = normalizeFitmentApplications(compatibility.applications);
   if (!applications.length) throw new FitmentJobError("eBay returned no compatibility applications for this product candidate");
   await prisma.$transaction(async (tx) => {
+    await tx.fitmentApplication.updateMany({
+      where: {
+        organizationId,
+        partId: item.partId,
+        marketplace: item.fitmentJob.marketplace,
+        status: "APPROVED",
+      },
+      data: { status: "SUPERSEDED", decisionReason: `Replaced by approved eBay candidate ${candidate.epid}` },
+    });
     await tx.fitmentApplication.createMany({ data: applications.map(({ fingerprint, properties }) => ({
-      organizationId, fitmentJobItemId: item.id, partId: item.partId, fingerprint, properties,
+      organizationId,
+      fitmentJobItemId: item.id,
+      partId: item.partId,
+      marketplace: item.fitmentJob.marketplace,
+      source: "EBAY_CATALOG",
+      status: "APPROVED",
+      fingerprint,
+      properties,
+      createdById: userId,
+      approvedById: userId,
+      approvedAt: new Date(),
     })) });
     await tx.fitmentJobItem.update({ where: { id: item.id }, data: {
       status: "APPROVED", approvedCandidateId: candidate.id, metadataVersion: compatibility.metadataVersion,
       applicationCount: applications.length, completedAt: new Date(), error: null,
     } });
+    await invalidateFitmentDrafts(tx, {
+      organizationId,
+      partId: item.partId,
+      userId,
+      message: "eBay catalog compatibility was approved; run live validation before preparing inventory",
+    });
+    await recordAuditEvent(tx, {
+      organizationId,
+      actorUserId: userId,
+      action: "fitment.catalog_candidate.approved",
+      resourceType: "FitmentJobItem",
+      resourceId: item.id,
+      summary: "eBay catalog fitment candidate and compatibility applications approved",
+      metadata: { candidateId, epid: candidate.epid, applicationCount: applications.length },
+      requestId,
+    });
   }, { maxWait: 10_000, timeout: 60_000 });
   await refreshFitmentJob(item.fitmentJob.id);
   return getFitmentJob(organizationId, item.fitmentJob.id);

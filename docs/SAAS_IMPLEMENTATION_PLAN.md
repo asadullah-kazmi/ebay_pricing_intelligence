@@ -880,7 +880,9 @@ Acceptance criteria:
 
 ### Phase 5 — Category, specifics, and fitment
 
-Step 12 implements the first review-first fitment slice: tenant-scoped discovery jobs for up to 10 selected parts, Taxonomy-assisted Catalog ePID candidates, deterministic evidence scoring, explicit candidate approval, Metadata compatibility import, normalized application persistence, polling, and startup recovery. Manual fitment editing, approval revision, durable external workers, and mapping approved applications into publishing payloads remain in this phase.
+Step 12 implements the first review-first fitment slice: tenant-scoped discovery jobs for up to 10 selected parts, Taxonomy-assisted Catalog ePID candidates, deterministic evidence scoring, explicit candidate approval, Metadata compatibility import, normalized application persistence, polling, and startup recovery.
+
+Step 28 adds manual and donor-VIN application creation, explicit provenance, pending/approved/rejected/superseded states, immutable revision snapshots, add-or-replace approval, role-protected removal, and marketplace-specific publication payloads. Approved changes invalidate listing validation and preparation versions so stale compatibility cannot be published.
 
 **Estimate:** 4–7 weeks
 
