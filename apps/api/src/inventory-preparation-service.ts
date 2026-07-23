@@ -6,6 +6,7 @@ import { getObjectStorage } from "./object-storage.js";
 import { enqueueOutboxEvent } from "./outbox-service.js";
 import { uploadImageToEbay } from "./providers/ebay-media.js";
 import { inlineJobOptions, leaseExpiry, runWithRetry, type JobRunOptions } from "./job-runtime.js";
+import { assertApprovedListingPrice } from "./pricing-governance-service.js";
 
 export class InventoryPreparationError extends Error {
   readonly status: number;
@@ -276,12 +277,24 @@ export async function createInventoryPreparationJob(input: {
       version: true,
       status: true,
       liveValidatedAt: true,
+      organizationId: true,
+      partId: true,
+      marketplace: true,
+      price: true,
+      currency: true,
       part: { select: { media: { where: { approved: true, mediaAsset: { status: "READY" } }, select: { id: true }, take: 1 } } },
     },
   });
   if (!draft) throw new InventoryPreparationError("Listing draft not found", 404);
   if (draft.version !== input.expectedVersion) throw new InventoryPreparationError("Listing draft changed; reload it before preparing inventory", 409);
   if (draft.status !== "READY" || !draft.liveValidatedAt) throw new InventoryPreparationError("The draft must pass live eBay validation before inventory preparation", 409);
+  await assertApprovedListingPrice({
+    organizationId: draft.organizationId,
+    partId: draft.partId,
+    marketplace: draft.marketplace,
+    price: draft.price,
+    currency: draft.currency,
+  });
   if (!draft.part.media.length) throw new InventoryPreparationError("At least one approved image is required", 409);
   const job = await prisma.inventoryPreparationJob.upsert({
     where: { listingDraftId_draftVersion: { listingDraftId: draft.id, draftVersion: draft.version } },

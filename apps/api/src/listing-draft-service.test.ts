@@ -60,4 +60,22 @@ describe("listing publication readiness", () => {
     ]));
     expect(issues.some(({ code }) => code === "CATEGORY_METADATA_PENDING")).toBe(false);
   });
+
+  it("blocks an unapproved or changed listing price", () => {
+    const missing = evaluateListingReadiness(complete, {
+      sellerConnected: true,
+      approvedImageCount: 2,
+      fitmentApplicationCount: 1,
+      pricingApproval: null,
+    });
+    expect(missing).toContainEqual(expect.objectContaining({ code: "PRICING_APPROVAL_REQUIRED", severity: "BLOCKER" }));
+
+    const changed = evaluateListingReadiness(complete, {
+      sellerConnected: true,
+      approvedImageCount: 2,
+      fitmentApplicationCount: 1,
+      pricingApproval: { approvedPrice: 70, currency: "USD", belowFloor: false },
+    });
+    expect(changed).toContainEqual(expect.objectContaining({ code: "PRICE_NOT_APPROVED", severity: "BLOCKER" }));
+  });
 });

@@ -861,6 +861,8 @@ Acceptance criteria:
 
 Step 11 implements the first production slice of this phase: tenant-scoped jobs for up to 25 selected parts, marketplace and condition controls, exact item-specific matching, owned-seller exclusion, persisted competitor snapshots, polling, and catalog recommendations. Durable queue workers, company rules, floors, approval/override flows, and 100-part capacity remain in this phase.
 
+Step 27 adds organization pricing rules, cost and margin floors, immutable proposals, approve/reject/override decisions, owner/admin-only below-floor exceptions, audit/outbox evidence, and price-approval enforcement at listing readiness and eBay publication boundaries. Increasing a job beyond 25 parts remains a later measured-scaling change.
+
 Implementation:
 
 - Refactor current synchronous search into queued pricing jobs.
@@ -935,7 +937,7 @@ Acceptance criteria:
 Implementation:
 
 - Complete organization and platform admin panels.
-- Add subscription plans, quotas, and usage recording.
+- Subscription plans, quotas, and paid billing are intentionally deferred while the product remains free to use.
 - Add monitoring, alerts, dead-letter jobs, and support tools.
 - Add backups, restore testing, retention, and deletion workflows.
 - Perform security, load, and tenant-isolation testing.

@@ -12,7 +12,7 @@ Step 11 adds organization-scoped competitor pricing to the catalog workspace. Us
 6. Completed parts show exact competitor count, lowest landed price, median, recommended price, and expandable competitor evidence.
 7. Each evidence row contains the eBay listing ID, seller, condition, item price plus shipping, and an outbound eBay link.
 
-`Match each part` searches new competitors for a new catalog part and used competitors for a used catalog part. The recommended price remains the existing market formula of 98% of the competitor median. It is not yet a publishable or approved price proposal.
+`Match each part` searches new competitors for a new catalog part and used competitors for a used catalog part. The raw recommendation remains the existing market formula of 98% of the competitor median. Step 27 creates a separate cost-aware proposal that must satisfy the organization's pricing rule and approval workflow before publication. See [Pricing Governance](PRICING_GOVERNANCE.md).
 
 ## Exact-match rules
 

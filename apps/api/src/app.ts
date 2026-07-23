@@ -38,6 +38,7 @@ import { AdminOperationsError, getAdminOverview, listFailedJobs, listPublishingO
 import { acceptOrganizationInvitation, changeOrganizationMemberRole, createOrganizationInvitation, listOrganizationTeam, OrganizationTeamError, previewOrganizationInvitation, removeOrganizationMember, revokeOrganizationInvitation } from "./organization-team-service.js";
 import { AccountAuthError, beginMfaSetup, changeAccountPassword, completeMfaLogin, confirmMfaSetup, disableMfa, getAccountSecurity, loginAccount, passwordMeetsPolicy, recoverAccount, regenerateMfaRecoveryCodes, registerAccount, requestAccountRecovery, requestEmailVerification, requestPasswordReset, resetAccountPassword, verifyAccountEmail } from "./account-auth-service.js";
 import { EmailDeliveryError, verifyEmailTransport } from "./email-service.js";
+import { decidePricingProposal, getOrganizationPricingRule, listPricingProposals, PricingGovernanceError, updateOrganizationPricingRule } from "./pricing-governance-service.js";
 
 const searchSchema = z.object({
   oem: z.string().trim().min(2).max(80),
@@ -106,6 +107,24 @@ const createPricingJobSchema = z.object({
 }).strict();
 const pricingJobListSchema = z.object({ limit: z.coerce.number().int().min(1).max(50).default(10) });
 const pricingRoles = requireOrganizationRoles("OWNER", "ADMIN", "MANAGER", "PRICING_OPERATOR");
+const pricingRuleRoles = requireOrganizationRoles("OWNER", "ADMIN");
+const pricingRuleSchema = z.object({
+  marketAdjustmentPercent: z.number().min(-50).max(100),
+  minimumMarginPercent: z.number().min(0).max(95),
+  minimumProfitAmount: z.number().min(0).max(1_000_000),
+  requireApproval: z.boolean(),
+}).strict();
+const pricingProposalQuerySchema = z.object({
+  status: z.enum(["PENDING", "APPROVED", "REJECTED", "OVERRIDDEN", "SUPERSEDED"]).optional(),
+  partId: z.string().min(1).optional(),
+  marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+const pricingProposalDecisionSchema = z.object({
+  action: z.enum(["APPROVE", "REJECT", "OVERRIDE"]),
+  overridePrice: z.number().positive().max(100_000_000).optional(),
+  reason: z.string().trim().min(3).max(500).optional(),
+}).strict();
 const createFitmentJobSchema = z.object({
   partIds: z.array(z.string().min(1)).min(1).max(10).transform((ids) => [...new Set(ids)]),
   marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).default("EBAY_US"),
@@ -726,6 +745,50 @@ app.get("/api/pricing/jobs/:id", requireTenantContext, async (req, res, next) =>
   } catch (error) { next(error); }
 });
 
+app.get("/api/pricing/rule", requireTenantContext, async (_req, res, next) => {
+  try {
+    res.json(await getOrganizationPricingRule(getTenantContext(res).organization.id));
+  } catch (error) { next(error); }
+});
+
+app.put("/api/pricing/rule", writeRateLimit, requireTenantContext, pricingRuleRoles, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    res.json(await updateOrganizationPricingRule({
+      organizationId: tenant.organization.id,
+      userId: tenant.user.id,
+      values: pricingRuleSchema.parse(req.body),
+      requestId: res.locals.requestId,
+    }));
+  } catch (error) { next(error); }
+});
+
+app.get("/api/pricing/proposals", requireTenantContext, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    res.json(await listPricingProposals({
+      organizationId: tenant.organization.id,
+      ...pricingProposalQuerySchema.parse(req.query),
+    }));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/pricing/proposals/:id/decision", writeRateLimit, requireTenantContext, pricingRoles, async (req, res, next) => {
+  try {
+    const proposalId = req.params.id;
+    if (typeof proposalId !== "string") return res.status(400).json({ error: "Invalid pricing proposal ID" });
+    const tenant = getTenantContext(res);
+    res.json(await decidePricingProposal({
+      organizationId: tenant.organization.id,
+      userId: tenant.user.id,
+      role: tenant.role,
+      proposalId,
+      ...pricingProposalDecisionSchema.parse(req.body),
+      requestId: res.locals.requestId,
+    }));
+  } catch (error) { next(error); }
+});
+
 app.post("/api/fitment/jobs", searchRateLimit, requireTenantContext, fitmentRoles, async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
@@ -1301,6 +1364,7 @@ app.use((error: unknown, req: express.Request, res: express.Response, _next: exp
   if (error instanceof ImportReviewError) return response(error.statusCode, { error: error.message, ...(error.details ? { details: error.details } : {}) });
   if (error instanceof CatalogError) return response(error.statusCode, { error: error.message });
   if (error instanceof PricingJobError) return response(error.statusCode, { error: error.message });
+  if (error instanceof PricingGovernanceError) return response(error.statusCode, { error: error.message });
   if (error instanceof FitmentJobError) return response(error.statusCode, { error: error.message });
   if (error instanceof IdempotencyError) return response(error.statusCode, { error: error.message });
   if (error instanceof DeadLetterError) return response(error.statusCode, { error: error.message });

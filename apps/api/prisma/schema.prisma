@@ -113,6 +113,14 @@ enum PricingConditionMode {
   USED
 }
 
+enum PricingProposalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  OVERRIDDEN
+  SUPERSEDED
+}
+
 enum FitmentJobStatus {
   QUEUED
   RUNNING
@@ -274,6 +282,8 @@ model Organization {
   importMediaMatches   ImportMediaMatch[]
   pricingJobs          PricingJob[]
   pricingJobItems      PricingJobItem[]
+  pricingRule          PricingRule?
+  pricingProposals     PricingProposal[]
   competitorListings   CompetitorListingSnapshot[]
   fitmentJobs          FitmentJob[]
   fitmentJobItems      FitmentJobItem[]
@@ -310,6 +320,8 @@ model User {
   createdImports      ImportBatch[]            @relation("ImportCreator")
   createdParts        Part[]                   @relation("PartCreator")
   createdPricingJobs  PricingJob[]             @relation("PricingJobCreator")
+  updatedPricingRules PricingRule[]             @relation("PricingRuleUpdater")
+  decidedPricingProposals PricingProposal[]     @relation("PricingProposalDecider")
   createdFitmentJobs  FitmentJob[]             @relation("FitmentJobCreator")
   createdListingDrafts ListingDraft[]           @relation("ListingDraftCreator")
   updatedListingDrafts ListingDraft[]           @relation("ListingDraftUpdater")
@@ -626,6 +638,7 @@ model Part {
   inventoryItem        InventoryItem?
   media                PartMedia[]
   pricingJobItems      PricingJobItem[]
+  pricingProposals     PricingProposal[]
   fitmentJobItems      FitmentJobItem[]
   fitmentApplications  FitmentApplication[]
   listingDrafts        ListingDraft[]
@@ -849,12 +862,61 @@ model PricingJobItem {
   pricingJob       PricingJob                  @relation(fields: [pricingJobId], references: [id], onDelete: Cascade)
   part             Part                        @relation(fields: [partId], references: [id], onDelete: Cascade)
   listings         CompetitorListingSnapshot[]
+  proposal         PricingProposal?
   createdAt        DateTime                    @default(now())
   updatedAt        DateTime                    @updatedAt
 
   @@unique([pricingJobId, partId])
   @@index([organizationId, status])
   @@index([partId, completedAt])
+}
+
+model PricingRule {
+  id                       String       @id @default(cuid())
+  organizationId           String       @unique
+  marketAdjustmentPercent  Decimal      @default(0) @db.Decimal(6, 2)
+  minimumMarginPercent     Decimal      @default(20) @db.Decimal(6, 2)
+  minimumProfitAmount      Decimal      @default(10) @db.Decimal(12, 2)
+  requireApproval          Boolean      @default(true)
+  updatedById              String?
+  organization             Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  updatedBy                User?        @relation("PricingRuleUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt                DateTime     @default(now())
+  updatedAt                DateTime     @updatedAt
+
+  @@index([updatedById])
+}
+
+model PricingProposal {
+  id                       String                @id @default(cuid())
+  organizationId           String
+  partId                   String
+  pricingJobItemId         String                @unique
+  marketplace              String
+  currency                 String
+  status                   PricingProposalStatus @default(PENDING)
+  marketRecommendedPrice   Decimal               @db.Decimal(12, 2)
+  costAmount               Decimal?              @db.Decimal(12, 2)
+  costCurrency             String?
+  floorPrice               Decimal?              @db.Decimal(12, 2)
+  proposedPrice            Decimal               @db.Decimal(12, 2)
+  approvedPrice            Decimal?              @db.Decimal(12, 2)
+  belowFloor               Boolean               @default(false)
+  floorUnavailableReason   String?
+  ruleSnapshot             Json
+  decisionReason           String?
+  decidedById              String?
+  decidedAt                DateTime?
+  organization             Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  part                     Part                  @relation(fields: [partId], references: [id], onDelete: Cascade)
+  pricingJobItem           PricingJobItem        @relation(fields: [pricingJobItemId], references: [id], onDelete: Cascade)
+  decidedBy                User?                 @relation("PricingProposalDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
+
+  @@index([organizationId, status, createdAt])
+  @@index([organizationId, partId, marketplace, decidedAt])
+  @@index([decidedById])
 }
 
 model CompetitorListingSnapshot {

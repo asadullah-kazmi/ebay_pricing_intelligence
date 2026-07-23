@@ -2,6 +2,7 @@ import { Prisma, type ListingDraft, type PartCondition } from "@prisma/client";
 import { prisma } from "./db.js";
 import { enqueueOutboxEvent } from "./outbox-service.js";
 import { getCachedReadinessMetadata, refreshCategoryMetadata, syncSellerResources } from "./ebay-resource-service.js";
+import { getApprovedPricingContext } from "./pricing-governance-service.js";
 import type { EbayAspectRequirement, EbayConditionOption } from "./providers/ebay-selling.js";
 import type { Marketplace } from "./types.js";
 
@@ -47,6 +48,11 @@ export interface DraftReadinessContext {
   } | null;
   categoryRequirements?: EbayAspectRequirement[] | null;
   categoryConditions?: EbayConditionOption[] | null;
+  pricingApproval?: {
+    approvedPrice: number;
+    currency: string;
+    belowFloor: boolean;
+  } | null;
 }
 
 export function evaluateListingReadiness(values: DraftValues, context: DraftReadinessContext): ReadinessIssue[] {
@@ -65,6 +71,15 @@ export function evaluateListingReadiness(values: DraftValues, context: DraftRead
     }
   }
   if (values.price === null || !Number.isFinite(values.price) || values.price <= 0) blocker("PRICE_REQUIRED", "price", "Set a price greater than zero.");
+  if (context.pricingApproval === null) {
+    blocker("PRICING_APPROVAL_REQUIRED", "price", "Approve a current pricing proposal before preparing this listing.");
+  } else if (context.pricingApproval && (
+    values.price === null
+    || Math.round(values.price * 100) !== Math.round(context.pricingApproval.approvedPrice * 100)
+    || values.currency !== context.pricingApproval.currency
+  )) {
+    blocker("PRICE_NOT_APPROVED", "price", `Use the approved price ${context.pricingApproval.currency} ${context.pricingApproval.approvedPrice.toFixed(2)}.`);
+  }
   if (!/^[A-Z]{3}$/.test(values.currency)) blocker("CURRENCY_INVALID", "currency", "Currency must be a three-letter code.");
   if (!Number.isInteger(values.quantity) || values.quantity < 1) blocker("QUANTITY_REQUIRED", "quantity", "At least one unit must be available.");
   if (context.approvedImageCount < 1) blocker("APPROVED_IMAGE_REQUIRED", "images", "Approve at least one actual-item image.");
@@ -177,7 +192,7 @@ export async function createListingDrafts(input: {
   marketplace: string;
 }) {
   const partIds = [...new Set(input.partIds)];
-  const [parts, connection] = await Promise.all([
+  const [parts, connection, proposals] = await Promise.all([
     prisma.part.findMany({
       where: { organizationId: input.organizationId, id: { in: partIds }, status: { not: "ARCHIVED" } },
       include: {
@@ -192,20 +207,37 @@ export async function createListingDrafts(input: {
       },
     }),
     prisma.ebaySellerConnection.findUnique({ where: { organizationId: input.organizationId }, select: { status: true } }),
+    prisma.pricingProposal.findMany({
+      where: {
+        organizationId: input.organizationId,
+        partId: { in: partIds },
+        marketplace: input.marketplace,
+        status: { in: ["PENDING", "APPROVED", "OVERRIDDEN"] },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
   ]);
   if (parts.length !== partIds.length) throw new ListingDraftError("One or more selected parts are unavailable or archived", 404);
 
   await prisma.$transaction(async (tx) => {
     for (const part of parts) {
       const latestPrice = part.pricingJobItems[0];
+      const activeProposal = proposals.find((proposal) => proposal.partId === part.id);
+      const approvedProposal = activeProposal && ["APPROVED", "OVERRIDDEN"].includes(activeProposal.status) ? activeProposal : null;
       const values: DraftValues = {
         title: generatedTitle(part),
         description: part.description?.trim() || `${part.condition === "USED" ? "Used OEM" : "New"} ${part.partName ?? "automotive part"}. Part number ${part.primaryPartNumber}. Review all actual-item images before purchase.`,
         categoryId: null,
         condition: part.condition,
         ebayCondition: part.condition === "NEW" ? "NEW" : null,
-        price: latestPrice?.recommendedPrice ? Number(latestPrice.recommendedPrice.toString()) : null,
-        currency: latestPrice?.currency ?? part.inventoryItem?.currency ?? (input.marketplace === "EBAY_GB" ? "GBP" : input.marketplace === "EBAY_DE" ? "EUR" : "USD"),
+        price: approvedProposal?.approvedPrice
+          ? Number(approvedProposal.approvedPrice.toString())
+          : activeProposal?.proposedPrice
+            ? Number(activeProposal.proposedPrice.toString())
+            : latestPrice?.recommendedPrice
+              ? Number(latestPrice.recommendedPrice.toString())
+              : null,
+        currency: activeProposal?.currency ?? latestPrice?.currency ?? part.inventoryItem?.currency ?? (input.marketplace === "EBAY_GB" ? "GBP" : input.marketplace === "EBAY_DE" ? "EUR" : "USD"),
         quantity: part.inventoryItem?.quantity ?? 0,
         aspects: {
           "Manufacturer Part Number": [part.primaryPartNumber],
@@ -221,6 +253,11 @@ export async function createListingDrafts(input: {
         sellerConnected: connection?.status === "ACTIVE",
         approvedImageCount: part.media.length,
         fitmentApplicationCount: part.fitmentApplications.length,
+        pricingApproval: approvedProposal?.approvedPrice ? {
+          approvedPrice: Number(approvedProposal.approvedPrice.toString()),
+          currency: approvedProposal.currency,
+          belowFloor: approvedProposal.belowFloor,
+        } : null,
       });
       const status = issues.some(({ severity }) => severity === "BLOCKER") ? "BLOCKED" as const : "READY" as const;
       const draft = await tx.listingDraft.upsert({
@@ -288,10 +325,14 @@ export async function updateListingDraft(organizationId: string, userId: string,
   if (current.version !== input.expectedVersion) throw new ListingDraftError("Listing draft changed; reload it before saving", 409);
   const { expectedVersion: _expectedVersion, reason, ...changes } = input;
   const values = { ...valuesFromDraft(current), ...changes };
-  const cached = await getCachedReadinessMetadata(organizationId, current.marketplace as Marketplace, values.categoryId);
+  const [cached, pricingApproval] = await Promise.all([
+    getCachedReadinessMetadata(organizationId, current.marketplace as Marketplace, values.categoryId),
+    getApprovedPricingContext(organizationId, current.partId, current.marketplace),
+  ]);
   const issues = evaluateListingReadiness(values, {
     ...contextFromDraft(current),
     ...cached,
+    pricingApproval,
     ...(current.liveValidatedAt && !cached.sellerResources ? {
       sellerResources: { paymentPolicyIds: new Set(), returnPolicyIds: new Set(), fulfillmentPolicyIds: new Set(), inventoryLocationKeys: new Set() },
     } : {}),
@@ -349,9 +390,10 @@ export async function validateListingDraftLive(organizationId: string, userId: s
   if (current.version !== expectedVersion) throw new ListingDraftError("Listing draft changed; reload it before validating", 409);
   if (!current.categoryId) throw new ListingDraftError("Set an eBay category ID before live validation");
   const marketplace = current.marketplace as Marketplace;
-  const [resources, categoryMetadata] = await Promise.all([
+  const [resources, categoryMetadata, pricingApproval] = await Promise.all([
     syncSellerResources(organizationId, marketplace),
     refreshCategoryMetadata(marketplace, current.categoryId),
+    getApprovedPricingContext(organizationId, current.partId, current.marketplace),
   ]);
   const values = valuesFromDraft(current);
   const issues = evaluateListingReadiness(values, {
@@ -359,6 +401,7 @@ export async function validateListingDraftLive(organizationId: string, userId: s
     sellerResources: sellerResourceContext(resources),
     categoryRequirements: categoryMetadata.aspects,
     categoryConditions: categoryMetadata.conditions,
+    pricingApproval,
   });
   const status = issues.some(({ severity }) => severity === "BLOCKER") ? "BLOCKED" as const : "READY" as const;
   const nextVersion = current.version + 1;
@@ -428,5 +471,8 @@ export async function getListingDraft(organizationId: string, draftId: string) {
     },
   });
   if (!draft) throw new ListingDraftError("Listing draft not found", 404);
-  return serializeDraft(draft);
+  return {
+    ...serializeDraft(draft),
+    pricingApproval: await getApprovedPricingContext(organizationId, draft.partId, draft.marketplace),
+  };
 }

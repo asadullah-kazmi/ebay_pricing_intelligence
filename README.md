@@ -85,6 +85,8 @@ See [Catalog Workspace](docs/CATALOG_WORKSPACE.md) for catalog filters, editing,
 
 See [Bulk Pricing Jobs](docs/BULK_PRICING.md) for selected-part eBay pricing, condition controls, job polling, exact-match evidence, and competitor listing snapshots.
 
+See [Pricing Governance and Publication Floors](docs/PRICING_GOVERNANCE.md) for organization rules, cost floors, approval/rejection, audited overrides, and publication enforcement.
+
 See [eBay Seller Connection Setup](docs/EBAY_SELLER_OAUTH.md) for production RuName configuration, encrypted OAuth token storage, Railway variables, connection endpoints, and troubleshooting.
 
 See [Listing Drafts and Publication Readiness](docs/LISTING_DRAFTS.md) for draft creation, editing, version history, readiness blockers, and the boundary before live eBay publication.
@@ -137,6 +139,9 @@ See [Production Release Checklist](docs/PRODUCTION_RELEASE.md) before deploying.
 - `POST /api/pricing/jobs` - create a tenant-scoped pricing job for up to 25 selected parts
 - `GET /api/pricing/jobs` - list recent pricing jobs for the organization
 - `GET /api/pricing/jobs/:id` - poll job progress and inspect competitor listing snapshots
+- `GET` / `PUT /api/pricing/rule` - read or update organization pricing governance
+- `GET /api/pricing/proposals` - list cost-aware governed pricing proposals
+- `POST /api/pricing/proposals/:id/decision` - approve, reject, or override a proposal
 - `POST /api/fitment/jobs` - discover scored eBay catalog fitment candidates for up to 10 selected parts
 - `GET /api/fitment/jobs` / `GET /api/fitment/jobs/:id` - list and poll tenant-scoped fitment jobs
 - `POST /api/fitment/items/:id/approve` - approve an ePID candidate and import its compatibility applications

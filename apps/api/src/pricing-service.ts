@@ -7,6 +7,7 @@ import { inlineJobOptions, leaseExpiry, runWithRetry, type JobRunOptions } from 
 import { captureDeadLetter, resolveDeadLetter } from "./dead-letter-service.js";
 import { enqueueOutboxEvent } from "./outbox-service.js";
 import { searchEbay } from "./providers/ebay.js";
+import { createPricingProposal } from "./pricing-governance-service.js";
 import type { ListingCondition, Marketplace, MatchedListing, RawListing } from "./types.js";
 
 export class PricingJobError extends Error {
@@ -61,6 +62,13 @@ function serializeJob<T extends {
     median: { toString(): string } | null;
     highest: { toString(): string } | null;
     recommendedPrice: { toString(): string } | null;
+    proposal: {
+      marketRecommendedPrice: { toString(): string };
+      costAmount: { toString(): string } | null;
+      floorPrice: { toString(): string } | null;
+      proposedPrice: { toString(): string };
+      approvedPrice: { toString(): string } | null;
+    } | null;
     listings: Array<{ price: { toString(): string }; shipping: { toString(): string }; landedPrice: { toString(): string } }>;
   }>;
 }>(job: T) {
@@ -73,6 +81,14 @@ function serializeJob<T extends {
       median: numberOrNull(item.median),
       highest: numberOrNull(item.highest),
       recommendedPrice: numberOrNull(item.recommendedPrice),
+      proposal: item.proposal ? {
+        ...item.proposal,
+        marketRecommendedPrice: Number(item.proposal.marketRecommendedPrice.toString()),
+        costAmount: numberOrNull(item.proposal.costAmount),
+        floorPrice: numberOrNull(item.proposal.floorPrice),
+        proposedPrice: Number(item.proposal.proposedPrice.toString()),
+        approvedPrice: numberOrNull(item.proposal.approvedPrice),
+      } : null,
       listings: item.listings.map((listing) => ({
         ...listing,
         price: Number(listing.price.toString()),
@@ -89,6 +105,7 @@ const jobInclude = {
     include: {
       part: { select: { id: true, sku: true, primaryPartNumber: true, partName: true, condition: true } },
       listings: { orderBy: { landedPrice: "asc" as const } },
+      proposal: { include: { decidedBy: { select: { id: true, email: true, name: true } } } },
     },
   },
 };
@@ -236,6 +253,20 @@ async function processPricingItem(
           completedAt,
         },
       });
+      if (analytics) {
+        const jobItem = await tx.pricingJobItem.findUniqueOrThrow({
+          where: { id: item.id },
+          select: { partId: true, pricingJob: { select: { marketplace: true } } },
+        });
+        await createPricingProposal(tx, {
+          organizationId: item.organizationId,
+          partId: jobItem.partId,
+          pricingJobItemId: item.id,
+          marketplace: jobItem.pricingJob.marketplace,
+          marketRecommendedPrice: analytics.recommendedPrice,
+          currency: analytics.currency,
+        });
+      }
       await resolveDeadLetter(tx, "PRICING_ITEM", item.id);
     }, { maxWait: 10_000, timeout: 60_000 });
   } catch (error) {

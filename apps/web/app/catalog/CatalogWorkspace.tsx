@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import styles from "./catalog.module.css";
-import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogStatus, EbayAspectRequirement, EbayConditionOption, EbayConnection, EbayInventorySyncJob, EbayListingOperationJob, EbayOffer, EbayOfferJob, EbaySellerResources, FitmentJob, FitmentJobSummary, InventoryPreparation, InventoryPreparationJob, ListingDraft, LiveDraftValidation, PartCondition, PricingConditionMode, PricingJob, PricingJobSummary } from "./types";
+import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogStatus, EbayAspectRequirement, EbayConditionOption, EbayConnection, EbayInventorySyncJob, EbayListingOperationJob, EbayOffer, EbayOfferJob, EbaySellerResources, FitmentJob, FitmentJobSummary, InventoryPreparation, InventoryPreparationJob, ListingDraft, LiveDraftValidation, PartCondition, PricingConditionMode, PricingJob, PricingJobSummary, PricingRule } from "./types";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const statuses: CatalogStatus[] = ["IMPORTED", "NEEDS_IMAGES", "IMPORT_ERROR", "READY_FOR_ENRICHMENT", "ARCHIVED"];
@@ -68,6 +68,8 @@ export default function CatalogWorkspace() {
   const [pricingJob, setPricingJob] = useState<PricingJob | null>(null);
   const [pricingBusy, setPricingBusy] = useState(false);
   const [latestPricingLoaded, setLatestPricingLoaded] = useState(false);
+  const [pricingRule, setPricingRule] = useState<PricingRule | null>(null);
+  const [pricingRuleBusy, setPricingRuleBusy] = useState(false);
   const [fitmentJob, setFitmentJob] = useState<FitmentJob | null>(null);
   const [fitmentBusy, setFitmentBusy] = useState(false);
   const [latestFitmentLoaded, setLatestFitmentLoaded] = useState(false);
@@ -127,6 +129,9 @@ export default function CatalogWorkspace() {
     if (authState !== "ready" || demo) return;
     request("/api/listing-drafts?limit=25")
       .then((value) => setDrafts(value as ListingDraft[]))
+      .catch(() => undefined);
+    request("/api/pricing/rule")
+      .then((value) => setPricingRule(value as PricingRule))
       .catch(() => undefined);
   }, [authState, demo, request]);
 
@@ -270,6 +275,54 @@ export default function CatalogWorkspace() {
       setPricingJob(job);
       setSelected(new Set());
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to start pricing"); }
+    finally { setPricingBusy(false); }
+  }
+
+  async function savePricingRule(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (demo || pricingRuleBusy) return;
+    const form = new FormData(event.currentTarget);
+    setPricingRuleBusy(true); setError(""); setNotice("");
+    try {
+      setPricingRule(await request("/api/pricing/rule", {
+        method: "PUT",
+        body: JSON.stringify({
+          marketAdjustmentPercent: Number(form.get("marketAdjustmentPercent")),
+          minimumMarginPercent: Number(form.get("minimumMarginPercent")),
+          minimumProfitAmount: Number(form.get("minimumProfitAmount")),
+          requireApproval: form.get("requireApproval") === "on",
+        }),
+      }) as PricingRule);
+      setNotice("Pricing governance rule updated. It applies to future pricing proposals.");
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to update pricing rule"); }
+    finally { setPricingRuleBusy(false); }
+  }
+
+  async function decidePrice(proposalId: string, action: "APPROVE" | "REJECT" | "OVERRIDE") {
+    if (demo || pricingBusy) return;
+    let reason: string | undefined;
+    let overridePrice: number | undefined;
+    if (action === "REJECT") {
+      reason = window.prompt("Why are you rejecting this price?")?.trim();
+      if (!reason) return;
+    }
+    if (action === "OVERRIDE") {
+      const entered = window.prompt("Enter the approved override price:");
+      if (!entered) return;
+      overridePrice = Number(entered);
+      if (!Number.isFinite(overridePrice) || overridePrice <= 0) { setError("Enter a valid positive override price."); return; }
+      reason = window.prompt("Give a reason for this override:")?.trim();
+      if (!reason) return;
+    }
+    setPricingBusy(true); setError("");
+    try {
+      await request(`/api/pricing/proposals/${proposalId}/decision`, {
+        method: "POST",
+        body: JSON.stringify({ action, ...(overridePrice ? { overridePrice } : {}), ...(reason ? { reason } : {}) }),
+      });
+      setPricingJob(await request(`/api/pricing/jobs/${pricingJob!.id}`) as PricingJob);
+      setNotice(action === "APPROVE" ? "Price approved for listing preparation." : action === "REJECT" ? "Price proposal rejected." : "Price override recorded with audit evidence.");
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to decide pricing proposal"); }
     finally { setPricingBusy(false); }
   }
 
@@ -671,12 +724,28 @@ export default function CatalogWorkspace() {
         <article><span>Needs images</span><b>{needsImages}</b><small>Action required</small></article>
         <article><span>Newly imported</span><b>{imported}</b><small>Awaiting review</small></article>
       </section>
+      {pricingRule && <section className={`${styles.pricingPanel} ${styles.rulePanel}`}>
+        <header><div><span className={styles.eyebrow}>PRICING GOVERNANCE</span><h2>Cost floors and approval</h2></div><span className={styles.jobStatus}>{pricingRule.requireApproval ? "Human approval required" : "Automatic approval"}</span></header>
+        <form key={pricingRule.updatedAt ?? "default"} onSubmit={savePricingRule}>
+          <label><span>Market adjustment %</span><input name="marketAdjustmentPercent" type="number" min="-50" max="100" step="0.01" defaultValue={pricingRule.marketAdjustmentPercent}/></label>
+          <label><span>Minimum margin %</span><input name="minimumMarginPercent" type="number" min="0" max="95" step="0.01" defaultValue={pricingRule.minimumMarginPercent}/></label>
+          <label><span>Minimum profit</span><input name="minimumProfitAmount" type="number" min="0" step="0.01" defaultValue={pricingRule.minimumProfitAmount}/></label>
+          <label className={styles.ruleCheck}><input name="requireApproval" type="checkbox" defaultChecked={pricingRule.requireApproval}/><span>Require approval before listing</span></label>
+          <button className={styles.primary} disabled={pricingRuleBusy || demo}>{pricingRuleBusy ? "Saving..." : "Save rule"}</button>
+        </form>
+        <p>The price floor is the higher of minimum profit or minimum margin. Only owners/admins can approve a below-floor override.</p>
+      </section>}
       {pricingJob && <section className={styles.pricingPanel}>
         <header><div><span className={styles.eyebrow}>BULK MARKET PRICING</span><h2>Job {pricingJob.id.slice(-8)}</h2></div><div><span className={`${styles.jobStatus} ${styles[`job_${pricingJob.status.toLowerCase()}`]}`}>{humanStatus(pricingJob.status)}</span><button onClick={() => setPricingJob(null)} aria-label="Hide pricing job">×</button></div></header>
         <div className={styles.jobProgress}><div><i style={{ width: `${Math.round(((pricingJob.completedItems + pricingJob.noMatchItems + pricingJob.failedItems) / pricingJob.totalItems) * 100)}%` }}/></div><span>{pricingJob.completedItems + pricingJob.noMatchItems + pricingJob.failedItems} of {pricingJob.totalItems} processed · {pricingJob.marketplace} · {humanStatus(pricingJob.conditionMode)}</span></div>
         <div className={styles.pricingItems}>{pricingJob.items.map((item) => <article key={item.id}>
           <div className={styles.pricingItemHead}><div><b>{item.part.sku}</b><span>{item.part.partName || item.queryPartNumber} · {item.condition}</span></div><span className={styles.jobStatus}>{humanStatus(item.status)}</span></div>
-          {item.status === "COMPLETED" ? <><div className={styles.priceMetrics}><span>Matches <b>{item.competitorCount}</b></span><span>Lowest <b>{money(item.lowest!, item.currency!)}</b></span><span>Median <b>{money(item.median!, item.currency!)}</b></span><span>Recommended <b>{money(item.recommendedPrice!, item.currency!)}</b></span></div><details><summary>View {item.listings.length} competitor listings</summary><div className={styles.competitors}>{item.listings.map((listing) => <a key={listing.id} href={listing.url} target="_blank" rel="noreferrer"><span><b>{listing.title}</b><small>Listing ID: {listing.listingId} · {listing.seller} · {listing.condition}</small></span><strong>{money(listing.landedPrice, listing.currency)}</strong></a>)}</div></details></> : item.status === "NO_MATCHES" ? <p>No exact item-specific competitor matches found.</p> : item.status === "FAILED" ? <p className={styles.itemError}>{item.error || "Pricing failed"}</p> : <p>Searching eBay and verifying exact item specifics...</p>}
+          {item.status === "COMPLETED" ? <><div className={styles.priceMetrics}><span>Matches <b>{item.competitorCount}</b></span><span>Lowest <b>{money(item.lowest!, item.currency!)}</b></span><span>Median <b>{money(item.median!, item.currency!)}</b></span><span>Recommended <b>{money(item.recommendedPrice!, item.currency!)}</b></span></div>
+            {item.proposal && <div className={styles.proposalBox}>
+              <div><span>Governed proposal</span><b>{money(item.proposal.proposedPrice, item.proposal.currency)}</b><small>Floor {item.proposal.floorPrice === null ? "unavailable" : money(item.proposal.floorPrice, item.proposal.currency)} · {humanStatus(item.proposal.status)}</small></div>
+              {item.proposal.status === "PENDING" && item.proposal.floorPrice !== null ? <div><button disabled={pricingBusy} onClick={() => void decidePrice(item.proposal!.id, "APPROVE")}>Approve</button><button disabled={pricingBusy} onClick={() => void decidePrice(item.proposal!.id, "OVERRIDE")}>Override</button><button disabled={pricingBusy} onClick={() => void decidePrice(item.proposal!.id, "REJECT")}>Reject</button></div> : item.proposal.floorUnavailableReason ? <small>Update inventory cost/currency before approval: {humanStatus(item.proposal.floorUnavailableReason)}</small> : item.proposal.approvedPrice !== null ? <strong>Approved {money(item.proposal.approvedPrice, item.proposal.currency)}{item.proposal.belowFloor ? " · below-floor override" : ""}</strong> : null}
+            </div>}
+            <details><summary>View {item.listings.length} competitor listings</summary><div className={styles.competitors}>{item.listings.map((listing) => <a key={listing.id} href={listing.url} target="_blank" rel="noreferrer"><span><b>{listing.title}</b><small>Listing ID: {listing.listingId} · {listing.seller} · {listing.condition}</small></span><strong>{money(listing.landedPrice, listing.currency)}</strong></a>)}</div></details></> : item.status === "NO_MATCHES" ? <p>No exact item-specific competitor matches found.</p> : item.status === "FAILED" ? <p className={styles.itemError}>{item.error || "Pricing failed"}</p> : <p>Searching eBay and verifying exact item specifics...</p>}
         </article>)}</div>
       </section>}
       {fitmentJob && <section id="fitment-workflow" className={`${styles.pricingPanel} ${styles.fitmentPanel}`}>

@@ -88,6 +88,33 @@ export interface CatalogPartDetail extends Omit<CatalogPartCard, "media" | "inve
 export type PricingJobStatus = "QUEUED" | "RUNNING" | "COMPLETED" | "PARTIAL" | "FAILED";
 export type PricingJobItemStatus = "QUEUED" | "RUNNING" | "COMPLETED" | "NO_MATCHES" | "FAILED";
 export type PricingConditionMode = "MATCH_PART" | "ANY" | "NEW" | "USED";
+export type PricingProposalStatus = "PENDING" | "APPROVED" | "REJECTED" | "OVERRIDDEN" | "SUPERSEDED";
+
+export interface PricingProposal {
+  id: string;
+  status: PricingProposalStatus;
+  marketRecommendedPrice: number;
+  costAmount: number | null;
+  costCurrency: string | null;
+  floorPrice: number | null;
+  proposedPrice: number;
+  approvedPrice: number | null;
+  currency: string;
+  belowFloor: boolean;
+  floorUnavailableReason: string | null;
+  decisionReason: string | null;
+  decidedAt: string | null;
+  decidedBy: { id: string; email: string; name: string | null } | null;
+}
+
+export interface PricingRule {
+  id: string | null;
+  marketAdjustmentPercent: number;
+  minimumMarginPercent: number;
+  minimumProfitAmount: number;
+  requireApproval: boolean;
+  updatedAt: string | null;
+}
 
 export interface PricingJobSummary {
   id: string;
@@ -117,6 +144,7 @@ export interface PricingJob extends PricingJobSummary {
     recommendedPrice: number | null;
     currency: string | null;
     error: string | null;
+    proposal: PricingProposal | null;
     part: { id: string; sku: string; primaryPartNumber: string; partName: string | null; condition: PartCondition };
     listings: Array<{
       id: string;
@@ -218,6 +246,13 @@ export interface ListingDraft {
     createdAt: string;
     createdBy: { id: string; email: string; name: string | null };
   }>;
+  pricingApproval?: {
+    proposalId: string;
+    approvedPrice: number;
+    currency: string;
+    belowFloor: boolean;
+    decidedAt: string | null;
+  } | null;
 }
 
 export interface EbaySellerResource {

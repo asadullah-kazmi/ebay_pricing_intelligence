@@ -5,6 +5,7 @@ import { enqueueOutboxEvent } from "./outbox-service.js";
 import { createOffer, findOfferIdBySku, getListingFees, getPublishedListingId, publishOffer, updateOffer } from "./providers/ebay-inventory.js";
 import type { Marketplace } from "./types.js";
 import { recordAuditEvent } from "./audit-service.js";
+import { assertApprovedListingPrice } from "./pricing-governance-service.js";
 
 export class EbayOfferError extends Error {
   readonly status: number;
@@ -74,6 +75,13 @@ export async function createOfferPreparationJob(input: {
     throw new EbayOfferError("The listing draft changed or lost live readiness after inventory sync", 409);
   }
   if (!sync.preparation || sync.preparation.payloadHash !== sync.payloadHash) throw new EbayOfferError("Inventory preparation no longer matches its sync job", 409);
+  await assertApprovedListingPrice({
+    organizationId: input.organizationId,
+    partId: sync.listingDraft.partId,
+    marketplace: sync.listingDraft.marketplace,
+    price: sync.listingDraft.price,
+    currency: sync.listingDraft.currency,
+  });
   const payload = buildOfferPayload(sync.listingDraft, sync.sku);
   const existing = await prisma.ebayOffer.findUnique({ where: { listingDraftId: sync.listingDraftId } });
   if (existing?.status === "PUBLISHED") throw new EbayOfferError("This draft is already published; use the future revision workflow", 409);
@@ -149,6 +157,13 @@ export async function createOfferPublishJob(input: {
   if (offer.inventorySyncJob.status !== "COMPLETED" || offer.inventorySyncJob.payloadHash !== offer.payloadHash) {
     throw new EbayOfferError("The inventory sync no longer matches this offer", 409);
   }
+  await assertApprovedListingPrice({
+    organizationId: input.organizationId,
+    partId: offer.listingDraft.partId,
+    marketplace: offer.listingDraft.marketplace,
+    price: offer.listingDraft.price,
+    currency: offer.listingDraft.currency,
+  });
   const now = new Date();
   await prisma.ebayOffer.update({
     where: { id: offer.id },

@@ -90,6 +90,8 @@ Deploy `20260723100000_add_organization_invitations` before exposing `/admin/tea
 
 Deploy `20260723110000_add_complete_authentication` before exposing registration or login. Configure SMTP and the stable MFA encryption key, then follow [Complete Authentication and Account Security](COMPLETE_AUTHENTICATION.md). Smoke-test verification, login/logout, password reset, MFA, and account recovery with a disposable account.
 
+Deploy `20260724100000_add_pricing_governance` before enabling new pricing runs or publication. Follow [Pricing Governance and Publication Floors](PRICING_GOVERNANCE.md), configure the organization rule, and verify that an unapproved or changed price cannot reach inventory preparation or publication.
+
 ## 3. Railway web service
 
 Use the repository root as the service root.
@@ -165,7 +167,7 @@ Omit `API_ACCESS_TOKEN` to run only public health/security checks. The script ne
 - Authentication and SMTP invitation delivery are implemented. Gmail SMTP is suitable for initial testing and low-volume rollout; move to a transactional provider with delivery telemetry and bounce/complaint handling before materially increasing customer volume.
 - Rate limiting is per API process, not distributed.
 - Pricing and fitment jobs run in the dedicated worker in production and currently use PostgreSQL leases rather than a broker-backed queue.
-- Pricing recommendations are market statistics only. Cost floors, pricing rules, proposal approval, and overrides are not implemented yet.
+- Currency conversion is intentionally not automatic. Inventory cost currency must match the marketplace proposal currency before a price can be approved.
 - Step 23 audits publishing and administrative recovery actions; full field-level catalog/import/security audit coverage and archival policy remain future work.
 - Object-storage uploads performed immediately before a failed database transaction may require an orphan cleanup job.
 - Large import confirmation is transactional and synchronous; queue-based processing is still required before high-volume use.

@@ -6,6 +6,7 @@ import { enqueueOutboxEvent } from "./outbox-service.js";
 import { getOfferSnapshot, updateOffer, withdrawOffer, type RemoteOfferSnapshot } from "./providers/ebay-inventory.js";
 import type { Marketplace } from "./types.js";
 import { recordAuditEvent } from "./audit-service.js";
+import { assertApprovedListingPrice } from "./pricing-governance-service.js";
 
 export class EbayListingOperationError extends Error {
   readonly status: number;
@@ -88,6 +89,13 @@ export async function createRevisionJob(input: {
   if (sync.draftVersion <= offer.draftVersion) throw new EbayListingOperationError("The published listing already contains this draft version", 409);
   if (sync.sku !== offer.sku || sync.listingDraft.marketplace !== offer.marketplace) throw new EbayListingOperationError("SKU and marketplace cannot be changed through listing revision", 409);
   if (sync.listingDraft.status !== "READY" || !sync.listingDraft.liveValidatedAt) throw new EbayListingOperationError("The revised draft must pass live eBay validation", 409);
+  await assertApprovedListingPrice({
+    organizationId: input.organizationId,
+    partId: sync.listingDraft.partId,
+    marketplace: sync.listingDraft.marketplace,
+    price: sync.listingDraft.price,
+    currency: sync.listingDraft.currency,
+  });
   await assertNoActiveOperation(offer.id);
   const payload = buildOfferPayload(sync.listingDraft, sync.sku);
   const job = await prisma.$transaction(async (tx) => {
