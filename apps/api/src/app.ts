@@ -35,6 +35,9 @@ import { createOfferPreparationJob, createOfferPublishJob, EbayOfferError, getOf
 import { createReconciliationJob, createRevisionJob, createWithdrawalJob, EbayListingOperationError, getListingOperationJob, startListingOperationJob } from "./ebay-listing-operation-service.js";
 import { listAuditEvents } from "./audit-service.js";
 import { AdminOperationsError, getAdminOverview, listFailedJobs, listPublishingOperations, retryAdminJob } from "./admin-operations-service.js";
+import { acceptOrganizationInvitation, changeOrganizationMemberRole, createOrganizationInvitation, listOrganizationTeam, OrganizationTeamError, previewOrganizationInvitation, removeOrganizationMember, revokeOrganizationInvitation } from "./organization-team-service.js";
+import { AccountAuthError, beginMfaSetup, changeAccountPassword, completeMfaLogin, confirmMfaSetup, disableMfa, getAccountSecurity, loginAccount, passwordMeetsPolicy, recoverAccount, regenerateMfaRecoveryCodes, registerAccount, requestAccountRecovery, requestEmailVerification, requestPasswordReset, resetAccountPassword, verifyAccountEmail } from "./account-auth-service.js";
+import { EmailDeliveryError, verifyEmailTransport } from "./email-service.js";
 
 const searchSchema = z.object({
   oem: z.string().trim().min(2).max(80),
@@ -111,6 +114,7 @@ const approveFitmentSchema = z.object({ candidateId: z.string().min(1) }).strict
 const fitmentRoles = requireOrganizationRoles("OWNER", "ADMIN", "MANAGER", "CATALOG_OPERATOR");
 const deadLetterRoles = requireOrganizationRoles("OWNER", "ADMIN", "MANAGER");
 const adminOperationsRoles = requireOrganizationRoles("OWNER", "ADMIN");
+const teamManagementRoles = requireOrganizationRoles("OWNER", "ADMIN");
 const idempotencyKeySchema = z.string().trim().min(8).max(200).regex(/^[A-Za-z0-9._:-]+$/).optional();
 const deadLetterQuerySchema = z.object({
   status: z.enum(["OPEN", "REQUEUED", "RESOLVED"]).optional(),
@@ -128,6 +132,48 @@ const adminAuditQuerySchema = adminListQuerySchema.extend({
   createdTo: z.coerce.date().optional(),
 });
 const adminJobTypeSchema = z.enum(["PRICING", "FITMENT", "INVENTORY_PREPARATION", "INVENTORY_SYNC", "OFFER", "LISTING_OPERATION"]);
+const organizationRoleSchema = z.enum(["OWNER", "ADMIN", "MANAGER", "CATALOG_OPERATOR", "PRICING_OPERATOR", "PUBLISHER", "VIEWER"]);
+const invitationTokenSchema = z.string().trim().min(32).max(200);
+const invitationPreviewSchema = z.object({ token: invitationTokenSchema }).strict();
+const invitationAcceptSchema = z.object({
+  token: invitationTokenSchema,
+  name: z.string().trim().min(1).max(100).optional(),
+}).strict();
+const createInvitationSchema = z.object({
+  email: z.string().trim().email().max(320),
+  role: organizationRoleSchema,
+}).strict();
+const changeMemberRoleSchema = z.object({ role: organizationRoleSchema }).strict();
+const emailSchema = z.string().trim().email().max(320);
+const securePasswordSchema = z.string().min(12).max(128).refine(passwordMeetsPolicy, "Password must include uppercase, lowercase, number, and symbol");
+const registerAccountSchema = z.object({
+  email: emailSchema,
+  name: z.string().trim().min(1).max(100),
+  password: securePasswordSchema,
+  organizationName: z.string().trim().min(2).max(120),
+}).strict();
+const loginAccountSchema = z.object({
+  email: emailSchema,
+  password: z.string().min(1).max(128),
+  organizationSlug: z.string().trim().min(1).max(100).optional(),
+}).strict();
+const mfaLoginSchema = z.object({
+  challengeToken: z.string().trim().min(32).max(200),
+  code: z.string().trim().min(6).max(40),
+}).strict();
+const emailActionSchema = z.object({ email: emailSchema }).strict();
+const tokenActionSchema = z.object({ token: z.string().trim().min(32).max(200) }).strict();
+const passwordResetSchema = tokenActionSchema.extend({ password: securePasswordSchema });
+const passwordChangeSchema = z.object({
+  currentPassword: z.string().min(1).max(128).optional(),
+  password: securePasswordSchema,
+}).strict();
+const mfaSetupSchema = z.object({ password: z.string().min(1).max(128) }).strict();
+const mfaCodeSchema = z.object({ code: z.string().trim().min(6).max(40) }).strict();
+const mfaSensitiveActionSchema = z.object({
+  password: z.string().min(1).max(128),
+  code: z.string().trim().min(6).max(40),
+}).strict();
 const listingDraftRoles = requireOrganizationRoles("OWNER", "ADMIN", "MANAGER", "PUBLISHER");
 const createListingDraftsSchema = z.object({
   partIds: z.array(z.string().min(1)).min(1).max(25).transform((ids) => [...new Set(ids)]),
@@ -214,9 +260,198 @@ app.get("/api/ebay/oauth/callback", authRateLimit, async (req, res) => {
   }
 });
 
+app.post("/api/auth/register", authRateLimit, async (req, res, next) => {
+  try {
+    assertTrustedAuthOrigin(req);
+    const input = registerAccountSchema.parse(req.body);
+    res.status(201).json(await registerAccount({ ...input, requestId: res.locals.requestId }));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/auth/login", authRateLimit, async (req, res, next) => {
+  try {
+    assertTrustedAuthOrigin(req);
+    const jwt = getJwtConfiguration();
+    if (!jwt) return res.status(503).json({ error: "JWT authentication is not configured" });
+    const result = await loginAccount({ ...loginAccountSchema.parse(req.body), jwt, requestId: res.locals.requestId });
+    if ("authenticated" in result) {
+      setRefreshCookie(res, result.pair);
+      return res.json({
+        authenticated: true,
+        accessToken: result.pair.accessToken,
+        accessTokenExpiresIn: result.pair.accessTokenExpiresIn,
+        organization: result.organization,
+        role: result.role,
+      });
+    }
+    res.json(result);
+  } catch (error) { next(error); }
+});
+
+app.post("/api/auth/login/mfa", authRateLimit, async (req, res, next) => {
+  try {
+    assertTrustedAuthOrigin(req);
+    const jwt = getJwtConfiguration();
+    if (!jwt) return res.status(503).json({ error: "JWT authentication is not configured" });
+    const result = await completeMfaLogin({ ...mfaLoginSchema.parse(req.body), jwt, requestId: res.locals.requestId });
+    setRefreshCookie(res, result.pair);
+    res.json({
+      authenticated: true,
+      accessToken: result.pair.accessToken,
+      accessTokenExpiresIn: result.pair.accessTokenExpiresIn,
+      organization: result.organization,
+    });
+  } catch (error) { next(error); }
+});
+
+app.post("/api/auth/email-verification/request", authRateLimit, async (req, res, next) => {
+  try {
+    assertTrustedAuthOrigin(req);
+    res.status(202).json(await requestEmailVerification(emailActionSchema.parse(req.body).email));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/auth/email-verification/confirm", authRateLimit, async (req, res, next) => {
+  try {
+    assertTrustedAuthOrigin(req);
+    res.json(await verifyAccountEmail(tokenActionSchema.parse(req.body).token));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/auth/password-reset/request", authRateLimit, async (req, res, next) => {
+  try {
+    assertTrustedAuthOrigin(req);
+    res.status(202).json(await requestPasswordReset(emailActionSchema.parse(req.body).email));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/auth/password-reset/confirm", authRateLimit, async (req, res, next) => {
+  try {
+    assertTrustedAuthOrigin(req);
+    const input = passwordResetSchema.parse(req.body);
+    res.json(await resetAccountPassword(input.token, input.password));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/auth/account-recovery/request", authRateLimit, async (req, res, next) => {
+  try {
+    assertTrustedAuthOrigin(req);
+    res.status(202).json(await requestAccountRecovery(emailActionSchema.parse(req.body).email));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/auth/account-recovery/confirm", authRateLimit, async (req, res, next) => {
+  try {
+    assertTrustedAuthOrigin(req);
+    const input = passwordResetSchema.parse(req.body);
+    res.json(await recoverAccount(input.token, input.password));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/invitations/preview", authRateLimit, async (req, res, next) => {
+  try {
+    assertTrustedAuthOrigin(req);
+    const { token } = invitationPreviewSchema.parse(req.body);
+    res.json(await previewOrganizationInvitation(token));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/invitations/accept", authRateLimit, async (req, res, next) => {
+  try {
+    assertTrustedAuthOrigin(req);
+    const jwt = getJwtConfiguration();
+    if (!jwt) return res.status(503).json({ error: "JWT authentication is not configured" });
+    const input = invitationAcceptSchema.parse(req.body);
+    const accepted = await acceptOrganizationInvitation({ ...input, jwt, requestId: res.locals.requestId });
+    setRefreshCookie(res, accepted.pair);
+    res.status(201).json({
+      accessToken: accepted.pair.accessToken,
+      accessTokenExpiresIn: accepted.pair.accessTokenExpiresIn,
+      organization: accepted.organization,
+      user: accepted.user,
+      role: accepted.role,
+    });
+  } catch (error) { next(error); }
+});
+
 app.get("/api/session", requireTenantContext, (_req, res) => {
   const tenant = getTenantContext(res);
   res.json(tenant);
+});
+
+app.get("/api/auth/security", requireTenantContext, async (_req, res, next) => {
+  try {
+    res.json(await getAccountSecurity(getTenantContext(res).user.id));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/auth/password", authRateLimit, requireTenantContext, async (req, res, next) => {
+  try {
+    assertTrustedAuthOrigin(req);
+    const tenant = getTenantContext(res);
+    const input = passwordChangeSchema.parse(req.body);
+    const result = await changeAccountPassword({
+      userId: tenant.user.id,
+      organizationId: tenant.organization.id,
+      ...input,
+      requestId: res.locals.requestId,
+    });
+    clearRefreshCookie(res);
+    res.json(result);
+  } catch (error) { next(error); }
+});
+
+app.post("/api/auth/mfa/setup", authRateLimit, requireTenantContext, async (req, res, next) => {
+  try {
+    assertTrustedAuthOrigin(req);
+    const tenant = getTenantContext(res);
+    const { password } = mfaSetupSchema.parse(req.body);
+    res.json(await beginMfaSetup({ userId: tenant.user.id, email: tenant.user.email, password }));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/auth/mfa/confirm", authRateLimit, requireTenantContext, async (req, res, next) => {
+  try {
+    assertTrustedAuthOrigin(req);
+    const tenant = getTenantContext(res);
+    const { code } = mfaCodeSchema.parse(req.body);
+    res.json(await confirmMfaSetup({
+      userId: tenant.user.id,
+      organizationId: tenant.organization.id,
+      code,
+      requestId: res.locals.requestId,
+    }));
+  } catch (error) { next(error); }
+});
+
+app.delete("/api/auth/mfa", authRateLimit, requireTenantContext, async (req, res, next) => {
+  try {
+    assertTrustedAuthOrigin(req);
+    const tenant = getTenantContext(res);
+    const input = mfaSensitiveActionSchema.parse(req.body);
+    const result = await disableMfa({
+      userId: tenant.user.id,
+      organizationId: tenant.organization.id,
+      ...input,
+      requestId: res.locals.requestId,
+    });
+    clearRefreshCookie(res);
+    res.json(result);
+  } catch (error) { next(error); }
+});
+
+app.post("/api/auth/mfa/recovery-codes", authRateLimit, requireTenantContext, async (req, res, next) => {
+  try {
+    assertTrustedAuthOrigin(req);
+    const tenant = getTenantContext(res);
+    const input = mfaSensitiveActionSchema.parse(req.body);
+    res.json(await regenerateMfaRecoveryCodes({
+      userId: tenant.user.id,
+      organizationId: tenant.organization.id,
+      ...input,
+      requestId: res.locals.requestId,
+    }));
+  } catch (error) { next(error); }
 });
 
 app.get("/api/ebay/connection", requireTenantContext, async (_req, res, next) => {
@@ -853,6 +1088,76 @@ app.get("/api/admin/overview", requireTenantContext, adminOperationsRoles, async
   } catch (error) { next(error); }
 });
 
+app.post("/api/admin/email/verify", authRateLimit, requireTenantContext, adminOperationsRoles, async (_req, res, next) => {
+  try {
+    res.json(await verifyEmailTransport());
+  } catch (error) { next(error); }
+});
+
+app.get("/api/team", requireTenantContext, teamManagementRoles, async (_req, res, next) => {
+  try {
+    res.json(await listOrganizationTeam(getTenantContext(res).organization.id));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/team/invitations", writeRateLimit, requireTenantContext, teamManagementRoles, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const input = createInvitationSchema.parse(req.body);
+    res.status(201).json(await createOrganizationInvitation({
+      organizationId: tenant.organization.id,
+      actorUserId: tenant.user.id,
+      actorRole: tenant.role,
+      ...input,
+      requestId: res.locals.requestId,
+    }));
+  } catch (error) { next(error); }
+});
+
+app.delete("/api/team/invitations/:id", writeRateLimit, requireTenantContext, teamManagementRoles, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const invitationId = z.string().min(1).parse(req.params.id);
+    res.json(await revokeOrganizationInvitation({
+      organizationId: tenant.organization.id,
+      actorUserId: tenant.user.id,
+      actorRole: tenant.role,
+      invitationId,
+      requestId: res.locals.requestId,
+    }));
+  } catch (error) { next(error); }
+});
+
+app.patch("/api/team/members/:id", writeRateLimit, requireTenantContext, teamManagementRoles, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const membershipId = z.string().min(1).parse(req.params.id);
+    const { role } = changeMemberRoleSchema.parse(req.body);
+    res.json(await changeOrganizationMemberRole({
+      organizationId: tenant.organization.id,
+      actorUserId: tenant.user.id,
+      actorRole: tenant.role,
+      membershipId,
+      role,
+      requestId: res.locals.requestId,
+    }));
+  } catch (error) { next(error); }
+});
+
+app.delete("/api/team/members/:id", writeRateLimit, requireTenantContext, teamManagementRoles, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const membershipId = z.string().min(1).parse(req.params.id);
+    res.json(await removeOrganizationMember({
+      organizationId: tenant.organization.id,
+      actorUserId: tenant.user.id,
+      actorRole: tenant.role,
+      membershipId,
+      requestId: res.locals.requestId,
+    }));
+  } catch (error) { next(error); }
+});
+
 app.get("/api/admin/audit-events", requireTenantContext, adminOperationsRoles, async (req, res, next) => {
   try {
     const query = adminAuditQuerySchema.parse(req.query);
@@ -1005,6 +1310,9 @@ app.use((error: unknown, req: express.Request, res: express.Response, _next: exp
   if (error instanceof EbayOfferError) return response(error.statusCode, { error: error.message });
   if (error instanceof EbayListingOperationError) return response(error.statusCode, { error: error.message });
   if (error instanceof AdminOperationsError) return response(error.statusCode, { error: error.message });
+  if (error instanceof OrganizationTeamError) return response(error.statusCode, { error: error.message });
+  if (error instanceof AccountAuthError) return response(error.statusCode, { error: error.message, ...(error.details ? { details: error.details } : {}) });
+  if (error instanceof EmailDeliveryError) return response(503, { error: error.message });
   if (error instanceof EbaySellerOAuthError) return response(error.statusCode, { error: error.message });
   if (typeof error === "object" && error !== null && "type" in error && error.type === "entity.too.large") {
     return response(413, { error: "Request body exceeds the configured upload limit" });

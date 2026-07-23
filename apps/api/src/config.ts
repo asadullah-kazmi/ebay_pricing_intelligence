@@ -17,6 +17,15 @@ export interface AppConfig {
     refreshTtlSeconds: number;
   };
   webOrigin?: string;
+  email?: {
+    host: string;
+    port: number;
+    secure: boolean;
+    user: string;
+    pass: string;
+    from: string;
+  };
+  mfaEncryptionKey?: Buffer;
   storage?: {
     bucket: string;
     region: string;
@@ -168,6 +177,29 @@ export function getConfig(): AppConfig {
 
   const databaseUrl = process.env.DATABASE_URL?.trim() || undefined;
   const webOrigin = process.env.WEB_ORIGIN?.trim() || undefined;
+  const smtpHost = process.env.SMTP_HOST?.trim() || undefined;
+  const smtpUser = process.env.SMTP_USER?.trim() || undefined;
+  const smtpPass = process.env.SMTP_PASS?.trim() || undefined;
+  const fromEmail = process.env.FROM_EMAIL?.trim() || undefined;
+  const smtpPort = Number(process.env.SMTP_PORT ?? 587);
+  const smtpValues = [smtpHost, smtpUser, smtpPass, fromEmail];
+  if (smtpValues.some(Boolean) && !smtpValues.every(Boolean)) {
+    throw new Error("SMTP_HOST, SMTP_USER, SMTP_PASS, and FROM_EMAIL must be provided together");
+  }
+  if (!Number.isInteger(smtpPort) || smtpPort < 1 || smtpPort > 65535) {
+    throw new Error("SMTP_PORT must be an integer between 1 and 65535");
+  }
+  if (fromEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fromEmail)) {
+    throw new Error("FROM_EMAIL must be a valid email address");
+  }
+  const mfaEncryptionKeyValue = process.env.MFA_ENCRYPTION_KEY?.trim() || undefined;
+  let mfaEncryptionKey: Buffer | undefined;
+  if (mfaEncryptionKeyValue) {
+    mfaEncryptionKey = Buffer.from(mfaEncryptionKeyValue, "base64");
+    if (mfaEncryptionKey.length !== 32 || mfaEncryptionKey.toString("base64") !== mfaEncryptionKeyValue) {
+      throw new Error("MFA_ENCRYPTION_KEY must be a canonical Base64-encoded 32-byte key");
+    }
+  }
   if (webOrigin) {
     let parsedOrigin: URL;
     try { parsedOrigin = new URL(webOrigin); } catch { throw new Error("WEB_ORIGIN must be a valid absolute URL"); }
@@ -188,6 +220,11 @@ export function getConfig(): AppConfig {
       !clientSecret && "EBAY_CLIENT_SECRET",
       !notificationEndpoint && "EBAY_NOTIFICATION_ENDPOINT",
       !notificationVerificationToken && "EBAY_NOTIFICATION_VERIFICATION_TOKEN",
+      !smtpHost && "SMTP_HOST",
+      !smtpUser && "SMTP_USER",
+      !smtpPass && "SMTP_PASS",
+      !fromEmail && "FROM_EMAIL",
+      !mfaEncryptionKey && "MFA_ENCRYPTION_KEY",
     ].filter(Boolean);
     if (missing.length) throw new Error(`Production configuration is missing: ${missing.join(", ")}`);
     if (environment !== "production") throw new Error("EBAY_ENVIRONMENT must be production when NODE_ENV=production");
@@ -208,6 +245,15 @@ export function getConfig(): AppConfig {
       refreshTtlSeconds,
     },
     webOrigin,
+    email: smtpHost && smtpUser && smtpPass && fromEmail ? {
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpPort === 465,
+      user: smtpUser,
+      pass: smtpPass,
+      from: fromEmail,
+    } : undefined,
+    mfaEncryptionKey,
     storage: storageBucket && storageRegion && storageAccessKeyId && storageSecretAccessKey ? {
       bucket: storageBucket,
       region: storageRegion,

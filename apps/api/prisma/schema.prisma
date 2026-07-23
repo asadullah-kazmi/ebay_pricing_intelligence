@@ -242,6 +242,19 @@ enum AuditSeverity {
   CRITICAL
 }
 
+enum OrganizationInvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+enum UserAuthTokenType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+  ACCOUNT_RECOVERY
+}
+
 model Organization {
   id                   String                      @id @default(cuid())
   name                 String
@@ -282,6 +295,8 @@ model Organization {
   ebayOfferJobs         EbayOfferJob[]
   ebayListingOperationJobs EbayListingOperationJob[]
   auditEvents          OrganizationAuditEvent[]
+  invitations          OrganizationInvitation[]
+  mfaLoginChallenges   MfaLoginChallenge[]
   createdAt            DateTime                    @default(now())
   updatedAt            DateTime                    @updatedAt
 }
@@ -308,6 +323,21 @@ model User {
   approvedEbayOffers    EbayOffer[]    @relation("EbayOfferApprover")
   createdEbayListingOperationJobs EbayListingOperationJob[] @relation("EbayListingOperationJobCreator")
   auditEvents          OrganizationAuditEvent[] @relation("AuditEventActor")
+  sentInvitations      OrganizationInvitation[] @relation("InvitationSender")
+  acceptedInvitations  OrganizationInvitation[] @relation("InvitationAcceptor")
+  passwordHash         String?
+  passwordChangedAt    DateTime?
+  emailVerifiedAt      DateTime?
+  failedLoginAttempts  Int                      @default(0)
+  lockedUntil          DateTime?
+  mfaEnabled           Boolean                  @default(false)
+  mfaSecretEncrypted   String?
+  pendingMfaSecretEncrypted String?
+  pendingMfaCreatedAt  DateTime?
+  mfaLastUsedStep      Int?
+  authTokens           UserAuthToken[]
+  mfaLoginChallenges   MfaLoginChallenge[]
+  mfaRecoveryCodes     MfaRecoveryCode[]
   createdAt           DateTime                 @default(now())
   updatedAt           DateTime                 @updatedAt
 }
@@ -327,6 +357,30 @@ model OrganizationMembership {
   @@index([organizationId, role])
 }
 
+model OrganizationInvitation {
+  id             String                       @id @default(cuid())
+  organizationId String
+  email          String
+  role           OrganizationRole
+  status         OrganizationInvitationStatus @default(PENDING)
+  tokenHash      String                       @unique
+  invitedById    String
+  acceptedById   String?
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  revokedAt      DateTime?
+  organization   Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy      User                         @relation("InvitationSender", fields: [invitedById], references: [id], onDelete: Restrict)
+  acceptedBy     User?                        @relation("InvitationAcceptor", fields: [acceptedById], references: [id], onDelete: SetNull)
+  createdAt      DateTime                     @default(now())
+  updatedAt      DateTime                     @updatedAt
+
+  @@unique([organizationId, email])
+  @@index([organizationId, status, createdAt])
+  @@index([email, status])
+  @@index([expiresAt])
+}
+
 model RefreshSession {
   id             String       @id
   userId         String
@@ -340,6 +394,47 @@ model RefreshSession {
 
   @@index([userId, organizationId])
   @@index([expiresAt])
+}
+
+model UserAuthToken {
+  id        String            @id @default(cuid())
+  userId    String
+  type      UserAuthTokenType
+  tokenHash String            @unique
+  expiresAt DateTime
+  consumedAt DateTime?
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime          @default(now())
+
+  @@index([userId, type, createdAt])
+  @@index([expiresAt])
+}
+
+model MfaLoginChallenge {
+  id             String       @id @default(cuid())
+  userId         String
+  organizationId String
+  tokenHash      String       @unique
+  attempts       Int          @default(0)
+  expiresAt      DateTime
+  consumedAt     DateTime?
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@index([userId, expiresAt])
+  @@index([organizationId, expiresAt])
+}
+
+model MfaRecoveryCode {
+  id        String   @id @default(cuid())
+  userId    String
+  codeHash  String   @unique
+  usedAt    DateTime?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([userId, usedAt])
 }
 
 model EbaySellerConnection {

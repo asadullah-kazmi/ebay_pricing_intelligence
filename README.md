@@ -95,10 +95,22 @@ See [eBay Image Staging and Inventory Preparation](docs/EBAY_INVENTORY_PREPARATI
 
 See [Tenant Operations and Audit Console](docs/ADMIN_OPERATIONS.md) for owner/admin oversight, immutable audit evidence, worker/job health, and guarded retry controls.
 
+See [Organization Onboarding and Team Management](docs/ORGANIZATION_ONBOARDING.md) for single-use invitation links, membership roles, last-owner protection, and session revocation.
+
+See [Complete Authentication and Account Security](docs/COMPLETE_AUTHENTICATION.md) for Gmail/Railway configuration, registration, verified login, password reset, account recovery, logout, and optional TOTP MFA.
+
 See [Production Release Checklist](docs/PRODUCTION_RELEASE.md) before deploying. It contains the Railway service commands, required variables, health checks, smoke test, rollback process, and current release limitations.
 
 ## API
 
+- `POST /api/auth/register` - create an organization owner account and send email verification
+- `POST /api/auth/login` / `POST /api/auth/login/mfa` - sign in and complete optional MFA
+- `POST /api/auth/email-verification/request` / `confirm` - issue or consume a verification link
+- `POST /api/auth/password-reset/request` / `confirm` - reset a password without bypassing MFA
+- `POST /api/auth/account-recovery/request` / `confirm` - replace a password, remove lost MFA, and revoke sessions
+- `GET /api/auth/security` / `POST /api/auth/password` - inspect or update account security
+- `POST /api/auth/mfa/setup` / `confirm` - enable authenticator-app MFA
+- `DELETE /api/auth/mfa` / `POST /api/auth/mfa/recovery-codes` - disable MFA or replace recovery codes
 - `POST /api/search` — body: `{ "oem": "8K0615301M", "marketplace": "EBAY_US", "condition": "NEW" }` (`condition`: `ANY`, `NEW`, or `USED`)
 - `GET /api/listings/:id`
 - `GET /api/analytics/:oem`
@@ -155,6 +167,13 @@ See [Production Release Checklist](docs/PRODUCTION_RELEASE.md) before deploying.
 - `GET /api/admin/publishing` - inspect current eBay offer/listing state and drift
 - `GET /api/admin/audit-events` - inspect immutable organization activity evidence
 - `POST /api/admin/jobs/:type/:id/retry` - retry only approved non-mutating/rebuild workflows
+- `GET /api/team` - list organization members and pending/expired invitations
+- `POST /api/team/invitations` - create or replace a secure single-use invitation link
+- `DELETE /api/team/invitations/:id` - revoke a pending organization invitation
+- `PATCH /api/team/members/:id` - change a member role with privilege and last-owner safeguards
+- `DELETE /api/team/members/:id` - remove a member and revoke their organization refresh sessions
+- `POST /api/invitations/preview` - validate a token and return a privacy-masked invitation preview
+- `POST /api/invitations/accept` - atomically join the organization and establish a secure session
 - `GET /health`
 - `GET /health/live`
 - `GET /health/ready`

@@ -640,8 +640,18 @@ export default function CatalogWorkspace() {
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to export catalog"); }
   }
 
+  async function logout() {
+    if (demo) {
+      window.location.assign("/login");
+      return;
+    }
+    await fetch(`${apiBase}/api/auth/logout`, { method: "POST", credentials: "include" }).catch(() => undefined);
+    setToken("");
+    window.location.assign("/login");
+  }
+
   if (authState === "loading") return <main className={styles.authScreen}><div className={styles.loader}/><p>Opening your catalog workspace...</p></main>;
-  if (authState === "required") return <main className={styles.authScreen}><section className={styles.authCard}><span className={styles.eyebrow}>PARTPULSE WORKSPACE</span><h1>Catalog access required</h1><p>Your secure refresh session is unavailable. Sign in through onboarding, or use a short-lived access token during development.</p><form onSubmit={connectToken}><label htmlFor="access-token">Development access token</label><textarea id="access-token" value={tokenInput} onChange={(event) => setTokenInput(event.target.value)} required/><button>Open catalog</button></form>{error && <div className={styles.error}>{error}</div>}<a href="/">Return to pricing search</a></section></main>;
+  if (authState === "required") return <main className={styles.authScreen}><section className={styles.authCard}><span className={styles.eyebrow}>PARTPULSE WORKSPACE</span><h1>Catalog access required</h1><p>Your secure session is unavailable. Sign in, or use a short-lived access token during development.</p><a href="/login">Sign in to PartPulse</a><form onSubmit={connectToken}><label htmlFor="access-token">Development access token</label><textarea id="access-token" value={tokenInput} onChange={(event) => setTokenInput(event.target.value)} required/><button>Open catalog</button></form>{error && <div className={styles.error}>{error}</div>}<a href="/">Return to pricing search</a></section></main>;
 
   const ready = catalog.summary.byStatus.READY_FOR_ENRICHMENT ?? 0;
   const needsImages = catalog.summary.byStatus.NEEDS_IMAGES ?? 0;
@@ -649,7 +659,7 @@ export default function CatalogWorkspace() {
   const allPageSelected = catalog.parts.length > 0 && catalog.parts.every(({ id }) => selected.has(id));
 
   return <main className={styles.shell}>
-    <aside className={styles.sidebar}><a className={styles.brand} href="/"><b>Part</b>Pulse<span>Automotive operations</span></a><nav><a className={styles.active} href="/catalog"><span>01</span>Catalog</a><a href="/"><span>02</span>Market pricing</a><a href="#fitment-workflow"><span>03</span>Fitment</a><a href="#listing-drafts"><span>04</span>Publishing</a><a href="/admin"><span>05</span>Admin</a></nav><div className={styles.sideFoot}><i className={ebayConnection.connected ? styles.connectedDot : styles.disconnectedDot}/> {ebayConnection.connected ? "eBay connection active" : "eBay not connected"}</div></aside>
+    <aside className={styles.sidebar}><a className={styles.brand} href="/"><b>Part</b>Pulse<span>Automotive operations</span></a><nav><a className={styles.active} href="/catalog"><span>01</span>Catalog</a><a href="/"><span>02</span>Market pricing</a><a href="#fitment-workflow"><span>03</span>Fitment</a><a href="#listing-drafts"><span>04</span>Publishing</a><a href="/admin"><span>05</span>Admin</a><a href="/account/security"><span>06</span>Account</a><button type="button" onClick={() => void logout()}><span>07</span>Sign out</button></nav><div className={styles.sideFoot}><i className={ebayConnection.connected ? styles.connectedDot : styles.disconnectedDot}/> {ebayConnection.connected ? "eBay connection active" : "eBay not connected"}</div></aside>
     <section className={styles.workspace}>
       <header className={styles.topbar}><div><span className={styles.eyebrow}>INVENTORY OPERATIONS</span><h1>Parts catalog</h1></div><div className={styles.topActions}><div className={styles.connectionStatus}><i className={ebayConnection.connected ? styles.connectedDot : styles.disconnectedDot}/><span>{ebayConnection.connected ? (ebayConnection.username || ebayConnection.ebayUserId || "eBay connected") : "Seller not connected"}</span>{ebayConnection.connected ? <button className={styles.secondary} disabled={connectionBusy} onClick={() => void disconnectEbay()}>Disconnect</button> : <button className={styles.primary} disabled={connectionBusy || demo} onClick={() => void connectEbay()}>{connectionBusy ? "Opening..." : "Connect eBay"}</button>}</div><button className={styles.secondary} onClick={() => void downloadCsv()}>Export CSV</button><button className={styles.primary} disabled>+ New import</button></div></header>
       {demo && <div className={styles.demoBanner}>Development preview - sample records are not saved.</div>}

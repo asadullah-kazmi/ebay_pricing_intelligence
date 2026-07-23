@@ -131,6 +131,8 @@ Step 22 keeps published-listing revision, withdrawal, and reconciliation behind 
 
 Step 23 keeps tenant administration in the core API because it aggregates shared database health. Its endpoints are owner/admin-only and organization-scoped. Safe retries enqueue existing worker jobs; mutation-capable eBay commands remain in their explicit publishing workflows. A future platform support service must use separate authorization and must not inherit tenant-admin permissions.
 
+Step 24 keeps invitations and memberships beside JWT authorization in the core API. Invitation acceptance creates membership, audit evidence, and a refresh session atomically, so extracting it prematurely would create a distributed identity transaction. Email delivery can become a notification-service consumer later; it should receive a one-time delivery command and must never own membership state.
+
 ## 8. Current limitations
 
 - PostgreSQL polling adds up to `WORKER_POLL_INTERVAL_MS` latency.

@@ -1,6 +1,6 @@
 # Production release checklist
 
-This checklist releases the current catalog-to-eBay operations milestone: authenticated organization context, catalog intake, image mapping, pricing, fitment, listing preparation, controlled publication and listing operations, plus tenant owner/admin oversight. Complete login/onboarding, billing, and platform support administration remain later phases.
+This checklist releases the current catalog-to-eBay operations milestone: complete organization authentication, catalog intake, image mapping, pricing, fitment, listing preparation, controlled publication and listing operations, plus tenant owner/admin oversight. Billing and platform support administration remain later phases.
 
 ## 1. Security prerequisites
 
@@ -36,6 +36,12 @@ JWT_AUDIENCE
 JWT_ACCESS_TTL_SECONDS
 JWT_REFRESH_TTL_SECONDS
 WEB_ORIGIN
+SMTP_HOST
+SMTP_PORT
+SMTP_USER
+SMTP_PASS
+FROM_EMAIL
+MFA_ENCRYPTION_KEY
 STORAGE_BUCKET
 STORAGE_REGION
 STORAGE_ENDPOINT (for an S3-compatible provider when required)
@@ -79,6 +85,10 @@ Deploy the Step 18 seller-resource/category-metadata migration before exposing l
 Deploy the Step 19 preparation migration before exposing image-staging controls. Both API and worker need object-storage and eBay application credentials. Follow [eBay Image Staging and Inventory Preparation](EBAY_INVENTORY_PREPARATION.md) and confirm the worker is healthy before queueing a production preparation.
 
 Deploy `20260723090000_add_admin_audit` before exposing `/admin`. Follow [Tenant Operations and Audit Console](ADMIN_OPERATIONS.md), verify owner/admin authorization, and confirm external mutation failures cannot be retried from the console.
+
+Deploy `20260723100000_add_organization_invitations` before exposing `/admin/team` or `/invitations/accept`. Follow [Organization Onboarding and Team Management](ORGANIZATION_ONBOARDING.md), verify `WEB_ORIGIN` exactly matches the public web origin, and smoke-test single-use acceptance plus last-owner protection.
+
+Deploy `20260723110000_add_complete_authentication` before exposing registration or login. Configure SMTP and the stable MFA encryption key, then follow [Complete Authentication and Account Security](COMPLETE_AUTHENTICATION.md). Smoke-test verification, login/logout, password reset, MFA, and account recovery with a disposable account.
 
 ## 3. Railway web service
 
@@ -152,7 +162,7 @@ Omit `API_ACCESS_TOKEN` to run only public health/security checks. The script ne
 - Apply `20260723080000_add_listing_operations` before Step 22. Reconcile a test listing first, then verify one controlled revision and withdrawal.
 
 - The current Next.js 15 dependency pins PostCSS 8.4.31, which npm audit reports for a moderate CSS-stringification XSS advisory. This application does not stringify user-supplied CSS, so the vulnerable path is not currently exposed. Track the upstream Next.js fix and upgrade when a compatible release is available; do not use npm's suggested forced downgrade to Next 9.
-- Login, password reset, invitations, and onboarding UI are not complete. The catalog UI currently relies on an existing refresh session or a short-lived development access token.
+- Authentication and SMTP invitation delivery are implemented. Gmail SMTP is suitable for initial testing and low-volume rollout; move to a transactional provider with delivery telemetry and bounce/complaint handling before materially increasing customer volume.
 - Rate limiting is per API process, not distributed.
 - Pricing and fitment jobs run in the dedicated worker in production and currently use PostgreSQL leases rather than a broker-backed queue.
 - Pricing recommendations are market statistics only. Cost floors, pricing rules, proposal approval, and overrides are not implemented yet.

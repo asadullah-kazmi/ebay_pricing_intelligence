@@ -151,7 +151,7 @@ export default function AdminOperations() {
   return <main className={styles.shell}>
     <aside className={styles.sidebar}>
       <a className={styles.brand} href="/"><b>Part</b>Pulse<span>Operations control</span></a>
-      <nav><a href="/catalog"><span>01</span>Catalog</a><a className={styles.active} href="/admin"><span>02</span>Admin</a></nav>
+      <nav><a href="/catalog"><span>01</span>Catalog</a><a className={styles.active} href="/admin"><span>02</span>Admin</a><a href="/admin/team"><span>03</span>Team</a></nav>
       <div className={styles.worker}><i className={overview?.worker.status === "ok" ? styles.ok : styles.bad}/><div><b>Worker {overview ? human(overview.worker.status) : "Unknown"}</b><span>{overview?.worker.activeJobs ?? 0} active jobs</span></div></div>
     </aside>
     <section className={styles.content}>
