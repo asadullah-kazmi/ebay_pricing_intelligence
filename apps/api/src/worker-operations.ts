@@ -16,6 +16,7 @@ export interface WorkerHealth {
     fitmentJobsDispatched: number;
     inventoryPreparationJobsDispatched: number;
     ebayInventorySyncJobsDispatched: number;
+    ebayOfferJobsDispatched: number;
     outboxPublished: number;
     outboxFailed: number;
   };
@@ -28,6 +29,7 @@ const emptyMetrics = {
   fitmentJobsDispatched: 0,
   inventoryPreparationJobsDispatched: 0,
   ebayInventorySyncJobsDispatched: 0,
+  ebayOfferJobsDispatched: 0,
   outboxPublished: 0,
   outboxFailed: 0,
 };
@@ -87,6 +89,10 @@ export async function renewWorkerJobLeases(instanceId: string, leaseDurationMs: 
       where: { status: "RUNNING", leaseOwner: instanceId },
       data: { leaseExpiresAt },
     }),
+    prisma.ebayOfferJob.updateMany({
+      where: { status: "RUNNING", leaseOwner: instanceId },
+      data: { leaseExpiresAt },
+    }),
   ]);
 }
 
@@ -112,6 +118,7 @@ export async function getWorkerHealth(maxAgeMs: number): Promise<WorkerHealth> {
     fitmentJobsDispatched: numberField(rawMetrics.fitmentJobsDispatched),
     inventoryPreparationJobsDispatched: numberField(rawMetrics.inventoryPreparationJobsDispatched),
     ebayInventorySyncJobsDispatched: numberField(rawMetrics.ebayInventorySyncJobsDispatched),
+    ebayOfferJobsDispatched: numberField(rawMetrics.ebayOfferJobsDispatched),
     outboxPublished: numberField(rawMetrics.outboxPublished),
     outboxFailed: numberField(rawMetrics.outboxFailed),
   };

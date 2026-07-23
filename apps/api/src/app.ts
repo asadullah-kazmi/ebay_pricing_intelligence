@@ -30,7 +30,8 @@ import { DeadLetterError, listDeadLetters, requeueDeadLetter } from "./dead-lett
 import { createListingDrafts, getListingDraft, ListingDraftError, listListingDrafts, updateListingDraft, validateListingDraftLive } from "./listing-draft-service.js";
 import { listCachedSellerResources, refreshCategoryMetadata, syncSellerResources } from "./ebay-resource-service.js";
 import { createInventoryPreparationJob, getInventoryPreparationJob, getLatestInventoryPreparation, InventoryPreparationError, startInventoryPreparationJob } from "./inventory-preparation-service.js";
-import { createEbayInventorySyncJob, EbayInventorySyncError, getEbayInventorySyncJob, startEbayInventorySyncJob } from "./ebay-inventory-sync-service.js";
+import { createEbayInventorySyncJob, EbayInventorySyncError, getEbayInventorySyncJob, getLatestEbayInventorySyncJob, startEbayInventorySyncJob } from "./ebay-inventory-sync-service.js";
+import { createOfferPreparationJob, createOfferPublishJob, EbayOfferError, getOffer, getOfferByDraft, getOfferJob, startOfferJob } from "./ebay-offer-service.js";
 
 const searchSchema = z.object({
   oem: z.string().trim().min(2).max(80),
@@ -654,6 +655,89 @@ app.get("/api/ebay/inventory-sync-jobs/:id", requireTenantContext, async (req, r
   } catch (error) { next(error); }
 });
 
+app.get("/api/listing-drafts/:id/inventory-sync", requireTenantContext, async (req, res, next) => {
+  try {
+    const listingDraftId = req.params.id;
+    if (typeof listingDraftId !== "string") return res.status(400).json({ error: "Invalid listing draft ID" });
+    res.json(await getLatestEbayInventorySyncJob(getTenantContext(res).organization.id, listingDraftId));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/ebay/inventory-sync-jobs/:id/offer", writeRateLimit, requireTenantContext, listingDraftRoles, async (req, res, next) => {
+  try {
+    const inventorySyncJobId = req.params.id;
+    if (typeof inventorySyncJobId !== "string") return res.status(400).json({ error: "Invalid eBay inventory sync job ID" });
+    z.object({}).strict().parse(req.body);
+    const tenant = getTenantContext(res);
+    const idempotencyKey = idempotencyKeySchema.parse(req.get("Idempotency-Key"));
+    if (!idempotencyKey) return res.status(400).json({ error: "Idempotency-Key is required for offer preparation" });
+    const result = await executeIdempotent({
+      organizationId: tenant.organization.id,
+      operation: "ebay.offer.prepare",
+      key: idempotencyKey,
+      request: { inventorySyncJobId },
+      responseStatus: 202,
+      execute: () => createOfferPreparationJob({
+        organizationId: tenant.organization.id,
+        userId: tenant.user.id,
+        inventorySyncJobId,
+      }),
+    });
+    res.set("Idempotency-Replayed", String(result.replayed)).status(202).json(result.value);
+    if (!result.replayed && getConfig().jobs.executionMode === "inline") startOfferJob(result.value.id);
+  } catch (error) { next(error); }
+});
+
+app.post("/api/ebay/offers/:id/publish", writeRateLimit, requireTenantContext, listingDraftRoles, async (req, res, next) => {
+  try {
+    const offerId = req.params.id;
+    if (typeof offerId !== "string") return res.status(400).json({ error: "Invalid eBay offer ID" });
+    const body = z.object({ confirmPublish: z.literal(true), confirmation: z.literal("PUBLISH") }).strict().parse(req.body);
+    const tenant = getTenantContext(res);
+    const idempotencyKey = idempotencyKeySchema.parse(req.get("Idempotency-Key"));
+    if (!idempotencyKey) return res.status(400).json({ error: "Idempotency-Key is required for publication" });
+    const result = await executeIdempotent({
+      organizationId: tenant.organization.id,
+      operation: "ebay.offer.publish",
+      key: idempotencyKey,
+      request: { offerId, ...body },
+      responseStatus: 202,
+      execute: () => createOfferPublishJob({
+        organizationId: tenant.organization.id,
+        userId: tenant.user.id,
+        offerId,
+        confirmPublish: true,
+      }),
+    });
+    res.set("Idempotency-Replayed", String(result.replayed)).status(202).json(result.value);
+    if (!result.replayed && getConfig().jobs.executionMode === "inline") startOfferJob(result.value.id);
+  } catch (error) { next(error); }
+});
+
+app.get("/api/ebay/offers/:id", requireTenantContext, async (req, res, next) => {
+  try {
+    const offerId = req.params.id;
+    if (typeof offerId !== "string") return res.status(400).json({ error: "Invalid eBay offer ID" });
+    res.json(await getOffer(getTenantContext(res).organization.id, offerId));
+  } catch (error) { next(error); }
+});
+
+app.get("/api/listing-drafts/:id/ebay-offer", requireTenantContext, async (req, res, next) => {
+  try {
+    const listingDraftId = req.params.id;
+    if (typeof listingDraftId !== "string") return res.status(400).json({ error: "Invalid listing draft ID" });
+    res.json(await getOfferByDraft(getTenantContext(res).organization.id, listingDraftId));
+  } catch (error) { next(error); }
+});
+
+app.get("/api/ebay/offer-jobs/:id", requireTenantContext, async (req, res, next) => {
+  try {
+    const jobId = req.params.id;
+    if (typeof jobId !== "string") return res.status(400).json({ error: "Invalid eBay offer job ID" });
+    res.json(await getOfferJob(getTenantContext(res).organization.id, jobId));
+  } catch (error) { next(error); }
+});
+
 app.get("/api/admin/dead-letters", requireTenantContext, deadLetterRoles, async (req, res, next) => {
   try {
     const query = deadLetterQuerySchema.parse(req.query);
@@ -773,6 +857,7 @@ app.use((error: unknown, req: express.Request, res: express.Response, _next: exp
   if (error instanceof ListingDraftError) return response(error.statusCode, { error: error.message });
   if (error instanceof InventoryPreparationError) return response(error.statusCode, { error: error.message });
   if (error instanceof EbayInventorySyncError) return response(error.statusCode, { error: error.message });
+  if (error instanceof EbayOfferError) return response(error.statusCode, { error: error.message });
   if (error instanceof EbaySellerOAuthError) return response(error.statusCode, { error: error.message });
   if (typeof error === "object" && error !== null && "type" in error && error.type === "entity.too.large") {
     return response(413, { error: "Request body exceeds the configured upload limit" });

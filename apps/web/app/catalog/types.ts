@@ -303,3 +303,37 @@ export interface EbayInventorySyncJob {
   compatibilityWrittenAt: string | null;
   completedAt: string | null;
 }
+
+export interface EbayOffer {
+  id: string;
+  listingDraftId: string;
+  inventorySyncJobId: string;
+  draftVersion: number;
+  sku: string;
+  marketplace: string;
+  payloadHash: string;
+  offerPayload: Record<string, unknown>;
+  ebayOfferId: string | null;
+  ebayListingId: string | null;
+  status: "PREPARING" | "FEES_READY" | "PUBLISH_QUEUED" | "PUBLISHED" | "FAILED";
+  feeResponse: Record<string, unknown> | null;
+  feeTotal: string | number | null;
+  feeCurrency: string | null;
+  warnings: unknown[] | null;
+  lastError: string | null;
+  approvedAt: string | null;
+  publishedAt: string | null;
+}
+
+export interface EbayOfferJob {
+  id: string;
+  listingDraftId: string;
+  ebayOfferId: string;
+  draftVersion: number;
+  action: "PREPARE" | "PUBLISH";
+  status: "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+  attemptCount: number;
+  lastError: string | null;
+  completedAt: string | null;
+  ebayOffer: EbayOffer;
+}

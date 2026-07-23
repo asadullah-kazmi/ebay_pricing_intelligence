@@ -140,6 +140,9 @@ See [Production Release Checklist](docs/PRODUCTION_RELEASE.md) before deploying.
 - `POST /api/listing-drafts/:id/prepare-inventory` - queue approved-image staging and an immutable Inventory API payload preview
 - `POST /api/inventory-preparations/:id/apply` - explicitly queue the non-publishing eBay inventory and compatibility write
 - `GET /api/ebay/inventory-sync-jobs/:id` - inspect a durable eBay inventory sync job
+- `POST /api/ebay/inventory-sync-jobs/:id/offer` - prepare an unpublished offer and expected fee preview
+- `POST /api/ebay/offers/:id/publish` - explicitly approve and queue live publication
+- `GET /api/ebay/offer-jobs/:id` - inspect offer preparation or publication
 - `GET /api/inventory-preparation-jobs/:id` - poll the worker job and retrieve its completed preparation
 - `GET /api/listing-drafts/:id/inventory-preparation` - retrieve the latest preparation for a draft
 - `GET /health`

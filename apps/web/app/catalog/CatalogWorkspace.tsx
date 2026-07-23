@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import styles from "./catalog.module.css";
-import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogStatus, EbayAspectRequirement, EbayConditionOption, EbayConnection, EbayInventorySyncJob, EbaySellerResources, FitmentJob, FitmentJobSummary, InventoryPreparation, InventoryPreparationJob, ListingDraft, LiveDraftValidation, PartCondition, PricingConditionMode, PricingJob, PricingJobSummary } from "./types";
+import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogStatus, EbayAspectRequirement, EbayConditionOption, EbayConnection, EbayInventorySyncJob, EbayOffer, EbayOfferJob, EbaySellerResources, FitmentJob, FitmentJobSummary, InventoryPreparation, InventoryPreparationJob, ListingDraft, LiveDraftValidation, PartCondition, PricingConditionMode, PricingJob, PricingJobSummary } from "./types";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const statuses: CatalogStatus[] = ["IMPORTED", "NEEDS_IMAGES", "IMPORT_ERROR", "READY_FOR_ENRICHMENT", "ARCHIVED"];
@@ -82,6 +82,8 @@ export default function CatalogWorkspace() {
   const [inventoryPreparation, setInventoryPreparation] = useState<InventoryPreparation | null>(null);
   const [inventoryPreparationJob, setInventoryPreparationJob] = useState<InventoryPreparationJob | null>(null);
   const [inventorySyncJob, setInventorySyncJob] = useState<EbayInventorySyncJob | null>(null);
+  const [ebayOffer, setEbayOffer] = useState<EbayOffer | null>(null);
+  const [ebayOfferJob, setEbayOfferJob] = useState<EbayOfferJob | null>(null);
 
   useEffect(() => {
     const localDemo = process.env.NODE_ENV !== "production" && new URLSearchParams(window.location.search).get("demo") === "1";
@@ -320,12 +322,20 @@ export default function CatalogWorkspace() {
     setInventoryPreparation(null);
     setInventoryPreparationJob(null);
     setInventorySyncJob(null);
+    setEbayOffer(null);
+    setEbayOfferJob(null);
     try {
       const draft = await request(`/api/listing-drafts/${id}`) as ListingDraft;
       setDraftDetail(draft);
       setSellerResources(await request(`/api/ebay/resources?marketplace=${encodeURIComponent(draft.marketplace)}`) as EbaySellerResources);
       request(`/api/listing-drafts/${id}/inventory-preparation`)
         .then((value) => setInventoryPreparation(value as InventoryPreparation))
+        .catch(() => undefined);
+      request(`/api/listing-drafts/${id}/inventory-sync`)
+        .then((value) => setInventorySyncJob(value as EbayInventorySyncJob))
+        .catch(() => undefined);
+      request(`/api/listing-drafts/${id}/ebay-offer`)
+        .then((value) => setEbayOffer(value as EbayOffer))
         .catch(() => undefined);
     }
     catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to open listing draft"); }
@@ -365,6 +375,8 @@ export default function CatalogWorkspace() {
       setInventoryPreparation(null);
       setInventoryPreparationJob(null);
       setInventorySyncJob(null);
+      setEbayOffer(null);
+      setEbayOfferJob(null);
       setDrafts((current) => current.map((draft) => draft.id === updated.id ? updated : draft));
       setNotice(updated.status === "READY" ? "Draft is ready for the future publish step." : "Draft saved. Review the remaining blockers.");
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to save listing draft"); }
@@ -394,6 +406,8 @@ export default function CatalogWorkspace() {
       setInventoryPreparation(null);
       setInventoryPreparationJob(null);
       setInventorySyncJob(null);
+      setEbayOffer(null);
+      setEbayOfferJob(null);
       setDrafts((current) => current.map((draft) => draft.id === result.draft.id ? result.draft : draft));
       setSellerResources(result.resources);
       setCategoryAspects(result.categoryMetadata.aspects);
@@ -468,6 +482,57 @@ export default function CatalogWorkspace() {
     }, 1500);
     return () => window.clearTimeout(timer);
   }, [demo, inventorySyncJob, request]);
+
+  async function prepareEbayOffer() {
+    if (!inventorySyncJob || inventorySyncJob.status !== "COMPLETED" || demo || draftBusy) return;
+    setDraftBusy(true); setError("");
+    try {
+      const job = await request(`/api/ebay/inventory-sync-jobs/${inventorySyncJob.id}/offer`, {
+        method: "POST",
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+        body: JSON.stringify({}),
+      }) as EbayOfferJob;
+      setEbayOfferJob(job);
+      setEbayOffer(job.ebayOffer);
+      setNotice("Unpublished eBay offer preparation and fee preview were queued. Nothing has been published.");
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to prepare eBay offer"); }
+    finally { setDraftBusy(false); }
+  }
+
+  async function publishEbayOffer() {
+    if (!ebayOffer || ebayOffer.status !== "FEES_READY" || demo || draftBusy) return;
+    const fee = ebayOffer.feeTotal == null ? "eBay returned no charge total" : `${money(ebayOffer.feeTotal, ebayOffer.feeCurrency ?? draftDetail?.currency ?? "USD")} expected listing fees`;
+    if (!window.confirm(`Publish SKU ${ebayOffer.sku} as a live eBay listing now?\n\n${fee}\n\nThis action makes the item visible and purchasable on eBay.`)) return;
+    setDraftBusy(true); setError("");
+    try {
+      const job = await request(`/api/ebay/offers/${ebayOffer.id}/publish`, {
+        method: "POST",
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+        body: JSON.stringify({ confirmPublish: true, confirmation: "PUBLISH" }),
+      }) as EbayOfferJob;
+      setEbayOfferJob(job);
+      setEbayOffer(job.ebayOffer);
+      setNotice("Publication was explicitly approved and queued.");
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to publish eBay offer"); }
+    finally { setDraftBusy(false); }
+  }
+
+  useEffect(() => {
+    if (!ebayOfferJob || !["QUEUED", "RUNNING"].includes(ebayOfferJob.status) || demo) return;
+    const timer = window.setTimeout(() => {
+      request(`/api/ebay/offer-jobs/${ebayOfferJob.id}`)
+        .then((value) => {
+          const job = value as EbayOfferJob;
+          setEbayOfferJob(job);
+          setEbayOffer(job.ebayOffer);
+          if (job.status === "COMPLETED" && job.action === "PREPARE") setNotice("Unpublished offer is ready. Review the expected fees before publishing.");
+          else if (job.status === "COMPLETED" && job.action === "PUBLISH") setNotice(`eBay listing ${job.ebayOffer.ebayListingId} is live.`);
+          else if (job.status === "FAILED") setError(job.lastError ?? "eBay offer operation failed");
+        })
+        .catch((caught) => setError(caught instanceof Error ? caught.message : "Unable to refresh eBay offer job"));
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [demo, ebayOfferJob, request]);
 
   async function connectEbay() {
     if (demo || connectionBusy) return;
@@ -596,6 +661,18 @@ export default function CatalogWorkspace() {
             {inventorySyncJob && ["QUEUED", "RUNNING"].includes(inventorySyncJob.status) ? "Writing inventory..." : "Write inventory to eBay"}
           </button>
           {inventorySyncJob && <p><b>eBay inventory sync: {inventorySyncJob.status.toLowerCase()}</b>{inventorySyncJob.status === "COMPLETED" ? " — inventory only; not published." : inventorySyncJob.lastError ? ` — ${inventorySyncJob.lastError}` : ""}</p>}
+          {inventorySyncJob?.status === "COMPLETED" && (!ebayOffer || ["PREPARING", "FAILED"].includes(ebayOffer.status)) && <button type="button" onClick={() => void prepareEbayOffer()} disabled={draftBusy || Boolean(ebayOfferJob && ["QUEUED", "RUNNING"].includes(ebayOfferJob.status))}>
+            {ebayOfferJob?.action === "PREPARE" && ["QUEUED", "RUNNING"].includes(ebayOfferJob.status) ? "Preparing offer..." : "Prepare offer & preview fees"}
+          </button>}
+          {ebayOffer && <div className={styles.preparationStatus}>
+            <b>Offer: {ebayOffer.status.toLowerCase().replaceAll("_", " ")}</b>
+            {ebayOffer.ebayOfferId && <span>eBay offer ID: {ebayOffer.ebayOfferId}</span>}
+            {ebayOffer.feeTotal != null && <span>Expected listing fees: {money(ebayOffer.feeTotal, ebayOffer.feeCurrency ?? draftDetail.currency)}</span>}
+            {ebayOffer.status === "FEES_READY" && <button type="button" className={styles.primary} disabled={draftBusy} onClick={() => void publishEbayOffer()}>Approve fees & publish live</button>}
+            {ebayOffer.status === "PUBLISHED" && ebayOffer.ebayListingId && <a href={`https://${ebayOffer.marketplace === "EBAY_GB" ? "www.ebay.co.uk" : ebayOffer.marketplace === "EBAY_DE" ? "www.ebay.de" : "www.ebay.com"}/itm/${ebayOffer.ebayListingId}`} target="_blank" rel="noreferrer">Open live listing {ebayOffer.ebayListingId}</a>}
+            {ebayOffer.lastError && <span>{ebayOffer.lastError}</span>}
+            {ebayOffer.feeResponse && <details><summary>View eBay fee response</summary><pre>{JSON.stringify(ebayOffer.feeResponse, null, 2)}</pre></details>}
+          </div>}
         </section>}
         <form onSubmit={saveDraft}>
           <div className={styles.formGrid}>

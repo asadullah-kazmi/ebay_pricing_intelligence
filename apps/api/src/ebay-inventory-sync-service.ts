@@ -65,6 +65,16 @@ export async function getEbayInventorySyncJob(organizationId: string, jobId: str
   return job;
 }
 
+export async function getLatestEbayInventorySyncJob(organizationId: string, listingDraftId: string) {
+  const job = await prisma.ebayInventorySyncJob.findFirst({
+    where: { organizationId, listingDraftId },
+    orderBy: { createdAt: "desc" },
+    include: syncInclude,
+  });
+  if (!job) throw new EbayInventorySyncError("eBay inventory sync job not found", 404);
+  return job;
+}
+
 const activeSyncJobs = new Set<string>();
 
 export async function runEbayInventorySyncJob(jobId: string, options: JobRunOptions = inlineJobOptions): Promise<void> {

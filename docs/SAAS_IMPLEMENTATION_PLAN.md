@@ -978,6 +978,8 @@ Only after this milestone is accepted should implementation proceed to queued bu
 
 Step 20 adds a controlled, durable Inventory API and product-compatibility write from an unchanged preparation. It intentionally stops before offer creation and publication. See [EBAY_INVENTORY_SYNC.md](./EBAY_INVENTORY_SYNC.md).
 
+Step 21 adds unpublished offer preparation, expected listing-fee review, named-user publication approval, durable publication, and listing-ID persistence. See [EBAY_OFFER_PUBLICATION.md](./EBAY_OFFER_PUBLICATION.md).
+
 - eBay Sell Metadata product identifiers: https://developer.ebay.com/api-docs/sell/metadata/types/api%3AProductIdentifier
 - eBay Sell Metadata product compatibility request: https://developer.ebay.com/api-docs/sell/metadata/types/api%3AProductRequest
 - eBay compatibility property values: https://developer.ebay.com/api-docs/sell/taxonomy/resources/category_tree/methods/getCompatibilityPropertyValues

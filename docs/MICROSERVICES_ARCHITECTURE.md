@@ -124,6 +124,8 @@ Step 17 keeps listing drafts and synchronous readiness validation in the core AP
 
 Step 20 keeps eBay inventory and compatibility mutations in the worker as durable, leased, retryable jobs. The API only validates and queues an explicitly confirmed request.
 
+Step 21 adds the first publishing-service boundary: offer preparation/fee preview and publication are separate commands and jobs. Remote identifiers and approval evidence stay durable so this workflow can later move behind a queue without changing the catalog owner.
+
 ## 8. Current limitations
 
 - PostgreSQL polling adds up to `WORKER_POLL_INTERVAL_MS` latency.
