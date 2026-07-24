@@ -9,6 +9,7 @@ import {
   getActiveEbayInventorySyncJobCount,
   getActiveOfferJobCount,
   getActiveListingOperationJobCount,
+  getActiveRetentionRunCount,
   markWorkerStopped,
   publishOutboxEvents,
   recordWorkerHeartbeat,
@@ -19,6 +20,7 @@ import {
   resumeInterruptedEbayInventorySyncJobs,
   resumeInterruptedOfferJobs,
   resumeInterruptedListingOperationJobs,
+  resumeInterruptedRetentionJobs,
   type JobRunOptions,
 } from "@price-intel/api/jobs";
 
@@ -60,12 +62,13 @@ const metrics = {
   ebayInventorySyncJobsDispatched: 0,
   ebayOfferJobsDispatched: 0,
   ebayListingOperationJobsDispatched: 0,
+  retentionRunsDispatched: 0,
   outboxPublished: 0,
   outboxFailed: 0,
 };
 
 function activeJobs(): number {
-  return getActivePricingJobCount() + getActiveFitmentJobCount() + getActiveInventoryPreparationJobCount() + getActiveEbayInventorySyncJobCount() + getActiveOfferJobCount() + getActiveListingOperationJobCount();
+  return getActivePricingJobCount() + getActiveFitmentJobCount() + getActiveInventoryPreparationJobCount() + getActiveEbayInventorySyncJobCount() + getActiveOfferJobCount() + getActiveListingOperationJobCount() + getActiveRetentionRunCount();
 }
 
 async function heartbeat(): Promise<void> {
@@ -85,13 +88,14 @@ async function poll(): Promise<void> {
   pollInProgress = true;
   metrics.polls += 1;
   try {
-    const [pricingJobs, fitmentJobs, inventoryPreparationJobs, ebayInventorySyncJobs, ebayOfferJobs, ebayListingOperationJobs, outbox] = await Promise.all([
+    const [pricingJobs, fitmentJobs, inventoryPreparationJobs, ebayInventorySyncJobs, ebayOfferJobs, ebayListingOperationJobs, retentionRuns, outbox] = await Promise.all([
       resumeInterruptedPricingJobs(jobOptions),
       resumeInterruptedFitmentJobs(jobOptions),
       resumeInterruptedInventoryPreparationJobs(jobOptions),
       resumeInterruptedEbayInventorySyncJobs(jobOptions),
       resumeInterruptedOfferJobs(jobOptions),
       resumeInterruptedListingOperationJobs(jobOptions),
+      resumeInterruptedRetentionJobs(jobOptions),
       publishOutboxEvents({
         instanceId,
         leaseDurationMs,
@@ -118,10 +122,11 @@ async function poll(): Promise<void> {
     metrics.ebayInventorySyncJobsDispatched += ebayInventorySyncJobs;
     metrics.ebayOfferJobsDispatched += ebayOfferJobs;
     metrics.ebayListingOperationJobsDispatched += ebayListingOperationJobs;
+    metrics.retentionRunsDispatched += retentionRuns;
     metrics.outboxPublished += outbox.published;
     metrics.outboxFailed += outbox.failed;
-    if (pricingJobs || fitmentJobs || inventoryPreparationJobs || ebayInventorySyncJobs || ebayOfferJobs || ebayListingOperationJobs) {
-      console.info(JSON.stringify({ type: "jobs_dispatched", pricingJobs, fitmentJobs, inventoryPreparationJobs, ebayInventorySyncJobs, ebayOfferJobs, ebayListingOperationJobs, activeJobs: activeJobs() }));
+    if (pricingJobs || fitmentJobs || inventoryPreparationJobs || ebayInventorySyncJobs || ebayOfferJobs || ebayListingOperationJobs || retentionRuns) {
+      console.info(JSON.stringify({ type: "jobs_dispatched", pricingJobs, fitmentJobs, inventoryPreparationJobs, ebayInventorySyncJobs, ebayOfferJobs, ebayListingOperationJobs, retentionRuns, activeJobs: activeJobs() }));
     }
   } catch (error) {
     metrics.pollFailures += 1;
@@ -136,13 +141,14 @@ async function poll(): Promise<void> {
 
 async function start(): Promise<void> {
   await heartbeat();
-  const [pricingJobs, fitmentJobs, inventoryPreparationJobs, ebayInventorySyncJobs, ebayOfferJobs, ebayListingOperationJobs] = await Promise.all([
+  const [pricingJobs, fitmentJobs, inventoryPreparationJobs, ebayInventorySyncJobs, ebayOfferJobs, ebayListingOperationJobs, retentionRuns] = await Promise.all([
     resumeInterruptedPricingJobs(jobOptions),
     resumeInterruptedFitmentJobs(jobOptions),
     resumeInterruptedInventoryPreparationJobs(jobOptions),
     resumeInterruptedEbayInventorySyncJobs(jobOptions),
     resumeInterruptedOfferJobs(jobOptions),
     resumeInterruptedListingOperationJobs(jobOptions),
+    resumeInterruptedRetentionJobs(jobOptions),
   ]);
   console.info(JSON.stringify({
     type: "worker_started",
@@ -150,7 +156,7 @@ async function start(): Promise<void> {
     heartbeatIntervalMs,
     leaseDurationMs,
     maxAttempts,
-    recovered: { pricingJobs, fitmentJobs, inventoryPreparationJobs, ebayInventorySyncJobs, ebayOfferJobs, ebayListingOperationJobs },
+    recovered: { pricingJobs, fitmentJobs, inventoryPreparationJobs, ebayInventorySyncJobs, ebayOfferJobs, ebayListingOperationJobs, retentionRuns },
   }));
   pollTimer = setInterval(() => void poll(), pollIntervalMs);
   heartbeatTimer = setInterval(() => void heartbeat().catch((error) => {

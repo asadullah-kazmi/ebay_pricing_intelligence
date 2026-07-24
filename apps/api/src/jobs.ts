@@ -10,4 +10,5 @@ export { getActiveListingOperationJobCount, resumeInterruptedListingOperationJob
 export { markWorkerStopped, recordWorkerHeartbeat, renewWorkerJobLeases } from "./worker-operations.js";
 export { publishOutboxEvents } from "./outbox-service.js";
 export { consumeNotificationEvent } from "./notification-service.js";
+export { getActiveRetentionRunCount, resumeInterruptedRetentionJobs, startQueuedRetentionJobs } from "./retention-service.js";
 export type { JobRunOptions } from "./job-runtime.js";

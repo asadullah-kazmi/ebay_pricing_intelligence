@@ -89,6 +89,20 @@ export function notificationForEvent(topic: string, payload: unknown): Notificat
       message: "Remote eBay fields differ from the controlled local listing state. Review before making changes.", actionUrl: "/admin",
       roles: ["OWNER", "ADMIN", "PUBLISHER"],
     },
+    "retention.run.completed": {
+      category: "SYSTEM", severity: "SUCCESS", title: "Retention run completed",
+      message: text(payload, "mode") === "APPLY"
+        ? "The approved data-retention cleanup completed. Review its audit evidence and result counts."
+        : "The retention preview completed. Review eligible record counts before applying cleanup.",
+      actionUrl: "/admin",
+      roles: ["OWNER", "ADMIN"],
+    },
+    "retention.run.failed": {
+      category: "SYSTEM", severity: "CRITICAL", title: "Retention run failed",
+      message: "The retention worker could not complete the requested preview or cleanup. No partial cleanup transaction was committed.",
+      actionUrl: "/admin",
+      roles: ["OWNER", "ADMIN"],
+    },
   };
   return mappings[topic] ?? null;
 }

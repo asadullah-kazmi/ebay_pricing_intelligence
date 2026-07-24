@@ -990,6 +990,8 @@ Step 29 adds advanced inventory and readiness filters, personal saved views, tra
 
 Step 30 adds role-targeted operational notifications, idempotent outbox consumption, personal read state, and verified-address email preferences. See [OPERATIONAL_NOTIFICATIONS.md](./OPERATIONAL_NOTIFICATIONS.md).
 
+Step 31 adds organization retention governance, preview-before-delete worker jobs, immutable cleanup audit evidence, and a provider-neutral backup/restore rehearsal. See [DATA_RETENTION_AND_RESTORE.md](./DATA_RETENTION_AND_RESTORE.md).
+
 - eBay Sell Metadata product identifiers: https://developer.ebay.com/api-docs/sell/metadata/types/api%3AProductIdentifier
 - eBay Sell Metadata product compatibility request: https://developer.ebay.com/api-docs/sell/metadata/types/api%3AProductRequest
 - eBay compatibility property values: https://developer.ebay.com/api-docs/sell/taxonomy/resources/category_tree/methods/getCompatibilityPropertyValues

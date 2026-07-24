@@ -222,6 +222,18 @@ enum NotificationEmailStatus {
   FAILED
 }
 
+enum RetentionRunMode {
+  PREVIEW
+  APPLY
+}
+
+enum RetentionRunStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
 enum InventoryPreparationJobStatus {
   QUEUED
   RUNNING
@@ -343,6 +355,8 @@ model Organization {
   catalogSavedViews    CatalogSavedView[]
   notifications        UserNotification[]
   notificationPreferences NotificationPreference[]
+  retentionPolicy       OrganizationRetentionPolicy?
+  retentionRuns         DataRetentionRun[]
   invitations          OrganizationInvitation[]
   mfaLoginChallenges   MfaLoginChallenge[]
   createdAt            DateTime                    @default(now())
@@ -379,6 +393,8 @@ model User {
   catalogSavedViews    CatalogSavedView[]
   notifications        UserNotification[]
   notificationPreferences NotificationPreference[]
+  updatedRetentionPolicies OrganizationRetentionPolicy[] @relation("RetentionPolicyUpdater")
+  createdRetentionRuns DataRetentionRun[] @relation("RetentionRunCreator")
   sentInvitations      OrganizationInvitation[] @relation("InvitationSender")
   acceptedInvitations  OrganizationInvitation[] @relation("InvitationAcceptor")
   passwordHash         String?
@@ -1244,6 +1260,47 @@ model UserNotification {
   @@unique([userId, sourceEventId])
   @@index([organizationId, userId, readAt, createdAt])
   @@index([organizationId, category, createdAt])
+}
+
+model OrganizationRetentionPolicy {
+  id                         String       @id @default(cuid())
+  organizationId             String       @unique
+  readNotificationDays       Int          @default(90)
+  competitorSnapshotDays     Int          @default(90)
+  publishedOutboxDays        Int          @default(30)
+  resolvedDeadLetterDays     Int          @default(180)
+  auditArchiveAfterDays      Int          @default(365)
+  updatedById                String?
+  organization               Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  updatedBy                  User?        @relation("RetentionPolicyUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt                  DateTime     @default(now())
+  updatedAt                  DateTime     @updatedAt
+
+  @@index([updatedById])
+}
+
+model DataRetentionRun {
+  id                 String             @id @default(cuid())
+  organizationId     String
+  createdById        String
+  mode               RetentionRunMode
+  status             RetentionRunStatus @default(QUEUED)
+  cutoffSnapshot     Json
+  result             Json?
+  attemptCount       Int                @default(0)
+  leaseOwner         String?
+  leaseExpiresAt     DateTime?
+  lastError          String?
+  startedAt          DateTime?
+  completedAt        DateTime?
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy          User               @relation("RetentionRunCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, status])
+  @@index([status, leaseExpiresAt])
 }
 
 model EbayInventoryPreparation {

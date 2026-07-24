@@ -42,6 +42,7 @@ import { decidePricingProposal, getOrganizationPricingRule, listPricingProposals
 import { createManualFitment, decideManualFitment, listPartFitment, ManualFitmentError, reviseManualFitment } from "./manual-fitment-service.js";
 import { CatalogSavedViewError, deleteCatalogSavedView, listCatalogSavedViews, saveCatalogView } from "./catalog-saved-view-service.js";
 import { getNotificationPreferences, listNotifications, markAllNotificationsRead, markNotificationRead, NotificationError, updateNotificationPreferences } from "./notification-service.js";
+import { createRetentionRun, getRetentionPolicy, listRetentionRuns, RetentionError, startRetentionJob, updateRetentionPolicy } from "./retention-service.js";
 
 const searchSchema = z.object({
   oem: z.string().trim().min(2).max(80),
@@ -235,6 +236,22 @@ const notificationPreferenceSchema = z.object({
   emailPublishing: z.boolean(),
   emailFailures: z.boolean(),
 }).strict();
+const retentionPolicySchema = z.object({
+  readNotificationDays: z.number().int().min(30).max(3650),
+  competitorSnapshotDays: z.number().int().min(30).max(3650),
+  publishedOutboxDays: z.number().int().min(7).max(3650),
+  resolvedDeadLetterDays: z.number().int().min(30).max(3650),
+  auditArchiveAfterDays: z.number().int().min(365).max(3650),
+}).strict();
+const retentionRunSchema = z.object({
+  mode: z.enum(["PREVIEW", "APPLY"]),
+  confirmation: z.string().optional(),
+}).strict().superRefine((value, context) => {
+  if (value.mode === "APPLY" && value.confirmation !== "DELETE EXPIRED DATA") {
+    context.addIssue({ code: "custom", path: ["confirmation"], message: 'Enter "DELETE EXPIRED DATA" to apply retention cleanup' });
+  }
+});
+const retentionRunListSchema = z.object({ limit: z.coerce.number().int().min(1).max(50).default(20) });
 const organizationRoleSchema = z.enum(["OWNER", "ADMIN", "MANAGER", "CATALOG_OPERATOR", "PRICING_OPERATOR", "PUBLISHER", "VIEWER"]);
 const invitationTokenSchema = z.string().trim().min(32).max(200);
 const invitationPreviewSchema = z.object({ token: invitationTokenSchema }).strict();
@@ -1395,6 +1412,47 @@ app.get("/api/admin/overview", requireTenantContext, adminOperationsRoles, async
   } catch (error) { next(error); }
 });
 
+app.get("/api/admin/retention-policy", requireTenantContext, adminOperationsRoles, async (_req, res, next) => {
+  try {
+    res.json(await getRetentionPolicy(getTenantContext(res).organization.id));
+  } catch (error) { next(error); }
+});
+
+app.put("/api/admin/retention-policy", writeRateLimit, requireTenantContext, adminOperationsRoles, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    res.json(await updateRetentionPolicy(
+      tenant.organization.id,
+      tenant.user.id,
+      retentionPolicySchema.parse(req.body),
+      res.locals.requestId as string | undefined,
+    ));
+  } catch (error) { next(error); }
+});
+
+app.get("/api/admin/retention-runs", requireTenantContext, adminOperationsRoles, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const { limit } = retentionRunListSchema.parse(req.query);
+    res.json(await listRetentionRuns(tenant.organization.id, limit));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/admin/retention-runs", writeRateLimit, requireTenantContext, adminOperationsRoles, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const { mode } = retentionRunSchema.parse(req.body);
+    const run = await createRetentionRun({
+      organizationId: tenant.organization.id,
+      userId: tenant.user.id,
+      mode,
+      requestId: res.locals.requestId as string | undefined,
+    });
+    res.status(202).json(run);
+    if (getConfig().jobs.executionMode === "inline") startRetentionJob(run.id);
+  } catch (error) { next(error); }
+});
+
 app.post("/api/admin/email/verify", authRateLimit, requireTenantContext, adminOperationsRoles, async (_req, res, next) => {
   try {
     res.json(await verifyEmailTransport());
@@ -1609,6 +1667,7 @@ app.use((error: unknown, req: express.Request, res: express.Response, _next: exp
   if (error instanceof CatalogError) return response(error.statusCode, { error: error.message });
   if (error instanceof CatalogSavedViewError) return response(error.statusCode, { error: error.message });
   if (error instanceof NotificationError) return response(error.statusCode, { error: error.message });
+  if (error instanceof RetentionError) return response(error.statusCode, { error: error.message });
   if (error instanceof PricingJobError) return response(error.statusCode, { error: error.message });
   if (error instanceof PricingGovernanceError) return response(error.statusCode, { error: error.message });
   if (error instanceof FitmentJobError) return response(error.statusCode, { error: error.message });

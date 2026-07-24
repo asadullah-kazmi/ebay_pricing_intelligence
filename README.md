@@ -107,6 +107,8 @@ See [Catalog Operations](docs/CATALOG_OPERATIONS.md) for advanced catalog filter
 
 See [Operational Notifications](docs/OPERATIONAL_NOTIFICATIONS.md) for role-targeted in-app alerts, idempotent outbox consumption, optional SMTP delivery, and personal notification preferences.
 
+See [Data Retention and Restore Runbook](docs/DATA_RETENTION_AND_RESTORE.md) for preview-first cleanup, immutable audit preservation, provider backup requirements, and isolated restore rehearsals.
+
 See [Production Release Checklist](docs/PRODUCTION_RELEASE.md) before deploying. It contains the Railway service commands, required variables, health checks, smoke test, rollback process, and current release limitations.
 
 ## API
@@ -168,6 +170,8 @@ See [Production Release Checklist](docs/PRODUCTION_RELEASE.md) before deploying.
 - `GET /api/notifications` - list the authenticated user's tenant-scoped operational notifications
 - `POST /api/notifications/:id/read` / `POST /api/notifications/read-all` - acknowledge personal notifications
 - `GET` / `PUT /api/notification-preferences` - read or update optional operational email delivery
+- `GET` / `PUT /api/admin/retention-policy` - inspect or update organization retention windows
+- `GET` / `POST /api/admin/retention-runs` - inspect or queue preview/apply retention jobs
 - `POST /api/listing-drafts/:id/validate` - rerun publication-readiness checks without publishing
 - `GET /api/ebay/resources` / `POST /api/ebay/resources/sync` - read or refresh seller policies and inventory locations
 - `POST /api/ebay/categories/:categoryId/aspects/refresh` - retrieve and cache live category item specifics

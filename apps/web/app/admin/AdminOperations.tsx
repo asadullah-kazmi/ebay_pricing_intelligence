@@ -51,6 +51,25 @@ interface AuditEvent {
   actorUser: { name: string | null; email: string } | null;
 }
 
+interface RetentionPolicy {
+  readNotificationDays: number;
+  competitorSnapshotDays: number;
+  publishedOutboxDays: number;
+  resolvedDeadLetterDays: number;
+  auditArchiveAfterDays: number;
+}
+
+interface RetentionRun {
+  id: string;
+  mode: "PREVIEW" | "APPLY";
+  status: "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+  result: Record<string, number> | null;
+  lastError: string | null;
+  createdAt: string;
+  completedAt: string | null;
+  createdBy: { email: string; name: string | null };
+}
+
 function human(value: string) {
   return value.toLowerCase().replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
@@ -72,6 +91,9 @@ export default function AdminOperations() {
   const [jobs, setJobs] = useState<FailedJob[]>([]);
   const [publishing, setPublishing] = useState<PublishingOperation[]>([]);
   const [audit, setAudit] = useState<AuditEvent[]>([]);
+  const [retentionPolicy, setRetentionPolicy] = useState<RetentionPolicy | null>(null);
+  const [retentionRuns, setRetentionRuns] = useState<RetentionRun[]>([]);
+  const [retentionBusy, setRetentionBusy] = useState("");
   const [publishingStatus, setPublishingStatus] = useState("");
   const [severity, setSeverity] = useState("");
   const [loading, setLoading] = useState(false);
@@ -104,16 +126,20 @@ export default function AdminOperations() {
     try {
       const publishQuery = publishingStatus ? `?status=${publishingStatus}&limit=50` : "?limit=50";
       const auditQuery = severity ? `?severity=${severity}&limit=50` : "?limit=50";
-      const [overviewResult, jobsResult, publishingResult, auditResult] = await Promise.all([
+      const [overviewResult, jobsResult, publishingResult, auditResult, retentionPolicyResult, retentionRunsResult] = await Promise.all([
         request("/api/admin/overview"),
         request("/api/admin/failed-jobs?limit=50"),
         request(`/api/admin/publishing${publishQuery}`),
         request(`/api/admin/audit-events${auditQuery}`),
+        request("/api/admin/retention-policy"),
+        request("/api/admin/retention-runs?limit=20"),
       ]);
       setOverview(overviewResult as Overview);
       setJobs(jobsResult as FailedJob[]);
       setPublishing(publishingResult as PublishingOperation[]);
       setAudit(auditResult as AuditEvent[]);
+      setRetentionPolicy(retentionPolicyResult as RetentionPolicy);
+      setRetentionRuns(retentionRunsResult as RetentionRun[]);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to load operations data");
     } finally {
@@ -122,6 +148,12 @@ export default function AdminOperations() {
   }, [authState, publishingStatus, request, severity]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    if (!retentionRuns.some(({ status }) => status === "QUEUED" || status === "RUNNING")) return;
+    const timer = window.setTimeout(() => void load(), 2000);
+    return () => window.clearTimeout(timer);
+  }, [load, retentionRuns]);
 
   function connectToken(event: FormEvent) {
     event.preventDefault();
@@ -143,6 +175,41 @@ export default function AdminOperations() {
     } finally {
       setRetrying("");
     }
+  }
+
+  async function saveRetentionPolicy(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    setRetentionBusy("policy"); setError(""); setNotice("");
+    try {
+      setRetentionPolicy(await request("/api/admin/retention-policy", {
+        method: "PUT",
+        body: JSON.stringify({
+          readNotificationDays: Number(form.get("readNotificationDays")),
+          competitorSnapshotDays: Number(form.get("competitorSnapshotDays")),
+          publishedOutboxDays: Number(form.get("publishedOutboxDays")),
+          resolvedDeadLetterDays: Number(form.get("resolvedDeadLetterDays")),
+          auditArchiveAfterDays: Number(form.get("auditArchiveAfterDays")),
+        }),
+      }) as RetentionPolicy);
+      setNotice("Retention policy saved. Existing queued runs keep their original cutoff snapshot.");
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to save retention policy"); }
+    finally { setRetentionBusy(""); }
+  }
+
+  async function queueRetention(mode: "PREVIEW" | "APPLY") {
+    let confirmation: string | undefined;
+    if (mode === "APPLY") {
+      confirmation = window.prompt('This permanently deletes only eligible derived/operational records. Type "DELETE EXPIRED DATA" to continue:') ?? undefined;
+      if (confirmation !== "DELETE EXPIRED DATA") return;
+    }
+    setRetentionBusy(mode); setError(""); setNotice("");
+    try {
+      await request("/api/admin/retention-runs", { method: "POST", body: JSON.stringify({ mode, confirmation }) });
+      setNotice(mode === "PREVIEW" ? "Retention preview queued." : "Retention cleanup queued with immutable audit evidence.");
+      await load();
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to queue retention run"); }
+    finally { setRetentionBusy(""); }
   }
 
   if (authState === "loading") return <main className={styles.center}>Loading secure operations console…</main>;
@@ -180,6 +247,23 @@ export default function AdminOperations() {
           {!publishing.length && <tr><td colSpan={5} className={styles.empty}>No offers match this filter.</td></tr>}
         </tbody></table></div>
       </section>
+
+      {retentionPolicy && <section className={styles.panel}>
+        <div className={styles.panelHead}><div><span className={styles.eyebrow}>DATA LIFECYCLE</span><h2>Retention and cleanup</h2></div><p>Preview first. Audit events are reported for archival and never deleted here.</p></div>
+        <form className={styles.retentionForm} key={JSON.stringify(retentionPolicy)} onSubmit={saveRetentionPolicy}>
+          <label><span>Read notifications</span><input name="readNotificationDays" type="number" min="30" max="3650" defaultValue={retentionPolicy.readNotificationDays}/><small>days</small></label>
+          <label><span>Competitor snapshots</span><input name="competitorSnapshotDays" type="number" min="30" max="3650" defaultValue={retentionPolicy.competitorSnapshotDays}/><small>days</small></label>
+          <label><span>Published outbox</span><input name="publishedOutboxDays" type="number" min="7" max="3650" defaultValue={retentionPolicy.publishedOutboxDays}/><small>days</small></label>
+          <label><span>Resolved dead letters</span><input name="resolvedDeadLetterDays" type="number" min="30" max="3650" defaultValue={retentionPolicy.resolvedDeadLetterDays}/><small>days</small></label>
+          <label><span>Audit archive threshold</span><input name="auditArchiveAfterDays" type="number" min="365" max="3650" defaultValue={retentionPolicy.auditArchiveAfterDays}/><small>days · report only</small></label>
+          <button disabled={retentionBusy === "policy"}>{retentionBusy === "policy" ? "Saving…" : "Save policy"}</button>
+        </form>
+        <div className={styles.retentionActions}><div><b>Controlled execution</b><span>Cutoffs are frozen when queued. Apply deletes only eligible derived and operational records.</span></div><button disabled={Boolean(retentionBusy) || retentionRuns.some(({ status }) => status === "QUEUED" || status === "RUNNING")} onClick={() => void queueRetention("PREVIEW")}>Preview eligible data</button><button className={styles.dangerButton} disabled={Boolean(retentionBusy) || retentionRuns.some(({ status }) => status === "QUEUED" || status === "RUNNING")} onClick={() => void queueRetention("APPLY")}>Apply cleanup</button></div>
+        <div className={styles.tableWrap}><table><thead><tr><th>Run</th><th>Mode / status</th><th>Result</th><th>Requested by</th><th>Completed</th></tr></thead><tbody>
+          {retentionRuns.map((run) => <tr key={run.id}><td><b>{run.id.slice(-8)}</b><span>{time(run.createdAt)}</span></td><td><i className={`${styles.pill} ${run.status === "FAILED" || run.mode === "APPLY" ? styles.warn : ""}`}>{human(run.mode)} · {human(run.status)}</i></td><td>{run.result ? Object.entries(run.result).map(([name, count]) => `${human(name)}: ${count}`).join(" · ") : run.lastError || "Waiting for worker"}</td><td>{run.createdBy.name || run.createdBy.email}</td><td>{time(run.completedAt)}</td></tr>)}
+          {!retentionRuns.length && <tr><td colSpan={5} className={styles.empty}>No retention runs yet. Start with a preview.</td></tr>}
+        </tbody></table></div>
+      </section>}
 
       <section className={styles.panel}>
         <div className={styles.panelHead}><div><span className={styles.eyebrow}>AUDIT TRAIL</span><h2>Recent activity</h2></div><select aria-label="Filter audit severity" value={severity} onChange={(event) => setSeverity(event.target.value)}><option value="">All severities</option><option value="INFO">Info</option><option value="WARNING">Warning</option><option value="CRITICAL">Critical</option></select></div>

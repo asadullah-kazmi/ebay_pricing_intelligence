@@ -31,4 +31,12 @@ describe("operational notification mapping", () => {
     expect(notificationForEvent("listing.draft.updated", {})).toBeNull();
     expect(notificationForEvent("pricing.job.created", {})).toBeNull();
   });
+
+  it("routes completed retention runs only to tenant owners and administrators", () => {
+    expect(notificationForEvent("retention.run.completed", { mode: "APPLY" })).toMatchObject({
+      category: "SYSTEM",
+      severity: "SUCCESS",
+      roles: ["OWNER", "ADMIN"],
+    });
+  });
 });
