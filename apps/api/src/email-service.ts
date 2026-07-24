@@ -107,3 +107,19 @@ export function sendOrganizationInvitationEmail(to: string, organizationName: st
     url,
   });
 }
+
+export function sendOperationalNotificationEmail(input: {
+  to: string;
+  title: string;
+  message: string;
+  actionUrl: string;
+}) {
+  return sendActionEmail({
+    to: input.to,
+    subject: `PartPulse: ${input.title}`,
+    heading: input.title,
+    message: input.message,
+    action: "Open PartPulse",
+    url: input.actionUrl,
+  });
+}

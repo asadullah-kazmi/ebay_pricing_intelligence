@@ -18,7 +18,7 @@ export async function publishOutboxEvents(input: {
   leaseDurationMs: number;
   maxAttempts: number;
   batchSize?: number;
-  publish: (event: Pick<OutboxEvent, "id" | "topic" | "aggregateType" | "aggregateId" | "payload" | "createdAt">) => Promise<void>;
+  publish: (event: Pick<OutboxEvent, "id" | "organizationId" | "topic" | "aggregateType" | "aggregateId" | "payload" | "createdAt">) => Promise<void>;
 }): Promise<{ published: number; failed: number }> {
   const now = new Date();
   const candidates = await prisma.outboxEvent.findMany({

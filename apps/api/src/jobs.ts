@@ -9,4 +9,5 @@ export { getActiveOfferJobCount, resumeInterruptedOfferJobs, startQueuedOfferJob
 export { getActiveListingOperationJobCount, resumeInterruptedListingOperationJobs, startQueuedListingOperationJobs } from "./ebay-listing-operation-service.js";
 export { markWorkerStopped, recordWorkerHeartbeat, renewWorkerJobLeases } from "./worker-operations.js";
 export { publishOutboxEvents } from "./outbox-service.js";
+export { consumeNotificationEvent } from "./notification-service.js";
 export type { JobRunOptions } from "./job-runtime.js";

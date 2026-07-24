@@ -41,6 +41,7 @@ import { EmailDeliveryError, verifyEmailTransport } from "./email-service.js";
 import { decidePricingProposal, getOrganizationPricingRule, listPricingProposals, PricingGovernanceError, updateOrganizationPricingRule } from "./pricing-governance-service.js";
 import { createManualFitment, decideManualFitment, listPartFitment, ManualFitmentError, reviseManualFitment } from "./manual-fitment-service.js";
 import { CatalogSavedViewError, deleteCatalogSavedView, listCatalogSavedViews, saveCatalogView } from "./catalog-saved-view-service.js";
+import { getNotificationPreferences, listNotifications, markAllNotificationsRead, markNotificationRead, NotificationError, updateNotificationPreferences } from "./notification-service.js";
 
 const searchSchema = z.object({
   oem: z.string().trim().min(2).max(80),
@@ -223,6 +224,17 @@ const adminAuditQuerySchema = adminListQuerySchema.extend({
   createdTo: z.coerce.date().optional(),
 });
 const adminJobTypeSchema = z.enum(["PRICING", "FITMENT", "INVENTORY_PREPARATION", "INVENTORY_SYNC", "OFFER", "LISTING_OPERATION"]);
+const notificationListSchema = z.object({
+  unreadOnly: z.enum(["true", "false"]).transform((value) => value === "true").default(false),
+  category: z.enum(["PRICING", "FITMENT", "PUBLISHING", "SYSTEM"]).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+const notificationPreferenceSchema = z.object({
+  emailPricing: z.boolean(),
+  emailFitment: z.boolean(),
+  emailPublishing: z.boolean(),
+  emailFailures: z.boolean(),
+}).strict();
 const organizationRoleSchema = z.enum(["OWNER", "ADMIN", "MANAGER", "CATALOG_OPERATOR", "PRICING_OPERATOR", "PUBLISHER", "VIEWER"]);
 const invitationTokenSchema = z.string().trim().min(32).max(200);
 const invitationPreviewSchema = z.object({ token: invitationTokenSchema }).strict();
@@ -1329,6 +1341,47 @@ app.get("/api/ebay/listing-operation-jobs/:id", requireTenantContext, async (req
   } catch (error) { next(error); }
 });
 
+app.get("/api/notifications", requireTenantContext, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    res.json(await listNotifications(tenant.organization.id, tenant.user.id, notificationListSchema.parse(req.query)));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/notifications/read-all", writeRateLimit, requireTenantContext, async (_req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    res.json(await markAllNotificationsRead(tenant.organization.id, tenant.user.id));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/notifications/:id/read", writeRateLimit, requireTenantContext, async (req, res, next) => {
+  try {
+    const notificationId = req.params.id;
+    if (typeof notificationId !== "string") return res.status(400).json({ error: "Invalid notification ID" });
+    const tenant = getTenantContext(res);
+    res.json(await markNotificationRead(tenant.organization.id, tenant.user.id, notificationId));
+  } catch (error) { next(error); }
+});
+
+app.get("/api/notification-preferences", requireTenantContext, async (_req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    res.json(await getNotificationPreferences(tenant.organization.id, tenant.user.id));
+  } catch (error) { next(error); }
+});
+
+app.put("/api/notification-preferences", writeRateLimit, requireTenantContext, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    res.json(await updateNotificationPreferences(
+      tenant.organization.id,
+      tenant.user.id,
+      notificationPreferenceSchema.parse(req.body),
+    ));
+  } catch (error) { next(error); }
+});
+
 app.get("/api/admin/dead-letters", requireTenantContext, deadLetterRoles, async (req, res, next) => {
   try {
     const query = deadLetterQuerySchema.parse(req.query);
@@ -1555,6 +1608,7 @@ app.use((error: unknown, req: express.Request, res: express.Response, _next: exp
   if (error instanceof ImportReviewError) return response(error.statusCode, { error: error.message, ...(error.details ? { details: error.details } : {}) });
   if (error instanceof CatalogError) return response(error.statusCode, { error: error.message });
   if (error instanceof CatalogSavedViewError) return response(error.statusCode, { error: error.message });
+  if (error instanceof NotificationError) return response(error.statusCode, { error: error.message });
   if (error instanceof PricingJobError) return response(error.statusCode, { error: error.message });
   if (error instanceof PricingGovernanceError) return response(error.statusCode, { error: error.message });
   if (error instanceof FitmentJobError) return response(error.statusCode, { error: error.message });

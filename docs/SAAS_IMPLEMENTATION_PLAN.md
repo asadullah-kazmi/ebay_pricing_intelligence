@@ -988,6 +988,8 @@ Step 22 adds controlled live revision from a newer inventory sync, explicit with
 
 Step 29 adds advanced inventory and readiness filters, personal saved views, transactional bulk catalog editing with draft invalidation, and versioned bulk seller-policy assignment. See [CATALOG_OPERATIONS.md](./CATALOG_OPERATIONS.md).
 
+Step 30 adds role-targeted operational notifications, idempotent outbox consumption, personal read state, and verified-address email preferences. See [OPERATIONAL_NOTIFICATIONS.md](./OPERATIONAL_NOTIFICATIONS.md).
+
 - eBay Sell Metadata product identifiers: https://developer.ebay.com/api-docs/sell/metadata/types/api%3AProductIdentifier
 - eBay Sell Metadata product compatibility request: https://developer.ebay.com/api-docs/sell/metadata/types/api%3AProductRequest
 - eBay compatibility property values: https://developer.ebay.com/api-docs/sell/taxonomy/resources/category_tree/methods/getCompatibilityPropertyValues

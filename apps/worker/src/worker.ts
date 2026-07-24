@@ -2,6 +2,7 @@ import { hostname } from "node:os";
 import { randomUUID } from "node:crypto";
 import {
   disconnectDatabase,
+  consumeNotificationEvent,
   getActiveFitmentJobCount,
   getActivePricingJobCount,
   getActiveInventoryPreparationJobCount,
@@ -97,6 +98,7 @@ async function poll(): Promise<void> {
         maxAttempts: outboxMaxAttempts,
         batchSize: outboxBatchSize,
         publish: async (event) => {
+          const notification = await consumeNotificationEvent(event);
           console.info(JSON.stringify({
             type: "outbox_event",
             eventId: event.id,
@@ -105,6 +107,7 @@ async function poll(): Promise<void> {
             aggregateId: event.aggregateId,
             occurredAt: event.createdAt,
             payload: event.payload,
+            notification,
           }));
         },
       }),

@@ -105,6 +105,8 @@ See [Complete Authentication and Account Security](docs/COMPLETE_AUTHENTICATION.
 
 See [Catalog Operations](docs/CATALOG_OPERATIONS.md) for advanced catalog filters, personal saved views, atomic bulk editing, and bulk eBay policy/location assignment.
 
+See [Operational Notifications](docs/OPERATIONAL_NOTIFICATIONS.md) for role-targeted in-app alerts, idempotent outbox consumption, optional SMTP delivery, and personal notification preferences.
+
 See [Production Release Checklist](docs/PRODUCTION_RELEASE.md) before deploying. It contains the Railway service commands, required variables, health checks, smoke test, rollback process, and current release limitations.
 
 ## API
@@ -163,6 +165,9 @@ See [Production Release Checklist](docs/PRODUCTION_RELEASE.md) before deploying.
 - `GET /api/listing-drafts` / `GET /api/listing-drafts/:id` - list drafts or retrieve one with version history
 - `PATCH /api/listing-drafts/:id` - edit a draft using optimistic concurrency
 - `POST /api/listing-drafts/bulk-policies` - validate and assign seller policies/location to selected marketplace drafts
+- `GET /api/notifications` - list the authenticated user's tenant-scoped operational notifications
+- `POST /api/notifications/:id/read` / `POST /api/notifications/read-all` - acknowledge personal notifications
+- `GET` / `PUT /api/notification-preferences` - read or update optional operational email delivery
 - `POST /api/listing-drafts/:id/validate` - rerun publication-readiness checks without publishing
 - `GET /api/ebay/resources` / `POST /api/ebay/resources/sync` - read or refresh seller policies and inventory locations
 - `POST /api/ebay/categories/:categoryId/aspects/refresh` - retrieve and cache live category item specifics
