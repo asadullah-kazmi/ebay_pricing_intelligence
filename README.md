@@ -210,3 +210,5 @@ Step 32 release hardening commands:
 - `npm run load:read-only` - bounded GET-only health/catalog latency probe
 
 See [Security, tenant-isolation, and load testing](./docs/SECURITY_AND_LOAD_TESTING.md) before setting the required target confirmation variables.
+
+Step 33 adds GitHub CI, CodeQL, Dependabot, and a protected production-verification workflow. Configure repository and Railway controls using [CI/CD and release gates](./docs/CI_CD_AND_RELEASE_GATES.md). The prioritized post-Step-33 work is tracked in [Remaining product roadmap](./docs/REMAINING_ROADMAP.md).

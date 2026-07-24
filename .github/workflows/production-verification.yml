@@ -1,0 +1,95 @@
+name: Production verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_base_url:
+        description: Exact public API origin, without a trailing slash
+        required: true
+        type: string
+      confirm_target:
+        description: Repeat the API host (and port, if any)
+        required: true
+        type: string
+      authenticated:
+        description: Use the production environment's short-lived access token
+        required: true
+        default: false
+        type: boolean
+      load_requests:
+        description: Number of GET-only probe requests
+        required: true
+        default: "30"
+        type: choice
+        options: ["30", "100", "250"]
+      load_concurrency:
+        description: Concurrent GET requests
+        required: true
+        default: "3"
+        type: choice
+        options: ["1", "3", "5", "10"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-verification
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Smoke and read-only load checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    env:
+      API_BASE_URL: ${{ inputs.api_base_url }}
+      LOAD_TEST_BASE_URL: ${{ inputs.api_base_url }}
+      LOAD_TEST_CONFIRM_TARGET: ${{ inputs.confirm_target }}
+      LOAD_TEST_REQUESTS: ${{ inputs.load_requests }}
+      LOAD_TEST_CONCURRENCY: ${{ inputs.load_concurrency }}
+      API_ACCESS_TOKEN: ${{ inputs.authenticated && secrets.PRODUCTION_SMOKE_ACCESS_TOKEN || '' }}
+      LOAD_TEST_ACCESS_TOKEN: ${{ inputs.authenticated && secrets.PRODUCTION_SMOKE_ACCESS_TOKEN || '' }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Require configured token for authenticated verification
+        if: ${{ inputs.authenticated }}
+        shell: bash
+        run: |
+          if [ -z "$API_ACCESS_TOKEN" ]; then
+            echo "PRODUCTION_SMOKE_ACCESS_TOKEN is not configured in the production environment" >&2
+            exit 1
+          fi
+
+      - name: Run production smoke checks
+        run: npm run smoke:production
+
+      - name: Run bounded GET-only probe
+        run: npm run load:read-only
+
+      - name: Write verification summary
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          {
+            echo "## Production verification"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Target: \`${LOAD_TEST_CONFIRM_TARGET}\`"
+            echo "- Requests: \`${LOAD_TEST_REQUESTS}\`"
+            echo "- Concurrency: \`${LOAD_TEST_CONCURRENCY}\`"
+            echo "- Authenticated: \`${{ inputs.authenticated }}\`"
+            echo "- Result: \`${{ job.status }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

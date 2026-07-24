@@ -18,6 +18,7 @@
     "test:tenant-isolation": "tsx src/scripts/test-tenant-isolation.ts",
     "load:read-only": "tsx src/scripts/load-read-only.ts",
     "db:check": "tsx src/scripts/check-database.ts",
+    "db:validate": "prisma validate",
     "ebay:check": "tsx src/scripts/check-ebay.ts",
     "smoke:production": "tsx src/scripts/smoke-production.ts",
     "db:generate": "prisma generate",

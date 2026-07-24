@@ -6,3 +6,10 @@ dist/
 !.env.example
 *.log
 coverage/
+package.json
+docs/PRODUCTION_RELEASE.md
+docs/CI_CD_AND_RELEASE_GATES.md
+docs/REMAINING_ROADMAP.md
+docs/SAAS_IMPLEMENTATION_PLAN.md
+docs/PRODUCTION_RELEASE.md
+docs/PRODUCTION_RELEASE.md

@@ -1,35 +1,59 @@
 name: CI
 
 on:
-  pull_request:
   push:
-    branches:
-      - main
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
-
 jobs:
   release-check:
+    name: Release check
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
+    env:
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/partpulse_ci
+      NEXT_PUBLIC_API_URL: http://127.0.0.1:4000
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - name: Check out source
+        uses: actions/checkout@v6
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: package-lock.json
 
-      - name: Install dependencies
+      - name: Install locked dependencies
         run: npm ci
 
-      - name: Test and build
-        run: npm run release:check
+      - name: Validate Prisma schema
+        run: npm run db:validate
+
+      - name: Run security regression tests
+        run: npm run test:security
+
+      - name: Run complete test suite
+        run: npm test
+
+      - name: Build API and web
+        run: npm run build
+
+      - name: Build worker
+        run: npm run build -w @price-intel/worker
+
+      - name: Reject high or critical production dependency vulnerabilities
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Check generated or uncommitted changes
+        run: git diff --exit-code
