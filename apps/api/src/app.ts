@@ -24,6 +24,7 @@ import { createPricingJob, getPricingJob, listPricingJobs, PricingJobError, star
 import { approveFitmentCandidate, createFitmentJob, FitmentJobError, getFitmentJob, listFitmentJobs, startFitmentJob } from "./fitment-service.js";
 import { completeEbayAuthorization, createEbayAuthorization, disconnectEbayConnection, EbaySellerOAuthError, getEbayConnection } from "./ebay-seller-oauth.js";
 import { getTenantContext, requireOrganizationRoles, requireTenantContext } from "./tenant-context.js";
+import { organizationPermissionRoles } from "./authorization-policy.js";
 import { getWorkerHealth } from "./worker-operations.js";
 import { executeIdempotent, IdempotencyError } from "./idempotency-service.js";
 import { DeadLetterError, listDeadLetters, requeueDeadLetter } from "./dead-letter-service.js";
@@ -50,7 +51,7 @@ const searchSchema = z.object({
   condition: z.enum(["ANY", "NEW", "USED"]).default("ANY"),
 });
 const confirmMediaUploadSchema = z.object({ storageKey: z.string().min(1).max(1024) });
-const mediaUploadRoles = requireOrganizationRoles("OWNER", "ADMIN", "MANAGER", "CATALOG_OPERATOR");
+const mediaUploadRoles = requireOrganizationRoles(...organizationPermissionRoles.catalogWrite);
 const importFilenameSchema = z.string().trim().min(1).max(255).regex(/\.(?:csv|xlsx)$/i, "Only .csv and .xlsx files are supported");
 const importBody = express.raw({ type: () => true, limit: getConfig().storage?.maxImportBytes ?? 10_485_760 });
 const imageArchiveBody = express.raw({ type: () => true, limit: getConfig().storage?.maxImageArchiveBytes ?? 104_857_600 });
@@ -157,8 +158,8 @@ const createPricingJobSchema = z.object({
   conditionMode: z.enum(["MATCH_PART", "ANY", "NEW", "USED"]).default("MATCH_PART"),
 }).strict();
 const pricingJobListSchema = z.object({ limit: z.coerce.number().int().min(1).max(50).default(10) });
-const pricingRoles = requireOrganizationRoles("OWNER", "ADMIN", "MANAGER", "PRICING_OPERATOR");
-const pricingRuleRoles = requireOrganizationRoles("OWNER", "ADMIN");
+const pricingRoles = requireOrganizationRoles(...organizationPermissionRoles.pricing);
+const pricingRuleRoles = requireOrganizationRoles(...organizationPermissionRoles.pricingRule);
 const pricingRuleSchema = z.object({
   marketAdjustmentPercent: z.number().min(-50).max(100),
   minimumMarginPercent: z.number().min(0).max(95),
@@ -181,7 +182,7 @@ const createFitmentJobSchema = z.object({
   marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).default("EBAY_US"),
 }).strict();
 const approveFitmentSchema = z.object({ candidateId: z.string().min(1) }).strict();
-const fitmentRoles = requireOrganizationRoles("OWNER", "ADMIN", "MANAGER", "CATALOG_OPERATOR");
+const fitmentRoles = requireOrganizationRoles(...organizationPermissionRoles.fitment);
 const fitmentPropertiesSchema = z.record(
   z.string().trim().min(1).max(100),
   z.string().trim().max(200),
@@ -205,9 +206,9 @@ const manualFitmentDecisionSchema = z.object({
   reason: z.string().trim().min(3).max(500),
   replaceExisting: z.boolean().optional(),
 }).strict();
-const deadLetterRoles = requireOrganizationRoles("OWNER", "ADMIN", "MANAGER");
-const adminOperationsRoles = requireOrganizationRoles("OWNER", "ADMIN");
-const teamManagementRoles = requireOrganizationRoles("OWNER", "ADMIN");
+const deadLetterRoles = requireOrganizationRoles(...organizationPermissionRoles.deadLetterOperations);
+const adminOperationsRoles = requireOrganizationRoles(...organizationPermissionRoles.administration);
+const teamManagementRoles = requireOrganizationRoles(...organizationPermissionRoles.teamManagement);
 const idempotencyKeySchema = z.string().trim().min(8).max(200).regex(/^[A-Za-z0-9._:-]+$/).optional();
 const deadLetterQuerySchema = z.object({
   status: z.enum(["OPEN", "REQUEUED", "RESOLVED"]).optional(),
@@ -294,7 +295,7 @@ const mfaSensitiveActionSchema = z.object({
   password: z.string().min(1).max(128),
   code: z.string().trim().min(6).max(40),
 }).strict();
-const listingDraftRoles = requireOrganizationRoles("OWNER", "ADMIN", "MANAGER", "PUBLISHER");
+const listingDraftRoles = requireOrganizationRoles(...organizationPermissionRoles.listingPublish);
 const createListingDraftsSchema = z.object({
   partIds: z.array(z.string().min(1)).min(1).max(25).transform((ids) => [...new Set(ids)]),
   marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).default("EBAY_US"),

@@ -202,3 +202,11 @@ See [Production Release Checklist](docs/PRODUCTION_RELEASE.md) before deploying.
 - `GET /health`
 - `GET /health/live`
 - `GET /health/ready`
+
+Step 32 release hardening commands:
+
+- `npm run test:security` - JWT, role-boundary, HTTP-hardening, and probe-safety regressions
+- `npm run test:tenant-isolation` - guarded two-organization integration test against a dedicated test database
+- `npm run load:read-only` - bounded GET-only health/catalog latency probe
+
+See [Security, tenant-isolation, and load testing](./docs/SECURITY_AND_LOAD_TESTING.md) before setting the required target confirmation variables.

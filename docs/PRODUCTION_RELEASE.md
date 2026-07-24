@@ -167,6 +167,7 @@ Omit `API_ACCESS_TOKEN` to run only public health/security checks. The script ne
 - Apply `20260724120000_add_catalog_saved_views` before Step 29. Verify one personal saved view, one rollback case, and one bulk policy assignment in a test organization.
 - Apply `20260724130000_add_operational_notifications` before Step 30. Deploy API, worker, and web from one commit, then verify one in-app event and one opted-in SMTP delivery without duplication.
 - Apply `20260724140000_add_data_retention` before Step 31. Confirm a current provider backup, deploy API/worker/web together, and run preview only until restore evidence is recorded.
+- Before Step 32 sign-off, run the security suite, the tenant-isolation integration test against a separately migrated test database, and the confirmed GET-only load probe. Treat any tenant leak as release-blocking; see [SECURITY_AND_LOAD_TESTING.md](./SECURITY_AND_LOAD_TESTING.md).
 
 - The current Next.js 15 dependency pins PostCSS 8.4.31, which npm audit reports for a moderate CSS-stringification XSS advisory. This application does not stringify user-supplied CSS, so the vulnerable path is not currently exposed. Track the upstream Next.js fix and upgrade when a compatible release is available; do not use npm's suggested forced downgrade to Next 9.
 - Authentication and SMTP invitation delivery are implemented. Gmail SMTP is suitable for initial testing and low-volume rollout; move to a transactional provider with delivery telemetry and bounce/complaint handling before materially increasing customer volume.
