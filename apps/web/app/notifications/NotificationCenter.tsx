@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import styles from "./notifications.module.css";
+import BrandMark from "../components/BrandMark";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -125,7 +126,7 @@ export default function NotificationCenter() {
 
   return <main className={styles.page}>
     <aside>
-      <a className={styles.brand} href="/catalog"><b>Part</b>Pulse<span>Operational inbox</span></a>
+      <a className={styles.brand} href="/catalog"><BrandMark inverse tagline="Operational inbox"/></a>
       <nav><a href="/catalog">Catalog</a><a href="/admin">Admin</a><a href="/account/security">Account security</a></nav>
       <div className={styles.unread}><strong>{result.unreadCount}</strong><span>unread alerts</span></div>
     </aside>

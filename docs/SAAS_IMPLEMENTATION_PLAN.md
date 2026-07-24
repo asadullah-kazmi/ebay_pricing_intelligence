@@ -994,6 +994,8 @@ Step 31 adds organization retention governance, preview-before-delete worker job
 
 Step 32 adds centralized role-policy regression tests, an explicitly isolated PostgreSQL tenant-boundary test, and a bounded GET-only latency probe with production-target confirmation. See [SECURITY_AND_LOAD_TESTING.md](./SECURITY_AND_LOAD_TESTING.md).
 
+Step 33 adds required GitHub release checks, CodeQL, dependency maintenance, Railway Wait-for-CI guidance, and protected read-only production verification. See [CI_CD_AND_RELEASE_GATES.md](./CI_CD_AND_RELEASE_GATES.md).
+
 - eBay Sell Metadata product identifiers: https://developer.ebay.com/api-docs/sell/metadata/types/api%3AProductIdentifier
 - eBay Sell Metadata product compatibility request: https://developer.ebay.com/api-docs/sell/metadata/types/api%3AProductRequest
 - eBay compatibility property values: https://developer.ebay.com/api-docs/sell/taxonomy/resources/category_tree/methods/getCompatibilityPropertyValues

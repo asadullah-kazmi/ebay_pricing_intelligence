@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import styles from "../auth-ui.module.css";
+import BrandMark from "../components/BrandMark";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 type Organization = { name: string; slug: string };
@@ -72,11 +73,30 @@ export default function LoginForm() {
     finally { setBusy(false); }
   }
 
-  return <main className={styles.page}><section className={styles.card}><a className={styles.brand} href="/"><b>Part</b>Pulse</a><span className={styles.eyebrow}>SECURE WORKSPACE</span><h1>{challengeToken ? "Verify it’s you" : "Welcome back"}</h1><p>{challengeToken ? "Multi-factor authentication protects this account." : "Sign in with your verified email and account password."}</p>
-    {error && <div className={styles.error}>{error}</div>}{notice && <div className={styles.notice}>{notice}</div>}
-    {challengeToken ? <form className={styles.form} onSubmit={completeMfa}><label>Authenticator or recovery code<input value={code} onChange={(event) => setCode(event.target.value)} autoComplete="one-time-code" required autoFocus/></label><button disabled={busy}>{busy ? "Checking…" : "Verify and sign in"}</button><button type="button" onClick={() => { setChallengeToken(""); setCode(""); }} disabled={busy}>Start again</button></form>
-    : <form className={styles.form} onSubmit={login}><label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required/></label><label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required/></label>{organizations.length > 0 && <label>Organization<select value={organizationSlug} onChange={(event) => setOrganizationSlug(event.target.value)}>{organizations.map((organization) => <option key={organization.slug} value={organization.slug}>{organization.name}</option>)}</select></label>}<button disabled={busy}>{busy ? "Signing in…" : organizations.length ? "Open organization" : "Sign in"}</button></form>}
-    {verificationRequired && <button className={styles.primary} disabled={busy} onClick={() => void resendVerification()}>Resend verification email</button>}
-    <div className={styles.links}><a href="/forgot-password">Forgot password?</a><a href="/account-recovery">Lost MFA access?</a><a href="/register">Create organization</a></div>
-  </section></main>;
+  return <main className={styles.page}>
+    <aside className={styles.authAside}>
+      <a href="/"><BrandMark inverse tagline="Automotive commerce workspace"/></a>
+      <div><span>BUILT FOR AUTOMOTIVE TEAMS</span><h2>Run your parts operation from one secure workspace.</h2><p>Catalog, price, enrich, and publish inventory with a workflow your whole team can trust.</p></div>
+      <ul><li>Secure organization access</li><li>eBay marketplace operations</li><li>Inventory workflows at scale</li></ul>
+    </aside>
+    <section className={styles.card}>
+      <a className={styles.mobileBrand} href="/"><BrandMark /></a>
+      <span className={styles.eyebrow}>SECURE WORKSPACE</span>
+      <h1>{challengeToken ? "Verify it’s you" : "Welcome back"}</h1>
+      <p>{challengeToken ? "Multi-factor authentication protects this account." : "Sign in to continue to your PartPulse workspace."}</p>
+      {error && <div className={styles.error}>{error}</div>}{notice && <div className={styles.notice}>{notice}</div>}
+      {challengeToken ? <form className={styles.form} onSubmit={completeMfa}>
+        <label>Authenticator or recovery code<input value={code} onChange={(event) => setCode(event.target.value)} autoComplete="one-time-code" required autoFocus/></label>
+        <button disabled={busy}>{busy ? "Checking…" : "Verify and sign in"}</button>
+        <button className={styles.secondaryButton} type="button" onClick={() => { setChallengeToken(""); setCode(""); }} disabled={busy}>Start again</button>
+      </form> : <form className={styles.form} onSubmit={login}>
+        <label>Work email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" placeholder="you@company.com" required/></label>
+        <label>Password<span className={styles.labelAction}><a href="/forgot-password">Forgot password?</a></span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" placeholder="Enter your password" required/></label>
+        {organizations.length > 0 && <label>Organization<select value={organizationSlug} onChange={(event) => setOrganizationSlug(event.target.value)}>{organizations.map((organization) => <option key={organization.slug} value={organization.slug}>{organization.name}</option>)}</select></label>}
+        <button disabled={busy}>{busy ? "Signing in…" : organizations.length ? "Open organization" : "Sign in to PartPulse"}</button>
+      </form>}
+      {verificationRequired && <button className={styles.primary} disabled={busy} onClick={() => void resendVerification()}>Resend verification email</button>}
+      <div className={styles.links}><span>New to PartPulse? <a href="/register">Create your workspace</a></span><a href="/account-recovery">Recover account</a></div>
+    </section>
+  </main>;
 }

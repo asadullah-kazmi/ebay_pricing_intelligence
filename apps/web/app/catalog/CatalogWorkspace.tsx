@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import styles from "./catalog.module.css";
+import BrandMark from "../components/BrandMark";
 import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogSavedView, CatalogStatus, EbayAspectRequirement, EbayConditionOption, EbayConnection, EbayInventorySyncJob, EbayListingOperationJob, EbayOffer, EbayOfferJob, EbaySellerResources, FitmentJob, FitmentJobSummary, InventoryPreparation, InventoryPreparationJob, ListingDraft, LiveDraftValidation, ManualFitmentApplication, PartCondition, PartFitment, PricingConditionMode, PricingJob, PricingJobSummary, PricingRule } from "./types";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -43,7 +44,6 @@ function CatalogImage({ mediaId, token, demo }: { mediaId?: string; token: strin
 export default function CatalogWorkspace() {
   const [token, setToken] = useState("");
   const [authState, setAuthState] = useState<"loading" | "required" | "ready">("loading");
-  const [tokenInput, setTokenInput] = useState("");
   const [demo, setDemo] = useState(false);
   const [catalog, setCatalog] = useState<CatalogResponse>(emptyCatalog);
   const [loading, setLoading] = useState(false);
@@ -236,18 +236,6 @@ export default function CatalogWorkspace() {
     }, 1500);
     return () => window.clearTimeout(timer);
   }, [demo, fitmentJob, request]);
-
-  async function connectToken(event: FormEvent) {
-    event.preventDefault();
-    setError("");
-    try {
-      const response = await fetch(`${apiBase}/api/session`, { headers: { Authorization: `Bearer ${tokenInput.trim()}` } });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error ?? "Invalid access token");
-      setToken(tokenInput.trim());
-      setAuthState("ready");
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to connect session"); }
-  }
 
   function resetPage() { setPage(1); setSelected(new Set()); }
   function togglePart(id: string) { setSelected((current) => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next; }); }
@@ -931,7 +919,7 @@ export default function CatalogWorkspace() {
   }
 
   if (authState === "loading") return <main className={styles.authScreen}><div className={styles.loader}/><p>Opening your catalog workspace...</p></main>;
-  if (authState === "required") return <main className={styles.authScreen}><section className={styles.authCard}><span className={styles.eyebrow}>PARTPULSE WORKSPACE</span><h1>Catalog access required</h1><p>Your secure session is unavailable. Sign in, or use a short-lived access token during development.</p><a href="/login">Sign in to PartPulse</a><form onSubmit={connectToken}><label htmlFor="access-token">Development access token</label><textarea id="access-token" value={tokenInput} onChange={(event) => setTokenInput(event.target.value)} required/><button>Open catalog</button></form>{error && <div className={styles.error}>{error}</div>}<a href="/">Return to pricing search</a></section></main>;
+  if (authState === "required") return <main className={styles.authScreen}><section className={styles.authCard}><BrandMark/><span className={styles.eyebrow}>PARTPULSE WORKSPACE</span><h1>Sign in to open your catalog</h1><p>Your secure session has ended. Sign in with your PartPulse account to continue managing inventory.</p>{error && <div className={styles.error}>{error}</div>}<a className={styles.authPrimary} href="/login">Sign in to PartPulse</a><a href="/">Return to pricing search</a></section></main>;
 
   const ready = catalog.summary.byStatus.READY_FOR_ENRICHMENT ?? 0;
   const needsImages = catalog.summary.byStatus.NEEDS_IMAGES ?? 0;
@@ -939,9 +927,9 @@ export default function CatalogWorkspace() {
   const allPageSelected = catalog.parts.length > 0 && catalog.parts.every(({ id }) => selected.has(id));
 
   return <main className={styles.shell}>
-    <aside className={styles.sidebar}><a className={styles.brand} href="/"><b>Part</b>Pulse<span>Automotive operations</span></a><nav><a className={styles.active} href="/catalog"><span>01</span>Catalog</a><a href="/"><span>02</span>Market pricing</a><a href="#fitment-workflow"><span>03</span>Fitment</a><a href="#listing-drafts"><span>04</span>Publishing</a><a href="/admin"><span>05</span>Admin</a><a href="/account/security"><span>06</span>Account</a><a href="/notifications"><span>07</span>Notifications</a><button type="button" onClick={() => void logout()}><span>08</span>Sign out</button></nav><div className={styles.sideFoot}><i className={ebayConnection.connected ? styles.connectedDot : styles.disconnectedDot}/> {ebayConnection.connected ? "eBay connection active" : "eBay not connected"}</div></aside>
+    <aside className={styles.sidebar}><a className={styles.brand} href="/"><BrandMark inverse tagline="Automotive operations"/></a><nav><a href="/"><span>⌂</span>Dashboard</a><a className={styles.active} href="/catalog"><span>◇</span>Catalog</a><a href="/catalog"><span>□</span>Inventory</a><a href="#listing-drafts"><span>⌑</span>Listings</a><a href="/"><span>$</span>Pricing</a><a href="#fitment-workflow"><span>⌁</span>Fitment</a><a href="#listing-drafts"><span>▱</span>Shipping</a><a href="/catalog"><span>⇧</span>Pipeline</a><a href="/admin"><span>▥</span>Reports</a><a href="/account/security"><span>⚙</span>Settings</a></nav><div className={styles.sideFoot}><div><i className={ebayConnection.connected ? styles.connectedDot : styles.disconnectedDot}/><b>{ebayConnection.connected ? "eBay connected" : "Connect eBay"}</b></div><button type="button" onClick={() => void logout()}>Sign out</button></div></aside>
     <section className={styles.workspace}>
-      <header className={styles.topbar}><div><span className={styles.eyebrow}>INVENTORY OPERATIONS</span><h1>Parts catalog</h1></div><div className={styles.topActions}><div className={styles.connectionStatus}><i className={ebayConnection.connected ? styles.connectedDot : styles.disconnectedDot}/><span>{ebayConnection.connected ? (ebayConnection.username || ebayConnection.ebayUserId || "eBay connected") : "Seller not connected"}</span>{ebayConnection.connected ? <button className={styles.secondary} disabled={connectionBusy} onClick={() => void disconnectEbay()}>Disconnect</button> : <button className={styles.primary} disabled={connectionBusy || demo} onClick={() => void connectEbay()}>{connectionBusy ? "Opening..." : "Connect eBay"}</button>}</div><button className={styles.secondary} onClick={() => void downloadCsv()}>Export CSV</button><button className={styles.primary} disabled>+ New import</button></div></header>
+      <header className={styles.topbar}><div><h1>Catalog</h1><p>Search, review, enrich, and manage parts across marketplaces.</p></div><div className={styles.topActions}><button className={styles.secondary} onClick={() => void loadCatalog()}>↻ Refresh</button><button className={styles.secondary} onClick={() => void downloadCsv()}>⇩ Export</button><div className={styles.connectionStatus}><i className={ebayConnection.connected ? styles.connectedDot : styles.disconnectedDot}/><span>{ebayConnection.connected ? (ebayConnection.username || ebayConnection.ebayUserId || "eBay connected") : "Seller not connected"}</span>{ebayConnection.connected ? <button className={styles.secondary} disabled={connectionBusy} onClick={() => void disconnectEbay()}>Disconnect</button> : <button className={styles.primary} disabled={connectionBusy || demo} onClick={() => void connectEbay()}>{connectionBusy ? "Opening..." : "Connect eBay"}</button>}</div><a className={styles.primary} href="#catalog-import">+ Add part</a></div></header>
       {demo && <div className={styles.demoBanner}>Development preview - sample records are not saved.</div>}
       {notice && <div className={styles.notice}>{notice}</div>}
       {error && <div className={styles.error}>{error}</div>}

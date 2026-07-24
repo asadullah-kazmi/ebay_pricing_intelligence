@@ -124,6 +124,8 @@ git diff --check
 
 Review `npm audit` findings rather than applying a forced major-version update automatically. Confirm all Prisma migrations are committed and ordered before deployment.
 
+Step 33 automates these checks in `.github/workflows/ci.yml`. Require its `Release check` status on `main`, enable Railway **Wait for CI** for all three services, and follow [CI/CD and release gates](./CI_CD_AND_RELEASE_GATES.md). CodeQL and the protected production-verification workflow are separate required release evidence.
+
 ## 5. Deploy and smoke test
 
 1. Deploy the API and allow the pre-deploy migration to complete.
@@ -168,6 +170,7 @@ Omit `API_ACCESS_TOKEN` to run only public health/security checks. The script ne
 - Apply `20260724130000_add_operational_notifications` before Step 30. Deploy API, worker, and web from one commit, then verify one in-app event and one opted-in SMTP delivery without duplication.
 - Apply `20260724140000_add_data_retention` before Step 31. Confirm a current provider backup, deploy API/worker/web together, and run preview only until restore evidence is recorded.
 - Before Step 32 sign-off, run the security suite, the tenant-isolation integration test against a separately migrated test database, and the confirmed GET-only load probe. Treat any tenant leak as release-blocking; see [SECURITY_AND_LOAD_TESTING.md](./SECURITY_AND_LOAD_TESTING.md).
+- Before Step 33 sign-off, require the GitHub `Release check`, enable Railway Wait for CI on API/web/worker, configure CodeQL and Dependabot repository features, and protect the GitHub `production` environment with reviewers.
 
 - The current Next.js 15 dependency pins PostCSS 8.4.31, which npm audit reports for a moderate CSS-stringification XSS advisory. This application does not stringify user-supplied CSS, so the vulnerable path is not currently exposed. Track the upstream Next.js fix and upgrade when a compatible release is available; do not use npm's suggested forced downgrade to Next 9.
 - Authentication and SMTP invitation delivery are implemented. Gmail SMTP is suitable for initial testing and low-volume rollout; move to a transactional provider with delivery telemetry and bounce/complaint handling before materially increasing customer volume.

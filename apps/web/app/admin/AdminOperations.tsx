@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import styles from "./admin.module.css";
+import BrandMark from "../components/BrandMark";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -85,7 +86,6 @@ function listingUrl(marketplace: string, listingId: string) {
 
 export default function AdminOperations() {
   const [token, setToken] = useState("");
-  const [tokenInput, setTokenInput] = useState("");
   const [authState, setAuthState] = useState<"loading" | "required" | "ready">("loading");
   const [overview, setOverview] = useState<Overview | null>(null);
   const [jobs, setJobs] = useState<FailedJob[]>([]);
@@ -155,12 +155,6 @@ export default function AdminOperations() {
     return () => window.clearTimeout(timer);
   }, [load, retentionRuns]);
 
-  function connectToken(event: FormEvent) {
-    event.preventDefault();
-    setToken(tokenInput.trim());
-    setAuthState("ready");
-  }
-
   async function retry(job: FailedJob) {
     if (!job.retryAllowed) return;
     setRetrying(job.id);
@@ -213,12 +207,12 @@ export default function AdminOperations() {
   }
 
   if (authState === "loading") return <main className={styles.center}>Loading secure operations console…</main>;
-  if (authState === "required") return <main className={styles.center}><section className={styles.authCard}><span>PARTPULSE ADMIN</span><h1>Operations access required</h1><p>Sign in as an organization owner or administrator. A short-lived access token can be used during development.</p><form onSubmit={connectToken}><label htmlFor="admin-token">Development access token</label><textarea id="admin-token" value={tokenInput} onChange={(event) => setTokenInput(event.target.value)} required/><button>Open console</button></form>{error && <div className={styles.error}>{error}</div>}<a href="/catalog">Return to catalog</a></section></main>;
+  if (authState === "required") return <main className={styles.center}><section className={styles.authCard}><BrandMark/><span>PARTPULSE ADMIN</span><h1>Operations access required</h1><p>Sign in as an organization owner or administrator to open the control room.</p>{error && <div className={styles.error}>{error}</div>}<a href="/login">Sign in to PartPulse</a><a href="/catalog">Return to catalog</a></section></main>;
 
   return <main className={styles.shell}>
     <aside className={styles.sidebar}>
-      <a className={styles.brand} href="/"><b>Part</b>Pulse<span>Operations control</span></a>
-      <nav><a href="/catalog"><span>01</span>Catalog</a><a className={styles.active} href="/admin"><span>02</span>Admin</a><a href="/admin/team"><span>03</span>Team</a><a href="/notifications"><span>04</span>Notifications</a></nav>
+      <a className={styles.brand} href="/"><BrandMark inverse tagline="Operations control"/></a>
+      <nav><a href="/catalog"><span>◇</span>Catalog</a><a className={styles.active} href="/admin"><span>▥</span>Reports</a><a href="/admin/team"><span>♙</span>Team</a><a href="/notifications"><span>○</span>Notifications</a></nav>
       <div className={styles.worker}><i className={overview?.worker.status === "ok" ? styles.ok : styles.bad}/><div><b>Worker {overview ? human(overview.worker.status) : "Unknown"}</b><span>{overview?.worker.activeJobs ?? 0} active jobs</span></div></div>
     </aside>
     <section className={styles.content}>

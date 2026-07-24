@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import styles from "./team.module.css";
+import BrandMark from "../../components/BrandMark";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const roles = ["OWNER", "ADMIN", "MANAGER", "CATALOG_OPERATOR", "PRICING_OPERATOR", "PUBLISHER", "VIEWER"] as const;
@@ -40,7 +41,6 @@ function date(value: string) {
 
 export default function TeamManagement() {
   const [token, setToken] = useState("");
-  const [tokenInput, setTokenInput] = useState("");
   const [authState, setAuthState] = useState<"loading" | "required" | "ready">("loading");
   const [session, setSession] = useState<Session | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
@@ -86,12 +86,6 @@ export default function TeamManagement() {
   }, [authState, request]);
 
   useEffect(() => { void load(); }, [load]);
-
-  function connectToken(event: FormEvent) {
-    event.preventDefault();
-    setToken(tokenInput.trim());
-    setAuthState("ready");
-  }
 
   async function invite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -189,11 +183,11 @@ export default function TeamManagement() {
   }
 
   if (authState === "loading") return <main className={styles.center}>Loading secure team workspace…</main>;
-  if (authState === "required") return <main className={styles.center}><section className={styles.authCard}><span>PARTPULSE TEAM</span><h1>Team access required</h1><p>Sign in as an organization owner or administrator, or use a short-lived development token.</p><form onSubmit={connectToken}><label htmlFor="team-token">Development access token</label><textarea id="team-token" value={tokenInput} onChange={(event) => setTokenInput(event.target.value)} required/><button>Open team workspace</button></form><a href="/catalog">Return to catalog</a></section></main>;
+  if (authState === "required") return <main className={styles.center}><section className={styles.authCard}><BrandMark/><span>PARTPULSE TEAM</span><h1>Team access required</h1><p>Sign in as an organization owner or administrator to manage team access.</p><a href="/login">Sign in to PartPulse</a><a href="/catalog">Return to catalog</a></section></main>;
 
   const assignableRoles = session?.role === "OWNER" ? roles : roles.filter((role) => !["OWNER", "ADMIN"].includes(role));
   return <main className={styles.shell}>
-    <aside className={styles.sidebar}><a className={styles.brand} href="/"><b>Part</b>Pulse<span>Organization access</span></a><nav><a href="/catalog"><span>01</span>Catalog</a><a href="/admin"><span>02</span>Operations</a><a className={styles.active} href="/admin/team"><span>03</span>Team</a></nav><div className={styles.identity}>{session?.organization.name}<span>{session ? human(session.role) : ""}</span></div></aside>
+    <aside className={styles.sidebar}><a className={styles.brand} href="/"><BrandMark inverse tagline="Organization access"/></a><nav><a href="/catalog"><span>◇</span>Catalog</a><a href="/admin"><span>▥</span>Reports</a><a className={styles.active} href="/admin/team"><span>♙</span>Team</a></nav><div className={styles.identity}>{session?.organization.name}<span>{session ? human(session.role) : ""}</span></div></aside>
     <section className={styles.content}>
       <header><div><span className={styles.eyebrow}>ORGANIZATION ACCESS</span><h1>Team management</h1><p>Invite people and give each person only the access their work requires.</p></div><button onClick={() => void load()} disabled={loading}>{loading ? "Refreshing…" : "Refresh"}</button></header>
       {error && <div className={styles.error}>{error}</div>}
