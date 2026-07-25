@@ -119,6 +119,54 @@
   transition: 0.18s;
 }
 
+.passwordField {
+  position: relative;
+  display: block;
+  margin-top: 8px;
+}
+
+.passwordField input {
+  margin-top: 0;
+  padding-right: 46px;
+}
+
+.passwordToggle {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #64748b;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+  box-shadow: none;
+}
+
+.passwordToggle:hover {
+  background: #eef2f7;
+  color: #0f172a;
+  box-shadow: none;
+  transform: translateY(-50%);
+}
+
+.passwordToggle svg {
+  width: 18px;
+  height: 18px;
+}
+
+.form .passwordToggle {
+  background: transparent;
+  color: #64748b;
+  box-shadow: none;
+  padding: 0;
+}
+
 .form input::placeholder,
 .form textarea::placeholder {
   color: #94a3b8;
@@ -323,6 +371,75 @@
 .center {
   text-align: center;
   padding: 12px 0;
+}
+
+.statusPanel {
+  text-align: center;
+  padding: 8px 0 4px;
+}
+
+.statusPanel h1 {
+  margin-bottom: 10px;
+}
+
+.statusPanel p {
+  margin: 0 auto 24px;
+  max-width: 340px;
+}
+
+.statusPanel .primary {
+  display: inline-flex;
+  min-width: 200px;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.statusPanel .error {
+  text-align: left;
+}
+
+.statusIcon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+
+.statusIcon svg {
+  width: 28px;
+  height: 28px;
+}
+
+.statusIcon[data-tone="pending"] {
+  background: #eef4ff;
+  color: #0055ff;
+}
+
+.statusIcon[data-tone="success"] {
+  background: #e8f8ef;
+  color: #0f7a45;
+}
+
+.statusIcon[data-tone="error"] {
+  background: #feeceb;
+  color: #b42318;
+}
+
+.statusSpinner {
+  width: 22px;
+  height: 22px;
+  border: 2.5px solid #bfdbfe;
+  border-top-color: #0055ff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .spinner {

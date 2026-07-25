@@ -61,9 +61,22 @@ export default function AppShell({
   return (
     <div className={`${styles.shell}${collapsed ? ` ${styles.collapsed}` : ""}`}>
       <aside className={styles.sidebar}>
-        <a className={styles.brand} href="/catalog">
-          <BrandMark inverse compact={!collapsed} />
-        </a>
+        <div className={styles.brandRow}>
+          <a className={styles.brand} href="/catalog" title="PartPulse">
+            <BrandMark inverse compact />
+          </a>
+          <button
+            type="button"
+            className={styles.collapseToggle}
+            onClick={() => setCollapsed((value) => !value)}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={collapsed ? "Expand" : "Collapse"}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d={collapsed ? "M9 18l6-6-6-6" : "M15 18l-6-6 6-6"} />
+            </svg>
+          </button>
+        </div>
         <nav className={styles.nav}>
           {navItems.map((item) => (
             <a
@@ -82,26 +95,18 @@ export default function AppShell({
         </nav>
         <div className={styles.sideFoot}>
           {footerNote ? <p className={styles.footerNote}>{footerNote}</p> : null}
-          <div className={styles.userCard}>
+          <div className={styles.userCard} title={`${userName} · ${userRole}`}>
             <span className={styles.avatar}>{initials}</span>
             <div className={styles.userMeta}>
               <strong>{userName}</strong>
               <small>{userRole}</small>
             </div>
           </div>
-          <div className={styles.sideActions}>
-            {onSignOut ? (
-              <button type="button" onClick={onSignOut}>
-                Sign out
-              </button>
-            ) : null}
-            <button type="button" className={styles.collapseBtn} onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d={collapsed ? "M9 5l7 7-7 7" : "M15 19l-7-7 7-7"} />
-              </svg>
-              <span>{collapsed ? "Expand" : "Collapse"}</span>
+          {onSignOut ? (
+            <button type="button" className={styles.signOut} onClick={onSignOut}>
+              Sign out
             </button>
-          </div>
+          ) : null}
         </div>
       </aside>
       <div className={styles.workspace}>{children}</div>

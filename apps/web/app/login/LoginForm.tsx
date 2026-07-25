@@ -10,6 +10,7 @@ type Organization = { name: string; slug: string };
 export default function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [organizationSlug, setOrganizationSlug] = useState("");
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [challengeToken, setChallengeToken] = useState("");
@@ -86,7 +87,18 @@ export default function LoginForm() {
         <button className={styles.secondaryButton} type="button" onClick={() => { setChallengeToken(""); setCode(""); }} disabled={busy}>Start again</button>
       </form> : <form className={styles.form} onSubmit={login}>
         <label>Work email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" placeholder="you@company.com" required/></label>
-        <label>Password<span className={styles.labelAction}><a href="/forgot-password">Forgot password?</a></span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" placeholder="Enter your password" required/></label>
+        <label>Password<span className={styles.labelAction}><a href="/forgot-password">Forgot password?</a></span>
+          <span className={styles.passwordField}>
+            <input type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" placeholder="Enter your password" required/>
+            <button type="button" className={styles.passwordToggle} aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword((value) => !value)}>
+              {showPassword ? (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg>
+              ) : (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              )}
+            </button>
+          </span>
+        </label>
         {organizations.length > 0 && <label>Organization<select value={organizationSlug} onChange={(event) => setOrganizationSlug(event.target.value)}>{organizations.map((organization) => <option key={organization.slug} value={organization.slug}>{organization.name}</option>)}</select></label>}
         <button disabled={busy}>{busy ? "Signing in…" : organizations.length ? "Open organization" : "Sign in to PartPulse"}</button>
       </form>}

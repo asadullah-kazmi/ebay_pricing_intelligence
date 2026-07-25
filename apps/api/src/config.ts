@@ -74,8 +74,13 @@ export function getConfig(): AppConfig {
   const clientId = process.env.EBAY_CLIENT_ID?.trim() || undefined;
   const clientSecret = process.env.EBAY_CLIENT_SECRET?.trim() || undefined;
   if (Boolean(clientId) !== Boolean(clientSecret)) {
-    throw new Error("EBAY_CLIENT_ID and EBAY_CLIENT_SECRET must be provided together");
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("EBAY_CLIENT_ID and EBAY_CLIENT_SECRET must be provided together");
+    }
+    console.warn("Ignoring incomplete eBay credentials; API will start in demo mode. Set both EBAY_CLIENT_ID and EBAY_CLIENT_SECRET together.");
   }
+  const ebayClientId = clientId && clientSecret ? clientId : undefined;
+  const ebayClientSecret = clientId && clientSecret ? clientSecret : undefined;
 
   const notificationEndpoint = process.env.EBAY_NOTIFICATION_ENDPOINT?.trim() || undefined;
   const notificationVerificationToken = process.env.EBAY_NOTIFICATION_VERIFICATION_TOKEN?.trim() || undefined;
@@ -216,8 +221,8 @@ export function getConfig(): AppConfig {
       !storageRegion && "STORAGE_REGION",
       !storageAccessKeyId && "STORAGE_ACCESS_KEY_ID",
       !storageSecretAccessKey && "STORAGE_SECRET_ACCESS_KEY",
-      !clientId && "EBAY_CLIENT_ID",
-      !clientSecret && "EBAY_CLIENT_SECRET",
+      !ebayClientId && "EBAY_CLIENT_ID",
+      !ebayClientSecret && "EBAY_CLIENT_SECRET",
       !notificationEndpoint && "EBAY_NOTIFICATION_ENDPOINT",
       !notificationVerificationToken && "EBAY_NOTIFICATION_VERIFICATION_TOKEN",
       !smtpHost && "SMTP_HOST",
@@ -267,10 +272,10 @@ export function getConfig(): AppConfig {
       maxImageArchiveBytes: storageMaxImageArchiveBytes,
     } : undefined,
     ebay: {
-      clientId,
-      clientSecret,
+      clientId: ebayClientId,
+      clientSecret: ebayClientSecret,
       environment,
-      mode: clientId && clientSecret ? "live" : "demo",
+      mode: ebayClientId && ebayClientSecret ? "live" : "demo",
       notifications: {
         endpoint: notificationEndpoint,
         verificationToken: notificationVerificationToken,

@@ -349,8 +349,17 @@ export const app = express();
 app.disable("x-powered-by");
 if (process.env.NODE_ENV === "production") app.set("trust proxy", 1);
 const webOrigin = getConfig().webOrigin;
+const localDevOrigins = ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000", "http://127.0.0.1:3001"];
 app.use(requestSecurityMiddleware);
-app.use(cors(webOrigin ? { origin: webOrigin, credentials: true } : undefined));
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin) return callback(null, true);
+    if (webOrigin && origin === webOrigin) return callback(null, true);
+    if (process.env.NODE_ENV !== "production" && localDevOrigins.includes(origin)) return callback(null, true);
+    return callback(null, false);
+  },
+  credentials: true,
+}));
 app.use(requestLogMiddleware);
 app.use(generalRateLimit);
 app.use(express.json({ limit: "1mb" }));
