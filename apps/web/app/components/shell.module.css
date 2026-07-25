@@ -228,6 +228,11 @@
   background: var(--pf-canvas);
 }
 
+.mobileMenuToggle,
+.mobileBackdrop {
+  display: none;
+}
+
 .collapsed .navLabel,
 .collapsed .userMeta,
 .collapsed .footerNote,
@@ -258,41 +263,153 @@
   background: transparent;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
+  .shell,
+  .collapsed {
+    grid-template-columns: 78px minmax(0, 1fr);
+  }
+
+  .shell .navLabel,
+  .shell .userMeta,
+  .shell .footerNote,
+  .shell .signOut,
+  .shell .badge {
+    display: none;
+  }
+
+  .shell :global(.partpulse-wordmark) {
+    display: none;
+  }
+
+  .brandRow {
+    flex-direction: column;
+    gap: 10px;
+    padding-bottom: 14px;
+  }
+
+  .brand {
+    justify-content: center;
+  }
+
+  .nav a,
+  .userCard {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .userCard {
+    background: transparent;
+  }
+
+  .collapseToggle {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
   .shell,
   .collapsed {
     grid-template-columns: 1fr;
   }
 
   .sidebar {
-    position: static;
+    position: sticky;
+    top: 0;
     height: auto;
-    padding: 14px;
+    max-height: none;
+    padding: 12px 14px;
+    z-index: 20;
   }
 
   .brandRow {
-    padding-bottom: 10px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0;
   }
 
-  .collapseToggle {
-    display: none;
+  .brand {
+    justify-content: flex-start;
   }
 
-  .nav {
-    display: flex;
-    overflow: auto;
-    gap: 6px;
+  .mobileMenuToggle {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border: 1px solid #ffffff22;
+    border-radius: 10px;
+    background: #ffffff0d;
+    color: #fff;
+    cursor: pointer;
+    padding: 0;
   }
 
-  .nav a {
-    white-space: nowrap;
+  .mobileMenuToggle svg {
+    width: 18px;
+    height: 18px;
   }
 
+  .nav,
   .sideFoot {
     display: none;
   }
 
-  .collapsed .navLabel {
+  .mobileNavOpen .nav {
+    display: grid;
+    gap: 4px;
+    margin-top: 12px;
+    max-height: min(70vh, 520px);
+    overflow: auto;
+  }
+
+  .mobileNavOpen .sideFoot {
+    display: block;
+    margin-top: 12px;
+  }
+
+  .mobileNavOpen .navLabel,
+  .mobileNavOpen .userMeta,
+  .mobileNavOpen .badge {
     display: inline;
+  }
+
+  .mobileNavOpen :global(.partpulse-wordmark) {
+    display: inline;
+  }
+
+  .mobileNavOpen .userMeta {
+    display: block;
+  }
+
+  .mobileNavOpen .signOut {
+    display: block;
+  }
+
+  .mobileNavOpen .nav a,
+  .mobileNavOpen .userCard {
+    justify-content: flex-start;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .mobileNavOpen .userCard {
+    background: #ffffff0a;
+  }
+
+  .mobileBackdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    border: 0;
+    background: #0b142666;
+    z-index: 15;
+    cursor: pointer;
+  }
+
+  .workspace {
+    position: relative;
+    z-index: 1;
   }
 }

@@ -33,6 +33,7 @@ export function useWorkspacePathname() {
 function resolveActive(pathname: string): NavKey {
   const [path = "", hash = ""] = pathname.split("#");
   if (path.startsWith("/pipeline")) return "pipeline";
+  if (path.startsWith("/orders")) return "orders";
   if (path.startsWith("/catalog")) {
     if (hash === "listing-drafts") return "listings";
     if (hash === "fitment-workflow") return "fitment";
@@ -51,7 +52,8 @@ function isShellWorkspace(pathname: string) {
   return (
     path.startsWith("/dashboard") ||
     path.startsWith("/catalog") ||
-    path.startsWith("/pipeline")
+    path.startsWith("/pipeline") ||
+    path.startsWith("/orders")
   );
 }
 

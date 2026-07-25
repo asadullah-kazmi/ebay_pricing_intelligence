@@ -13,6 +13,7 @@ export class CatalogError extends Error {
 
 export interface CatalogQuery {
   q?: string;
+  brand?: string;
   status?: CatalogPartStatus;
   condition?: PartCondition;
   hasImages?: boolean;
@@ -53,10 +54,12 @@ export function buildCatalogWhere(organizationId: string, query: Omit<CatalogQue
   };
   const hasInventoryFilter = Object.keys(inventoryFilter).length > 0;
   const hasDraftFilter = Object.keys(draftFilter).length > 0;
+  const brand = query.brand?.trim();
   return {
     organizationId,
     ...(query.status ? { status: query.status } : {}),
     ...(query.condition ? { condition: query.condition } : {}),
+    ...(brand ? { brand: { equals: brand, mode: "insensitive" } } : {}),
     ...(query.hasImages === true ? { media: { some: {} } } : {}),
     ...(query.hasImages === false ? { media: { none: {} } } : {}),
     ...(hasInventoryFilter ? { inventoryItem: { is: inventoryFilter } } : {}),

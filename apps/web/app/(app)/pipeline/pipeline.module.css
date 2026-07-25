@@ -58,6 +58,10 @@
   justify-content: space-between;
   gap: 20px;
   padding: 28px 32px 18px;
+  height: auto;
+  border-bottom: 0;
+  background: transparent;
+  align-items: flex-start;
 }
 
 .topbar h1 {

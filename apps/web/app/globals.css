@@ -141,7 +141,7 @@ main {
   min-height: 100vh;
 }
 
-header {
+main > header {
   height: 76px;
   padding: 0 max(4vw, 28px);
   display: flex;
@@ -468,7 +468,7 @@ footer {
 }
 
 @media (max-width: 520px) {
-  header,
+  main > header,
   .hero,
   .results,
   footer {

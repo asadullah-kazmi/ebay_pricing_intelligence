@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState 
 import styles from "./catalog.module.css";
 import { useAuth } from "../../components/AuthProvider";
 import { apiBase } from "../../lib/auth-session";
-import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogSavedView, CatalogStatus, EbayAspectRequirement, EbayConditionOption, EbayConnection, EbayInventorySyncJob, EbayListingOperationJob, EbayOffer, EbayOfferJob, EbaySellerResources, FitmentJob, FitmentJobSummary, InventoryPreparation, InventoryPreparationJob, ListingDraft, LiveDraftValidation, ManualFitmentApplication, PartCondition, PartFitment, PricingConditionMode, PricingJob, PricingJobSummary, PricingRule } from "./types";
+import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogSavedView, CatalogStatus, EbayAspectRequirement, EbayConditionOption, EbayConnection, EbayInventorySyncJob, EbayListingOperationJob, EbayOffer, EbayOfferJob, EbaySellerResources, FitmentJob, FitmentJobSummary, InventoryPreparation, InventoryPreparationJob, ListingDraft, LiveDraftValidation, ManualFitmentApplication, PartCondition, PartFitment, PricingConditionMode, PricingJob, PricingJobSummary } from "./types";
 
 const statuses: CatalogStatus[] = ["IMPORTED", "NEEDS_IMAGES", "IMPORT_ERROR", "READY_FOR_ENRICHMENT", "ARCHIVED"];
 const emptyCatalog: CatalogResponse = { parts: [], pagination: { page: 1, pageSize: 25, total: 0, totalPages: 0 }, summary: { total: 0, byStatus: {} }, warehouses: [] };
@@ -20,6 +20,7 @@ function demoCatalog(): CatalogResponse {
 }
 
 function humanStatus(status: string) {
+  if (status === "NEEDS_IMAGES") return "Need Images";
   return status.toLowerCase().replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
@@ -51,6 +52,9 @@ export default function CatalogWorkspace() {
   const deferredSearch = useDeferredValue(search);
   const [status, setStatus] = useState("");
   const [condition, setCondition] = useState("");
+  const [brand, setBrand] = useState("");
+  const [knownBrands, setKnownBrands] = useState<string[]>([]);
+  const [bulkMoreOpen, setBulkMoreOpen] = useState(false);
   const [hasImages, setHasImages] = useState("");
   const [hasPricing, setHasPricing] = useState("");
   const [hasFitment, setHasFitment] = useState("");
@@ -75,8 +79,6 @@ export default function CatalogWorkspace() {
   const [pricingJob, setPricingJob] = useState<PricingJob | null>(null);
   const [pricingBusy, setPricingBusy] = useState(false);
   const [latestPricingLoaded, setLatestPricingLoaded] = useState(false);
-  const [pricingRule, setPricingRule] = useState<PricingRule | null>(null);
-  const [pricingRuleBusy, setPricingRuleBusy] = useState(false);
   const [fitmentJob, setFitmentJob] = useState<FitmentJob | null>(null);
   const [fitmentBusy, setFitmentBusy] = useState(false);
   const [latestFitmentLoaded, setLatestFitmentLoaded] = useState(false);
@@ -125,9 +127,6 @@ export default function CatalogWorkspace() {
     request("/api/listing-drafts?limit=25")
       .then((value) => setDrafts(value as ListingDraft[]))
       .catch(() => undefined);
-    request("/api/pricing/rule")
-      .then((value) => setPricingRule(value as PricingRule))
-      .catch(() => undefined);
     request("/api/catalog/saved-views")
       .then((value) => {
         const views = value as CatalogSavedView[];
@@ -141,6 +140,7 @@ export default function CatalogWorkspace() {
   const queryString = useMemo(() => {
     const query = new URLSearchParams({ page: String(page), pageSize: "25", sort });
     if (deferredSearch.trim()) query.set("q", deferredSearch.trim());
+    if (brand) query.set("brand", brand);
     if (status) query.set("status", status);
     if (condition) query.set("condition", condition);
     if (hasImages) query.set("hasImages", hasImages);
@@ -158,7 +158,7 @@ export default function CatalogWorkspace() {
     if (createdFrom) query.set("createdFrom", `${createdFrom}T00:00:00.000Z`);
     if (createdTo) query.set("createdTo", `${createdTo}T23:59:59.999Z`);
     return query.toString();
-  }, [condition, createdFrom, createdTo, deferredSearch, hasFitment, hasImages, hasPricing, hasShippingPolicy, listingState, marketplaceFilter, maxCost, maxQuantity, minCost, minQuantity, page, sort, status, warehouseId]);
+  }, [brand, condition, createdFrom, createdTo, deferredSearch, hasFitment, hasImages, hasPricing, hasShippingPolicy, listingState, marketplaceFilter, maxCost, maxQuantity, minCost, minQuantity, page, sort, status, warehouseId]);
 
   const loadCatalog = useCallback(async () => {
     if (authStatus !== "ready" || demo) return;
@@ -170,6 +170,14 @@ export default function CatalogWorkspace() {
   }, [authStatus, demo, queryString, request]);
 
   useEffect(() => { void loadCatalog(); }, [loadCatalog]);
+
+  useEffect(() => {
+    setKnownBrands((current) => {
+      const next = new Set(current);
+      for (const part of catalog.parts) if (part.brand) next.add(part.brand);
+      return [...next].sort((a, b) => a.localeCompare(b));
+    });
+  }, [catalog.parts]);
 
   useEffect(() => {
     if (authStatus !== "ready" || demo || latestPricingLoaded) return;
@@ -270,7 +278,7 @@ export default function CatalogWorkspace() {
 
   function currentSavedFilters(): Record<string, string> {
     return Object.fromEntries(Object.entries({
-      q: search.trim(), status, condition, hasImages, hasPricing, hasFitment,
+      q: search.trim(), brand, status, condition, hasImages, hasPricing, hasFitment,
       hasDraft: listingState === "NONE" ? "false" : listingState ? "true" : "",
       draftStatus: listingState === "NONE" ? "" : listingState,
       hasShippingPolicy, marketplace: marketplaceFilter, warehouseId,
@@ -280,6 +288,7 @@ export default function CatalogWorkspace() {
 
   function applySavedFilters(filters: Record<string, string>) {
     setSearch(filters.q ?? "");
+    setBrand(filters.brand ?? "");
     setStatus(filters.status ?? "");
     setCondition(filters.condition ?? "");
     setHasImages(filters.hasImages ?? "");
@@ -396,26 +405,6 @@ export default function CatalogWorkspace() {
       setSelected(new Set());
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to start pricing"); }
     finally { setPricingBusy(false); }
-  }
-
-  async function savePricingRule(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (demo || pricingRuleBusy) return;
-    const form = new FormData(event.currentTarget);
-    setPricingRuleBusy(true); setError(""); setNotice("");
-    try {
-      setPricingRule(await request("/api/pricing/rule", {
-        method: "PUT",
-        body: JSON.stringify({
-          marketAdjustmentPercent: Number(form.get("marketAdjustmentPercent")),
-          minimumMarginPercent: Number(form.get("minimumMarginPercent")),
-          minimumProfitAmount: Number(form.get("minimumProfitAmount")),
-          requireApproval: form.get("requireApproval") === "on",
-        }),
-      }) as PricingRule);
-      setNotice("Pricing governance rule updated. It applies to future pricing proposals.");
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to update pricing rule"); }
-    finally { setPricingRuleBusy(false); }
   }
 
   async function decidePrice(proposalId: string, action: "APPROVE" | "REJECT" | "OVERRIDE") {
@@ -552,17 +541,18 @@ export default function CatalogWorkspace() {
     finally { setManualFitmentBusy(false); }
   }
 
-  async function createDrafts() {
-    if (!selected.size || selected.size > 25 || demo || draftBusy) return;
+  async function createDrafts(partIds?: string[]) {
+    const ids = partIds ?? [...selected];
+    if (!ids.length || ids.length > 25 || demo || draftBusy) return;
     setDraftBusy(true); setError(""); setNotice("");
     try {
       const created = await request("/api/listing-drafts", {
         method: "POST",
         headers: { "Idempotency-Key": crypto.randomUUID() },
-        body: JSON.stringify({ partIds: [...selected], marketplace: pricingMarketplace }),
+        body: JSON.stringify({ partIds: ids, marketplace: pricingMarketplace }),
       }) as ListingDraft[];
       setDrafts((current) => [...created, ...current.filter((draft) => !created.some(({ id }) => id === draft.id))].slice(0, 25));
-      setSelected(new Set());
+      if (!partIds) setSelected(new Set());
       setNotice(`${created.length} listing draft${created.length === 1 ? "" : "s"} prepared. Resolve readiness blockers before publishing.`);
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to create listing drafts"); }
     finally { setDraftBusy(false); }
@@ -894,133 +884,318 @@ export default function CatalogWorkspace() {
 
   if (authStatus !== "ready") return null;
 
-  const ready = catalog.summary.byStatus.READY_FOR_ENRICHMENT ?? 0;
-  const needsImages = catalog.summary.byStatus.NEEDS_IMAGES ?? 0;
-  const imported = catalog.summary.byStatus.IMPORTED ?? 0;
   const allPageSelected = catalog.parts.length > 0 && catalog.parts.every(({ id }) => selected.has(id));
 
   return <>
     <section className={styles.workspace}>
-      <header className={styles.topbar}><div><h1>Catalog</h1><p>Search, review, enrich, and manage parts across marketplaces.</p></div><div className={styles.topActions}><button className={styles.secondary} onClick={() => void loadCatalog()}>Refresh</button><button className={styles.secondary} onClick={() => void downloadCsv()}>Export</button><button className={styles.secondary} disabled={draftBusy || selected.size === 0} onClick={() => void openBulkPolicies()}>Edit Policies</button><div className={styles.connectionStatus}><i className={ebayConnection.connected ? styles.connectedDot : styles.disconnectedDot}/><span>{ebayConnection.connected ? (ebayConnection.username || ebayConnection.ebayUserId || "eBay connected") : "Seller not connected"}</span>{ebayConnection.connected ? <button className={styles.secondary} disabled={connectionBusy} onClick={() => void disconnectEbay()}>Disconnect</button> : <button className={styles.primary} disabled={connectionBusy || demo} onClick={() => void connectEbay()}>{connectionBusy ? "Opening..." : "Connect eBay"}</button>}</div><a className={styles.primary} href="/pipeline">+ Add Part</a></div></header>
+      <header className={styles.topbar}>
+        <div>
+          <h1>Catalog</h1>
+          <p>Search, review, and manage parts across marketplaces.</p>
+        </div>
+        <div className={styles.topActions}>
+          <button type="button" className={styles.iconBtn} onClick={() => void loadCatalog()} aria-label="Refresh catalog" title="Refresh">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+          </button>
+          <button type="button" className={styles.ghostBtn} onClick={() => void downloadCsv()}>
+            Export
+            <svg className={styles.chevron} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <button type="button" className={styles.ghostBtn} disabled={draftBusy || selected.size === 0} onClick={() => void openBulkPolicies()}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
+            Edit Policies
+          </button>
+          <a className={styles.primary} href="/pipeline">+ Add Part</a>
+        </div>
+      </header>
+      <div className={styles.connectionRow}>
+        <i className={ebayConnection.connected ? styles.connectedDot : styles.disconnectedDot}/>
+        <span>{ebayConnection.connected ? (ebayConnection.username || ebayConnection.ebayUserId || "eBay connected") : "Seller not connected"}</span>
+        {ebayConnection.connected
+          ? <button type="button" className={styles.linkBtn} disabled={connectionBusy} onClick={() => void disconnectEbay()}>Disconnect</button>
+          : <button type="button" className={styles.linkBtn} disabled={connectionBusy || demo} onClick={() => void connectEbay()}>{connectionBusy ? "Opening..." : "Connect eBay"}</button>}
+      </div>
       {demo && <div className={styles.demoBanner}>Development preview - sample records are not saved.</div>}
       {notice && <div className={styles.notice}>{notice}</div>}
       {error && <div className={styles.error}>{error}</div>}
-      <section className={styles.stats}>
-        <article><span>Total parts</span><b>{catalog.summary.total}</b><small>Organization catalog</small></article>
-        <article><span>Ready to enrich</span><b>{ready}</b><small>Pricing and fitment next</small></article>
-        <article><span>Needs images</span><b>{needsImages}</b><small>Action required</small></article>
-        <article><span>Newly imported</span><b>{imported}</b><small>Awaiting review</small></article>
-      </section>
-      {pricingRule && <section className={`${styles.pricingPanel} ${styles.rulePanel}`}>
-        <header><div><span className={styles.eyebrow}>PRICING GOVERNANCE</span><h2>Cost floors and approval</h2></div><span className={styles.jobStatus}>{pricingRule.requireApproval ? "Human approval required" : "Automatic approval"}</span></header>
-        <form key={pricingRule.updatedAt ?? "default"} onSubmit={savePricingRule}>
-          <label><span>Market adjustment %</span><input name="marketAdjustmentPercent" type="number" min="-50" max="100" step="0.01" defaultValue={pricingRule.marketAdjustmentPercent}/></label>
-          <label><span>Minimum margin %</span><input name="minimumMarginPercent" type="number" min="0" max="95" step="0.01" defaultValue={pricingRule.minimumMarginPercent}/></label>
-          <label><span>Minimum profit</span><input name="minimumProfitAmount" type="number" min="0" step="0.01" defaultValue={pricingRule.minimumProfitAmount}/></label>
-          <label className={styles.ruleCheck}><input name="requireApproval" type="checkbox" defaultChecked={pricingRule.requireApproval}/><span>Require approval before listing</span></label>
-          <button className={styles.primary} disabled={pricingRuleBusy || demo}>{pricingRuleBusy ? "Saving..." : "Save rule"}</button>
-        </form>
-        <p>The price floor is the higher of minimum profit or minimum margin. Only owners/admins can approve a below-floor override.</p>
-      </section>}
       {pricingJob && <section className={styles.pricingPanel}>
-        <header><div><span className={styles.eyebrow}>BULK MARKET PRICING</span><h2>Job {pricingJob.id.slice(-8)}</h2></div><div><span className={`${styles.jobStatus} ${styles[`job_${pricingJob.status.toLowerCase()}`]}`}>{humanStatus(pricingJob.status)}</span><button onClick={() => setPricingJob(null)} aria-label="Hide pricing job">├ù</button></div></header>
-        <div className={styles.jobProgress}><div><i style={{ width: `${Math.round(((pricingJob.completedItems + pricingJob.noMatchItems + pricingJob.failedItems) / pricingJob.totalItems) * 100)}%` }}/></div><span>{pricingJob.completedItems + pricingJob.noMatchItems + pricingJob.failedItems} of {pricingJob.totalItems} processed ┬╖ {pricingJob.marketplace} ┬╖ {humanStatus(pricingJob.conditionMode)}</span></div>
+
+        <header><div><span className={styles.eyebrow}>BULK MARKET PRICING</span><h2>Job {pricingJob.id.slice(-8)}</h2></div><div><span className={`${styles.jobStatus} ${styles[`job_${pricingJob.status.toLowerCase()}`]}`}>{humanStatus(pricingJob.status)}</span><button onClick={() => setPricingJob(null)} aria-label="Hide pricing job">×</button></div></header>
+
+        <div className={styles.jobProgress}><div><i style={{ width: `${Math.round(((pricingJob.completedItems + pricingJob.noMatchItems + pricingJob.failedItems) / pricingJob.totalItems) * 100)}%` }}/></div><span>{pricingJob.completedItems + pricingJob.noMatchItems + pricingJob.failedItems} of {pricingJob.totalItems} processed · {pricingJob.marketplace} · {humanStatus(pricingJob.conditionMode)}</span></div>
+
         <div className={styles.pricingItems}>{pricingJob.items.map((item) => <article key={item.id}>
-          <div className={styles.pricingItemHead}><div><b>{item.part.sku}</b><span>{item.part.partName || item.queryPartNumber} ┬╖ {item.condition}</span></div><span className={styles.jobStatus}>{humanStatus(item.status)}</span></div>
+
+          <div className={styles.pricingItemHead}><div><b>{item.part.sku}</b><span>{item.part.partName || item.queryPartNumber} · {item.condition}</span></div><span className={styles.jobStatus}>{humanStatus(item.status)}</span></div>
+
           {item.status === "COMPLETED" ? <><div className={styles.priceMetrics}><span>Matches <b>{item.competitorCount}</b></span><span>Lowest <b>{money(item.lowest!, item.currency!)}</b></span><span>Median <b>{money(item.median!, item.currency!)}</b></span><span>Recommended <b>{money(item.recommendedPrice!, item.currency!)}</b></span></div>
+
             {item.proposal && <div className={styles.proposalBox}>
-              <div><span>Governed proposal</span><b>{money(item.proposal.proposedPrice, item.proposal.currency)}</b><small>Floor {item.proposal.floorPrice === null ? "unavailable" : money(item.proposal.floorPrice, item.proposal.currency)} ┬╖ {humanStatus(item.proposal.status)}</small></div>
-              {item.proposal.status === "PENDING" && item.proposal.floorPrice !== null ? <div><button disabled={pricingBusy} onClick={() => void decidePrice(item.proposal!.id, "APPROVE")}>Approve</button><button disabled={pricingBusy} onClick={() => void decidePrice(item.proposal!.id, "OVERRIDE")}>Override</button><button disabled={pricingBusy} onClick={() => void decidePrice(item.proposal!.id, "REJECT")}>Reject</button></div> : item.proposal.floorUnavailableReason ? <small>Update inventory cost/currency before approval: {humanStatus(item.proposal.floorUnavailableReason)}</small> : item.proposal.approvedPrice !== null ? <strong>Approved {money(item.proposal.approvedPrice, item.proposal.currency)}{item.proposal.belowFloor ? " ┬╖ below-floor override" : ""}</strong> : null}
+
+              <div><span>Governed proposal</span><b>{money(item.proposal.proposedPrice, item.proposal.currency)}</b><small>Floor {item.proposal.floorPrice === null ? "unavailable" : money(item.proposal.floorPrice, item.proposal.currency)} · {humanStatus(item.proposal.status)}</small></div>
+
+              {item.proposal.status === "PENDING" && item.proposal.floorPrice !== null ? <div><button disabled={pricingBusy} onClick={() => void decidePrice(item.proposal!.id, "APPROVE")}>Approve</button><button disabled={pricingBusy} onClick={() => void decidePrice(item.proposal!.id, "OVERRIDE")}>Override</button><button disabled={pricingBusy} onClick={() => void decidePrice(item.proposal!.id, "REJECT")}>Reject</button></div> : item.proposal.floorUnavailableReason ? <small>Update inventory cost/currency before approval: {humanStatus(item.proposal.floorUnavailableReason)}</small> : item.proposal.approvedPrice !== null ? <strong>Approved {money(item.proposal.approvedPrice, item.proposal.currency)}{item.proposal.belowFloor ? " · below-floor override" : ""}</strong> : null}
+
             </div>}
-            <details><summary>View {item.listings.length} competitor listings</summary><div className={styles.competitors}>{item.listings.map((listing) => <a key={listing.id} href={listing.url} target="_blank" rel="noreferrer"><span><b>{listing.title}</b><small>Listing ID: {listing.listingId} ┬╖ {listing.seller} ┬╖ {listing.condition}</small></span><strong>{money(listing.landedPrice, listing.currency)}</strong></a>)}</div></details></> : item.status === "NO_MATCHES" ? <p>No exact item-specific competitor matches found.</p> : item.status === "FAILED" ? <p className={styles.itemError}>{item.error || "Pricing failed"}</p> : <p>Searching eBay and verifying exact item specifics...</p>}
+
+            <details><summary>View {item.listings.length} competitor listings</summary><div className={styles.competitors}>{item.listings.map((listing) => <a key={listing.id} href={listing.url} target="_blank" rel="noreferrer"><span><b>{listing.title}</b><small>Listing ID: {listing.listingId} · {listing.seller} · {listing.condition}</small></span><strong>{money(listing.landedPrice, listing.currency)}</strong></a>)}</div></details></> : item.status === "NO_MATCHES" ? <p>No exact item-specific competitor matches found.</p> : item.status === "FAILED" ? <p className={styles.itemError}>{item.error || "Pricing failed"}</p> : <p>Searching eBay and verifying exact item specifics...</p>}
+
         </article>)}</div>
+
       </section>}
+
       {fitmentJob && <section id="fitment-workflow" className={`${styles.pricingPanel} ${styles.fitmentPanel}`}>
-        <header><div><span className={styles.eyebrow}>REVIEW-FIRST FITMENT</span><h2>Job {fitmentJob.id.slice(-8)}</h2></div><div><span className={`${styles.jobStatus} ${styles[`job_${fitmentJob.status.toLowerCase()}`]}`}>{humanStatus(fitmentJob.status)}</span><button onClick={() => setFitmentJob(null)} aria-label="Hide fitment job">├ù</button></div></header>
-        <div className={styles.jobProgress}><div><i style={{ width: `${Math.round(((fitmentJob.items.filter(({ status: itemStatus }) => !["QUEUED", "RUNNING"].includes(itemStatus)).length) / fitmentJob.totalItems) * 100)}%` }}/></div><span>{fitmentJob.reviewedItems} approved ┬╖ {fitmentJob.noCandidateItems} without candidates ┬╖ {fitmentJob.marketplace}</span></div>
+
+        <header><div><span className={styles.eyebrow}>REVIEW-FIRST FITMENT</span><h2>Job {fitmentJob.id.slice(-8)}</h2></div><div><span className={`${styles.jobStatus} ${styles[`job_${fitmentJob.status.toLowerCase()}`]}`}>{humanStatus(fitmentJob.status)}</span><button onClick={() => setFitmentJob(null)} aria-label="Hide fitment job">×</button></div></header>
+
+        <div className={styles.jobProgress}><div><i style={{ width: `${Math.round(((fitmentJob.items.filter(({ status: itemStatus }) => !["QUEUED", "RUNNING"].includes(itemStatus)).length) / fitmentJob.totalItems) * 100)}%` }}/></div><span>{fitmentJob.reviewedItems} approved · {fitmentJob.noCandidateItems} without candidates · {fitmentJob.marketplace}</span></div>
+
         <div className={styles.fitmentItems}>{fitmentJob.items.map((item) => <article key={item.id}>
-          <div className={styles.pricingItemHead}><div><b>{item.part.sku}</b><span>{item.part.partName || item.part.primaryPartNumber}{item.categoryName ? ` ┬╖ ${item.categoryName}` : ""}</span></div><span className={styles.jobStatus}>{humanStatus(item.status)}</span></div>
+
+          <div className={styles.pricingItemHead}><div><b>{item.part.sku}</b><span>{item.part.partName || item.part.primaryPartNumber}{item.categoryName ? ` · ${item.categoryName}` : ""}</span></div><span className={styles.jobStatus}>{humanStatus(item.status)}</span></div>
+
           {item.status === "REVIEW_REQUIRED" ? <div className={styles.candidateList}>{item.candidates.map((candidate) => <div key={candidate.id} className={styles.candidate}>
-            <div><b>{candidate.title}</b><span>ePID {candidate.epid} ┬╖ score {candidate.score}/100</span><small>{candidate.matchedOn.join(" ┬╖ ") || "Weak catalog match"}</small></div>
+
+            <div><b>{candidate.title}</b><span>ePID {candidate.epid} · score {candidate.score}/100</span><small>{candidate.matchedOn.join(" · ") || "Weak catalog match"}</small></div>
+
             <button disabled={fitmentBusy} onClick={() => void approveCandidate(item.id, candidate.id)}>Approve &amp; import</button>
-          </div>)}</div> : item.status === "APPROVED" ? <details><summary>{item.applicationCount} vehicle applications imported</summary><div className={styles.applicationList}>{item.applications.map((application) => <span key={application.id}>{Object.entries(application.properties).map(([name, value]) => `${name}: ${value}`).join(" ┬╖ ")}</span>)}</div></details> : item.status === "NO_CANDIDATE" ? <p>No credible eBay catalog product candidate found. Keep this part for manual fitment.</p> : item.status === "FAILED" ? <p className={styles.itemError}>{item.error || "Fitment discovery failed"}</p> : <p>Searching eBay categories and catalog products...</p>}
+
+          </div>)}</div> : item.status === "APPROVED" ? <details><summary>{item.applicationCount} vehicle applications imported</summary><div className={styles.applicationList}>{item.applications.map((application) => <span key={application.id}>{Object.entries(application.properties).map(([name, value]) => `${name}: ${value}`).join(" · ")}</span>)}</div></details> : item.status === "NO_CANDIDATE" ? <p>No credible eBay catalog product candidate found. Keep this part for manual fitment.</p> : item.status === "FAILED" ? <p className={styles.itemError}>{item.error || "Fitment discovery failed"}</p> : <p>Searching eBay categories and catalog products...</p>}
+
         </article>)}</div>
+
       </section>}
+
       {drafts.length > 0 && <section id="listing-drafts" className={`${styles.pricingPanel} ${styles.draftPanel}`}>
-        <header><div><span className={styles.eyebrow}>PUBLICATION READINESS</span><h2>Listing drafts</h2></div><span className={styles.draftSummary}>{drafts.filter(({ status: draftStatus }) => draftStatus === "READY").length} ready ┬╖ {drafts.filter(({ status: draftStatus }) => draftStatus === "BLOCKED").length} blocked</span></header>
+
+        <header><div><span className={styles.eyebrow}>PUBLICATION READINESS</span><h2>Listing drafts</h2></div><span className={styles.draftSummary}>{drafts.filter(({ status: draftStatus }) => draftStatus === "READY").length} ready · {drafts.filter(({ status: draftStatus }) => draftStatus === "BLOCKED").length} blocked</span></header>
+
         <div className={styles.draftGrid}>{drafts.map((draft) => {
+
           const blockers = (draft.validationIssues ?? []).filter(({ severity }) => severity === "BLOCKER");
+
           const warnings = (draft.validationIssues ?? []).filter(({ severity }) => severity === "WARNING");
-          return <article key={draft.id}><div><span className={`${styles.jobStatus} ${draft.status === "READY" ? styles.job_completed : styles.job_failed}`}>{humanStatus(draft.status)}</span><small>{draft.marketplace} ┬╖ v{draft.version}</small></div><h3>{draft.title}</h3><p>{draft.part.sku} ┬╖ {draft.part.primaryPartNumber}</p><div className={styles.readinessCounts}><b>{blockers.length} blockers</b><span>{warnings.length} warnings</span>{draft.price != null && <strong>{money(draft.price, draft.currency)}</strong>}</div>{blockers[0] && <small className={styles.firstBlocker}>{blockers[0].message}</small>}<button onClick={() => void openDraft(draft.id)}>Edit &amp; review</button></article>;
+
+          return <article key={draft.id}><div><span className={`${styles.jobStatus} ${draft.status === "READY" ? styles.job_completed : styles.job_failed}`}>{humanStatus(draft.status)}</span><small>{draft.marketplace} · v{draft.version}</small></div><h3>{draft.title}</h3><p>{draft.part.sku} · {draft.part.primaryPartNumber}</p><div className={styles.readinessCounts}><b>{blockers.length} blockers</b><span>{warnings.length} warnings</span>{draft.price != null && <strong>{money(draft.price, draft.currency)}</strong>}</div>{blockers[0] && <small className={styles.firstBlocker}>{blockers[0].message}</small>}<button onClick={() => void openDraft(draft.id)}>Edit &amp; review</button></article>;
+
         })}</div>
+
       </section>}
       <section className={styles.catalogPanel}>
-        <div className={styles.panelTitle}><div><span className={styles.eyebrow}>CATALOG RECORDS</span><h2>{catalog.pagination.total} matching parts</h2></div><div className={styles.viewToggle}><button className={view === "table" ? styles.viewActive : ""} onClick={() => setView("table")}>Table</button><button className={view === "gallery" ? styles.viewActive : ""} onClick={() => setView("gallery")}>Gallery</button></div></div>
-        <div className={styles.savedViews}>
-          <label><span>Saved view</span><select value={activeSavedViewId} onChange={(event) => {
-            const id = event.target.value; setActiveSavedViewId(id);
-            const selectedView = savedViews.find((savedView) => savedView.id === id);
-            if (selectedView) applySavedFilters(selectedView.filters);
-          }}><option value="">Custom filters</option>{savedViews.map((savedView) => <option key={savedView.id} value={savedView.id}>{savedView.name}{savedView.isDefault ? " (default)" : ""}</option>)}</select></label>
-          <button onClick={() => void saveCurrentView()}>Save current view</button>
-          <button disabled={!activeSavedViewId} onClick={() => void deleteCurrentView()}>Delete view</button>
-        </div>
-        <div className={styles.filters}>
+        <div className={styles.toolbar}>
           <label className={styles.searchBox}>
             <span className={styles.srOnly}>Search</span>
             <svg className={styles.searchIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-            <input value={search} onChange={(event) => { setSearch(event.target.value); resetPage(); }} placeholder="Search by SKU, part number, title or VIN"/>
-            <span className={styles.kbdHint}>Γîÿ K</span>
+            <input value={search} onChange={(event) => { setSearch(event.target.value); resetPage(); }} placeholder="Search by SKU, title, or part number..."/>
+            <span className={styles.kbdHint}>⌘K</span>
           </label>
-          <label><span>Stock Level</span><select value={minQuantity === "1" && !maxQuantity ? "in" : maxQuantity === "0" ? "out" : minQuantity === "1" && maxQuantity === "5" ? "low" : ""} onChange={(event) => {
-            const value = event.target.value;
-            if (value === "in") { setMinQuantity("1"); setMaxQuantity(""); }
-            else if (value === "low") { setMinQuantity("1"); setMaxQuantity("5"); }
-            else if (value === "out") { setMinQuantity(""); setMaxQuantity("0"); }
-            else { setMinQuantity(""); setMaxQuantity(""); }
-            resetPage();
-          }}><option value="">Any stock</option><option value="in">In stock</option><option value="low">Low stock</option><option value="out">Out of stock</option></select></label>
-          <label><span>Status</span><select value={status} onChange={(event) => { setStatus(event.target.value); resetPage(); }}><option value="">All statuses</option>{statuses.map((value) => <option key={value} value={value}>{humanStatus(value)}</option>)}</select></label>
-          <label><span>Condition</span><select value={condition} onChange={(event) => { setCondition(event.target.value); resetPage(); }}><option value="">Any condition</option><option value="NEW">New</option><option value="USED">Used</option></select></label>
-          <label><span>Images</span><select value={hasImages} onChange={(event) => { setHasImages(event.target.value); resetPage(); }}><option value="">Any</option><option value="true">Has images</option><option value="false">Needs images</option></select></label>
-          <button type="button" className={`${styles.secondary} ${styles.advancedToggle}`} onClick={() => setShowAdvancedFilters((value) => !value)}>{showAdvancedFilters ? "Hide Filters" : "Advanced Filters"}</button>
+          <div className={styles.filterRow}>
+            <label className={styles.filterField}>
+              <span>Stock Level</span>
+              <select value={minQuantity === "1" && !maxQuantity ? "in" : maxQuantity === "0" ? "out" : minQuantity === "1" && maxQuantity === "5" ? "low" : ""} onChange={(event) => {
+                const value = event.target.value;
+                if (value === "in") { setMinQuantity("1"); setMaxQuantity(""); }
+                else if (value === "low") { setMinQuantity("1"); setMaxQuantity("5"); }
+                else if (value === "out") { setMinQuantity(""); setMaxQuantity("0"); }
+                else { setMinQuantity(""); setMaxQuantity(""); }
+                resetPage();
+              }}>
+                <option value="">All Stock</option>
+                <option value="in">In stock</option>
+                <option value="low">Low stock</option>
+                <option value="out">Out of stock</option>
+              </select>
+            </label>
+            <label className={styles.filterField}>
+              <span>Marketplace Status</span>
+              <select value={status} onChange={(event) => { setStatus(event.target.value); resetPage(); }}>
+                <option value="">All Status</option>
+                {statuses.map((value) => <option key={value} value={value}>{humanStatus(value)}</option>)}
+              </select>
+            </label>
+            <label className={styles.filterField}>
+              <span>Brand</span>
+              <select value={brand} onChange={(event) => { setBrand(event.target.value); resetPage(); }}>
+                <option value="">All Brands</option>
+                {knownBrands.map((value) => <option key={value} value={value}>{value}</option>)}
+              </select>
+            </label>
+            <label className={styles.filterField}>
+              <span>Condition</span>
+              <select value={condition} onChange={(event) => { setCondition(event.target.value); resetPage(); }}>
+                <option value="">All Conditions</option>
+                <option value="NEW">New</option>
+                <option value="USED">Used</option>
+              </select>
+            </label>
+            <label className={styles.filterField}>
+              <span>Shipping</span>
+              <select value={hasShippingPolicy} onChange={(event) => { setHasShippingPolicy(event.target.value); resetPage(); }}>
+                <option value="">All Shipping</option>
+                <option value="true">Assigned</option>
+                <option value="false">Unassigned</option>
+              </select>
+            </label>
+            <label className={styles.filterField}>
+              <span>Date Added</span>
+              <input type="date" value={createdFrom} onChange={(event) => { setCreatedFrom(event.target.value); resetPage(); }}/>
+            </label>
+            <button type="button" className={styles.advancedToggle} onClick={() => setShowAdvancedFilters((value) => !value)}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M22 3H2l8 9.5V19l4 2v-8.5L22 3z"/></svg>
+              Advanced Filters
+            </button>
+          </div>
           {showAdvancedFilters && <div className={styles.advancedFilters}>
-            <label><span>Pricing</span><select value={hasPricing} onChange={(event) => { setHasPricing(event.target.value); resetPage(); }}><option value="">Any</option><option value="true">Approved price</option><option value="false">Needs approved price</option></select></label>
-            <label><span>Fitment</span><select value={hasFitment} onChange={(event) => { setHasFitment(event.target.value); resetPage(); }}><option value="">Any</option><option value="true">Approved fitment</option><option value="false">Needs fitment</option></select></label>
-            <label><span>Listing readiness</span><select value={listingState} onChange={(event) => { setListingState(event.target.value); resetPage(); }}><option value="">Any</option><option value="NONE">No draft</option><option value="DRAFT">Draft</option><option value="BLOCKED">Blocked</option><option value="READY">Ready</option></select></label>
-            <label><span>Shipping policy</span><select value={hasShippingPolicy} onChange={(event) => { setHasShippingPolicy(event.target.value); resetPage(); }}><option value="">Any</option><option value="true">Assigned</option><option value="false">Unassigned</option></select></label>
-            <label><span>Listing marketplace</span><select value={marketplaceFilter} onChange={(event) => { setMarketplaceFilter(event.target.value); resetPage(); }}><option value="">Any</option><option value="EBAY_US">eBay US</option><option value="EBAY_GB">eBay UK</option><option value="EBAY_DE">eBay Germany</option></select></label>
-            <label><span>Warehouse</span><select value={warehouseId} onChange={(event) => { setWarehouseId(event.target.value); resetPage(); }}><option value="">All locations</option>{catalog.warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.code}</option>)}</select></label>
-            <label><span>Minimum cost</span><input type="number" min="0" step="0.01" value={minCost} onChange={(event) => { setMinCost(event.target.value); resetPage(); }}/></label>
-            <label><span>Maximum cost</span><input type="number" min="0" step="0.01" value={maxCost} onChange={(event) => { setMaxCost(event.target.value); resetPage(); }}/></label>
-            <label><span>Created from</span><input type="date" value={createdFrom} onChange={(event) => { setCreatedFrom(event.target.value); resetPage(); }}/></label>
-            <label><span>Created to</span><input type="date" value={createdTo} onChange={(event) => { setCreatedTo(event.target.value); resetPage(); }}/></label>
-            <label><span>Sort</span><select value={sort} onChange={(event) => { setSort(event.target.value); resetPage(); }}><option value="newest">Newest first</option><option value="updated">Recently updated</option><option value="sku">SKU A-Z</option><option value="oldest">Oldest first</option></select></label>
+            <label className={styles.filterField}><span>Images</span><select value={hasImages} onChange={(event) => { setHasImages(event.target.value); resetPage(); }}><option value="">All Images</option><option value="true">Has images</option><option value="false">Needs images</option></select></label>
+            <label className={styles.filterField}><span>Pricing</span><select value={hasPricing} onChange={(event) => { setHasPricing(event.target.value); resetPage(); }}><option value="">Any pricing</option><option value="true">Approved price</option><option value="false">Needs approved price</option></select></label>
+            <label className={styles.filterField}><span>Fitment</span><select value={hasFitment} onChange={(event) => { setHasFitment(event.target.value); resetPage(); }}><option value="">Any fitment</option><option value="true">Approved fitment</option><option value="false">Needs fitment</option></select></label>
+            <label className={styles.filterField}><span>Listing readiness</span><select value={listingState} onChange={(event) => { setListingState(event.target.value); resetPage(); }}><option value="">Any listing</option><option value="NONE">No draft</option><option value="DRAFT">Draft</option><option value="BLOCKED">Blocked</option><option value="READY">Ready</option></select></label>
+            <label className={styles.filterField}><span>Marketplace</span><select value={marketplaceFilter} onChange={(event) => { setMarketplaceFilter(event.target.value); resetPage(); }}><option value="">All Marketplaces</option><option value="EBAY_US">eBay US</option><option value="EBAY_GB">eBay UK</option><option value="EBAY_DE">eBay Germany</option></select></label>
+            <label className={styles.filterField}><span>Location</span><select value={warehouseId} onChange={(event) => { setWarehouseId(event.target.value); resetPage(); }}><option value="">All Locations</option>{catalog.warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.code}</option>)}</select></label>
+            <label className={styles.filterField}><span>Saved view</span><select value={activeSavedViewId} onChange={(event) => {
+              const id = event.target.value; setActiveSavedViewId(id);
+              const selectedView = savedViews.find((savedView) => savedView.id === id);
+              if (selectedView) applySavedFilters(selectedView.filters);
+            }}><option value="">Custom filters</option>{savedViews.map((savedView) => <option key={savedView.id} value={savedView.id}>{savedView.name}{savedView.isDefault ? " (default)" : ""}</option>)}</select></label>
+            <label className={styles.filterField}><span>Sort</span><select value={sort} onChange={(event) => { setSort(event.target.value); resetPage(); }}><option value="newest">Newest first</option><option value="updated">Recently updated</option><option value="sku">SKU A-Z</option><option value="oldest">Oldest first</option></select></label>
+            <div className={styles.advancedActions}>
+              <button type="button" className={styles.ghostBtn} onClick={() => void saveCurrentView()}>Save view</button>
+              <div className={styles.viewToggle}><button type="button" className={view === "table" ? styles.viewActive : undefined} onClick={() => setView("table")}>Table</button><button type="button" className={view === "gallery" ? styles.viewActive : undefined} onClick={() => setView("gallery")}>Gallery</button></div>
+            </div>
           </div>}
         </div>
-        {selected.size > 0 && <div className={styles.bulkBar}><b>{selected.size} item{selected.size === 1 ? "" : "s"} selected</b><span>{selected.size > 10 ? "Fitment supports 10; pricing and drafts support 25 parts." : "Bulk actions apply to the current selection."}</span><select aria-label="eBay marketplace" value={pricingMarketplace} onChange={(event) => setPricingMarketplace(event.target.value)}><option value="EBAY_US">eBay US</option><option value="EBAY_GB">eBay UK</option><option value="EBAY_DE">eBay Germany</option></select><select aria-label="Pricing condition" value={pricingCondition} onChange={(event) => setPricingCondition(event.target.value as PricingConditionMode)}><option value="MATCH_PART">Match each part</option><option value="ANY">Any condition</option><option value="NEW">New only</option><option value="USED">Used only</option></select><button className={styles.priceButton} disabled={selected.size > 25 || pricingBusy || Boolean(pricingJob && ["QUEUED", "RUNNING"].includes(pricingJob.status))} onClick={() => void priceSelected()}>{selected.size > 25 ? "Maximum 25" : pricingBusy ? "Starting..." : "Price selected"}</button><button className={styles.fitmentButton} disabled={selected.size > 10 || fitmentBusy || Boolean(fitmentJob && ["QUEUED", "RUNNING"].includes(fitmentJob.status))} onClick={() => void findFitment()}>{selected.size > 10 ? "Maximum 10" : fitmentBusy ? "Working..." : "Find fitment"}</button><button className={styles.draftButton} disabled={selected.size > 25 || draftBusy} onClick={() => void createDrafts()}>{draftBusy ? "Preparing..." : "Create drafts"}</button><button onClick={() => setBulkEditorOpen(true)}>Bulk edit</button><button disabled={draftBusy} onClick={() => void openBulkPolicies()}>Assign policies</button><button onClick={() => void archiveSelected()}>Archive</button><button onClick={() => setSelected(new Set())}>Clear</button></div>}
-        {loading ? <div className={styles.loadingRows}>Refreshing catalog...</div> : catalog.parts.length === 0 ? <div className={styles.empty}><b>No parts found</b><span>Adjust your filters or confirm a catalog import.</span></div> : view === "table" ?
-          <div className={styles.tableWrap}><table><thead><tr><th><input aria-label="Select current page" type="checkbox" checked={allPageSelected} onChange={togglePage}/></th><th>SKU</th><th>Image</th><th>Title</th><th>Condition</th><th>Stock</th><th>Location</th><th>Price</th><th>Date</th><th>Status</th><th/></tr></thead><tbody>{catalog.parts.map((part) => { const latestPrice = part.pricingJobItems[0]; const qty = part.inventoryItem?.quantity ?? 0; return <tr key={part.id}><td><input aria-label={`Select ${part.sku}`} type="checkbox" checked={selected.has(part.id)} onChange={() => togglePart(part.id)}/></td><td><b className={styles.mono}>{part.sku}</b><span className={styles.subtle}>{part.primaryPartNumber}</span></td><td><CatalogImage mediaId={part.media[0]?.mediaAsset.id} token={token} demo={demo}/></td><td><b>{part.partName || "Unnamed automotive part"}</b><span className={styles.subtle}>{part.brand || "Brand not set"} ┬╖ {part._count.media} image{part._count.media === 1 ? "" : "s"}</span></td><td><span className={styles.condition}>{part.condition}</span></td><td><b>{qty}</b><span className={styles.subtle}>{qty === 0 ? "Out of stock" : qty <= 5 ? "Low stock" : "In stock"}</span></td><td>{part.inventoryItem?.warehouse?.code || "ΓÇö"}<span className={styles.subtle}>{part.inventoryItem?.binLocation?.code || "Unassigned"}</span></td><td>{latestPrice?.recommendedPrice != null ? <><b>{money(latestPrice.recommendedPrice, latestPrice.currency!)}</b><span className={styles.subtle}>{latestPrice.competitorCount} matches</span></> : <span className={styles.subtle}>{latestPrice ? "No matches" : "Not priced"}</span>}</td><td><span className={styles.subtle}>{new Date(part.updatedAt).toLocaleDateString()}</span></td><td><span className={`${styles.statusPill} ${styles[part.status.toLowerCase()]}`}>{humanStatus(part.status)}</span></td><td><button className={styles.editButton} onClick={() => void openPart(part.id)}>View</button><button className={styles.editButton} onClick={() => void openManualFitment(part.id)}>Fitment</button></td></tr>; })}</tbody></table></div> :
-          <div className={styles.gallery}>{catalog.parts.map((part) => <article key={part.id} className={styles.partCard}><button className={styles.cardSelect} aria-label={`Select ${part.sku}`} onClick={() => togglePart(part.id)}>{selected.has(part.id) ? "Γ£ô" : "+"}</button><CatalogImage mediaId={part.media[0]?.mediaAsset.id} token={token} demo={demo}/><span className={`${styles.statusPill} ${styles[part.status.toLowerCase()]}`}>{humanStatus(part.status)}</span><h3>{part.partName || "Unnamed automotive part"}</h3><p>{part.brand || "Brand not set"} ┬╖ {part.condition}</p><div><b>{part.sku}</b><span>{part.primaryPartNumber}</span></div><footer><span>{part.inventoryItem?.quantity ?? 0} in stock</span><button onClick={() => void openManualFitment(part.id)}>Fitment</button><button onClick={() => void openPart(part.id)}>Edit part</button></footer></article>)}</div>}
-        <div className={styles.pagination}><span>Showing {catalog.parts.length} of {catalog.pagination.total} results</span><div className={styles.pageSize}><span>Rows per page</span><strong>25</strong><button disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>ΓÇ╣</button><span>Page {catalog.pagination.page} of {Math.max(catalog.pagination.totalPages, 1)}</span><button disabled={page >= catalog.pagination.totalPages} onClick={() => setPage((value) => value + 1)}>ΓÇ║</button></div></div>
+
+        {selected.size > 0 && (
+          <div className={styles.bulkBar}>
+            <b>{selected.size} item{selected.size === 1 ? "" : "s"} selected</b>
+            <div className={styles.bulkActions}>
+              <button type="button" className={styles.bulkPrimary} disabled={selected.size > 25 || draftBusy} onClick={() => void createDrafts()}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
+                {draftBusy ? "Preparing..." : "Publish"}
+              </button>
+              <button type="button" disabled={draftBusy} onClick={() => void openBulkPolicies()}>Shipping</button>
+              <button type="button" onClick={() => setBulkEditorOpen(true)}>Edit</button>
+              <div className={styles.bulkMore}>
+                <button type="button" className={styles.moreBtn} onClick={() => setBulkMoreOpen((value) => !value)} aria-expanded={bulkMoreOpen}>... More</button>
+                {bulkMoreOpen && (
+                  <div className={styles.moreMenu}>
+                    <label>Marketplace
+                      <select aria-label="eBay marketplace" value={pricingMarketplace} onChange={(event) => setPricingMarketplace(event.target.value)}><option value="EBAY_US">eBay US</option><option value="EBAY_GB">eBay UK</option><option value="EBAY_DE">eBay Germany</option></select>
+                    </label>
+                    <button type="button" disabled={selected.size > 25 || pricingBusy || Boolean(pricingJob && ["QUEUED", "RUNNING"].includes(pricingJob.status))} onClick={() => { setBulkMoreOpen(false); void priceSelected(); }}>{pricingBusy ? "Starting..." : "Price selected"}</button>
+                    <button type="button" disabled={selected.size > 10 || fitmentBusy || Boolean(fitmentJob && ["QUEUED", "RUNNING"].includes(fitmentJob.status))} onClick={() => { setBulkMoreOpen(false); void findFitment(); }}>{fitmentBusy ? "Working..." : "Find fitment"}</button>
+                    <button type="button" onClick={() => { setBulkMoreOpen(false); void archiveSelected(); }}>Archive</button>
+                  </div>
+                )}
+              </div>
+              <button type="button" className={styles.bulkClose} aria-label="Clear selection" onClick={() => { setBulkMoreOpen(false); setSelected(new Set()); }}>×</button>
+            </div>
+          </div>
+        )}
+
+        {loading ? <div className={styles.loadingRows}>Refreshing catalog...</div> : catalog.parts.length === 0 ? <div className={styles.empty}><b>No parts found</b><span>Adjust your filters or confirm a catalog import.</span></div> : view === "table" ? (
+          <div className={styles.tableWrap}>
+            <table>
+              <thead>
+                <tr>
+                  <th><input aria-label="Select current page" type="checkbox" checked={allPageSelected} onChange={togglePage}/></th>
+                  <th>SKU</th>
+                  <th>Image</th>
+                  <th>Title</th>
+                  <th>Condition</th>
+                  <th>Stock</th>
+                  <th>Location</th>
+                  <th>Price</th>
+                  <th>Date Added</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {catalog.parts.map((part) => {
+                  const latestPrice = part.pricingJobItems[0];
+                  const qty = part.inventoryItem?.quantity ?? 0;
+                  const stockLabel = qty === 0 ? "Out of Stock" : qty <= 5 ? "Low Stock" : "In Stock";
+                  const stockTone = qty === 0 ? styles.stockOut : qty <= 5 ? styles.stockLow : styles.stockIn;
+                  const needsImages = part.status === "NEEDS_IMAGES" || part._count.media === 0;
+                  const published = part.status === "IMPORTED";
+                  return (
+                    <tr key={part.id}>
+                      <td><input aria-label={`Select ${part.sku}`} type="checkbox" checked={selected.has(part.id)} onChange={() => togglePart(part.id)}/></td>
+                      <td>
+                        <button type="button" className={styles.skuLink} onClick={() => void openPart(part.id)}>{part.sku}</button>
+                        <span className={styles.subtle}>{part.primaryPartNumber}</span>
+                      </td>
+                      <td><CatalogImage mediaId={part.media[0]?.mediaAsset.id} token={token} demo={demo}/></td>
+                      <td>
+                        <b className={styles.titleCell}>{part.partName || "Unnamed automotive part"}</b>
+                        <span className={styles.subtle}>{part.brand || "Brand not set"}</span>
+                      </td>
+                      <td className={styles.conditionText}>{part.condition === "NEW" ? "New" : "Used"}</td>
+                      <td className={styles.stockCell}>
+                        <b>{qty}</b>
+                        <span className={stockTone}>{stockLabel}</span>
+                      </td>
+                      <td>
+                        {part.inventoryItem?.warehouse?.code || "—"}
+                        <span className={styles.subtle}>{part.inventoryItem?.binLocation?.code || "Unassigned"}</span>
+                      </td>
+                      <td>
+                        {latestPrice?.recommendedPrice != null
+                          ? <span className={styles.priceCell}><b>{money(latestPrice.recommendedPrice, latestPrice.currency!)}</b><small>{latestPrice.currency}</small></span>
+                          : <span className={styles.subtle}>{latestPrice ? "No matches" : "Not priced"}</span>}
+                      </td>
+                      <td className={styles.dateCell}>{new Date(part.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</td>
+                      <td>
+                        {needsImages ? (
+                          <span className={`${styles.statusPill} ${styles.needs_images}`}>Need Images</span>
+                        ) : published ? (
+                          <span className={`${styles.statusPill} ${styles.imported}`}>Published</span>
+                        ) : (
+                          <button type="button" className={styles.publishBtn} disabled={draftBusy} onClick={() => void createDrafts([part.id])}>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
+                            Publish
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className={styles.gallery}>{catalog.parts.map((part) => <article key={part.id} className={styles.partCard}><button type="button" className={styles.cardSelect} aria-label={`Select ${part.sku}`} onClick={() => togglePart(part.id)}>{selected.has(part.id) ? "✓" : "+"}</button><CatalogImage mediaId={part.media[0]?.mediaAsset.id} token={token} demo={demo}/><span className={`${styles.statusPill} ${styles[part.status.toLowerCase()]}`}>{humanStatus(part.status)}</span><h3>{part.partName || "Unnamed automotive part"}</h3><p>{part.brand || "Brand not set"} · {part.condition}</p><div><b>{part.sku}</b><span>{part.primaryPartNumber}</span></div><footer><span>{part.inventoryItem?.quantity ?? 0} in stock</span><button type="button" onClick={() => void openManualFitment(part.id)}>Fitment</button><button type="button" onClick={() => void openPart(part.id)}>Edit part</button></footer></article>)}</div>
+        )}
+
+        <div className={styles.pagination}>
+          <span>Showing {catalog.parts.length ? ((catalog.pagination.page - 1) * catalog.pagination.pageSize) + 1 : 0} to {Math.min(catalog.pagination.page * catalog.pagination.pageSize, catalog.pagination.total)} of {catalog.pagination.total} results</span>
+          <div className={styles.pageSize}>
+            <span>Rows per page</span>
+            <strong>25</strong>
+            <button type="button" disabled={page <= 1} onClick={() => setPage((value) => value - 1)} aria-label="Previous page">‹</button>
+            <em className={styles.pageCurrent}>{catalog.pagination.page}</em>
+            <button type="button" disabled={page >= catalog.pagination.totalPages} onClick={() => setPage((value) => value + 1)} aria-label="Next page">›</button>
+          </div>
+        </div>
       </section>
     </section>
-    {bulkEditorOpen && <div className={styles.modalBackdrop} role="presentation"><section className={styles.drawer} role="dialog" aria-modal="true" aria-labelledby="bulk-edit-title"><header><div><span className={styles.eyebrow}>ATOMIC BULK EDIT</span><h2 id="bulk-edit-title">Edit {selected.size} catalog parts</h2></div><button aria-label="Close bulk editor" onClick={() => setBulkEditorOpen(false)}>├ù</button></header><form onSubmit={bulkEditSelected}><div className={styles.formGrid}>
+
+    {bulkEditorOpen && <div className={styles.modalBackdrop} role="presentation"><section className={styles.drawer} role="dialog" aria-modal="true" aria-labelledby="bulk-edit-title"><header><div><span className={styles.eyebrow}>ATOMIC BULK EDIT</span><h2 id="bulk-edit-title">Edit {selected.size} catalog parts</h2></div><button aria-label="Close bulk editor" onClick={() => setBulkEditorOpen(false)}>×</button></header><form onSubmit={bulkEditSelected}><div className={styles.formGrid}>
       <label><span>Status</span><select name="status"><option value="">No change</option>{statuses.map((value) => <option key={value} value={value}>{humanStatus(value)}</option>)}</select></label>
       <label><span>Condition</span><select name="condition"><option value="">No change</option><option value="NEW">New</option><option value="USED">Used</option></select></label>
       <label><span>Quantity</span><input name="quantity" type="number" min="0" placeholder="No change"/></label>
       <label><span>Placement</span><select name="placement"><option value="">No change</option><option value="__CLEAR__">Clear placement</option><option value="Front">Front</option><option value="Rear">Rear</option><option value="Left">Left</option><option value="Right">Right</option><option value="Upper">Upper</option><option value="Lower">Lower</option></select></label>
-      <label><span>Warehouse</span><select name="warehouseCode"><option value="">No change</option><option value="__CLEAR__">Clear warehouse and bin</option>{catalog.warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.code}>{warehouse.code} ΓÇö {warehouse.name}</option>)}</select></label>
+      <label><span>Warehouse</span><select name="warehouseCode"><option value="">No change</option><option value="__CLEAR__">Clear warehouse and bin</option>{catalog.warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.code}>{warehouse.code} — {warehouse.name}</option>)}</select></label>
       <label><span>Bin location</span><input name="binLocation" placeholder="Optional for selected warehouse"/></label>
     </div><p className={styles.bulkWarning}>This operation is all-or-nothing. Listing drafts linked to changed catalog records will be blocked until reviewed.</p><div className={styles.formActions}><button type="button" onClick={() => setBulkEditorOpen(false)}>Cancel</button><button className={styles.primary} disabled={saving}>{saving ? "Updating..." : "Apply to selected"}</button></div></form></section></div>}
-    {bulkPoliciesOpen && <div className={styles.modalBackdrop} role="presentation"><section className={styles.drawer} role="dialog" aria-modal="true" aria-labelledby="bulk-policy-title"><header><div><span className={styles.eyebrow}>EBAY BUSINESS POLICIES</span><h2 id="bulk-policy-title">Assign to {selected.size} {pricingMarketplace} drafts</h2></div><button aria-label="Close policy assignment" onClick={() => setBulkPoliciesOpen(false)}>├ù</button></header><form onSubmit={assignBulkPolicies}><div className={styles.formGrid}>
+    {bulkPoliciesOpen && <div className={styles.modalBackdrop} role="presentation"><section className={styles.drawer} role="dialog" aria-modal="true" aria-labelledby="bulk-policy-title"><header><div><span className={styles.eyebrow}>EBAY BUSINESS POLICIES</span><h2 id="bulk-policy-title">Assign to {selected.size} {pricingMarketplace} drafts</h2></div><button aria-label="Close policy assignment" onClick={() => setBulkPoliciesOpen(false)}>×</button></header><form onSubmit={assignBulkPolicies}><div className={styles.formGrid}>
       <label><span>Payment policy</span><select name="paymentPolicyId" required defaultValue=""><option value="" disabled>Select policy</option>{sellerResources?.paymentPolicies.filter(({ enabled }) => enabled).map((resource) => <option key={resource.remoteId} value={resource.remoteId}>{resource.name}</option>)}</select></label>
       <label><span>Return policy</span><select name="returnPolicyId" required defaultValue=""><option value="" disabled>Select policy</option>{sellerResources?.returnPolicies.filter(({ enabled }) => enabled).map((resource) => <option key={resource.remoteId} value={resource.remoteId}>{resource.name}</option>)}</select></label>
       <label><span>Shipping policy</span><select name="shippingPolicyId" required defaultValue=""><option value="" disabled>Select policy</option>{sellerResources?.fulfillmentPolicies.filter(({ enabled }) => enabled).map((resource) => <option key={resource.remoteId} value={resource.remoteId}>{resource.name}</option>)}</select></label>
       <label><span>Merchant location</span><select name="merchantLocationKey" required defaultValue=""><option value="" disabled>Select location</option>{sellerResources?.inventoryLocations.filter(({ enabled }) => enabled).map((resource) => <option key={resource.remoteId} value={resource.remoteId}>{resource.name}</option>)}</select></label>
     </div>{sellerResources && !sellerResources.paymentPolicies.length && <p className={styles.bulkWarning}>No cached seller policies were found. Open a listing draft and refresh eBay policies and locations first.</p>}<div className={styles.formActions}><button type="button" onClick={() => setBulkPoliciesOpen(false)}>Cancel</button><button className={styles.primary} disabled={draftBusy}>{draftBusy ? "Assigning..." : "Assign and recalculate readiness"}</button></div></form></section></div>}
-    {fitmentEditor && <div className={styles.modalBackdrop} role="presentation"><section className={`${styles.drawer} ${styles.fitmentManager}`} role="dialog" aria-modal="true" aria-labelledby="fitment-editor-title"><header><div><span className={styles.eyebrow}>FITMENT REVIEW</span><h2 id="fitment-editor-title">{fitmentEditor.part.sku} ┬╖ {fitmentEditor.marketplace}</h2></div><button aria-label="Close fitment editor" onClick={() => setFitmentEditor(null)}>├ù</button></header>
-      {fitmentEditor.part.donorVehicle && <div className={styles.donorEvidence}><b>Donor VIN {fitmentEditor.part.donorVehicle.vin}</b><span>{[fitmentEditor.part.donorVehicle.year, fitmentEditor.part.donorVehicle.make, fitmentEditor.part.donorVehicle.model, fitmentEditor.part.donorVehicle.trim, fitmentEditor.part.donorVehicle.engine].filter(Boolean).join(" ┬╖ ")}</span></div>}
+    {fitmentEditor && <div className={styles.modalBackdrop} role="presentation"><section className={`${styles.drawer} ${styles.fitmentManager}`} role="dialog" aria-modal="true" aria-labelledby="fitment-editor-title"><header><div><span className={styles.eyebrow}>FITMENT REVIEW</span><h2 id="fitment-editor-title">{fitmentEditor.part.sku} · {fitmentEditor.marketplace}</h2></div><button aria-label="Close fitment editor" onClick={() => setFitmentEditor(null)}>×</button></header>
+      {fitmentEditor.part.donorVehicle && <div className={styles.donorEvidence}><b>Donor VIN {fitmentEditor.part.donorVehicle.vin}</b><span>{[fitmentEditor.part.donorVehicle.year, fitmentEditor.part.donorVehicle.make, fitmentEditor.part.donorVehicle.model, fitmentEditor.part.donorVehicle.trim, fitmentEditor.part.donorVehicle.engine].filter(Boolean).join(" · ")}</span></div>}
       <form onSubmit={createManualApplication}><span className={styles.eyebrow}>NEW APPLICATION</span><div className={styles.formGrid}>
         <label><span>Source</span><select name="source" defaultValue={fitmentEditor.part.donorVehicle ? "DONOR_VEHICLE" : "MANUAL"}><option value="MANUAL">Manual research</option>{fitmentEditor.part.donorVehicle && <option value="DONOR_VEHICLE">Donor VIN vehicle</option>}</select></label>
         <label><span>Year</span><input name="year" defaultValue={fitmentEditor.part.donorVehicle?.year ?? ""} required/></label>
@@ -1031,9 +1206,9 @@ export default function CatalogWorkspace() {
         <label className={styles.wide}><span>Evidence / notes</span><textarea name="notes" placeholder="Source, catalog, VIN decoder, or validation notes"/></label>
       </div><button className={styles.primary} disabled={manualFitmentBusy}>{manualFitmentBusy ? "Saving..." : "Create pending application"}</button></form>
       <div className={styles.applicationCards}>{fitmentEditor.applications.map((application) => <article key={application.id} className={styles.applicationCard}>
-        <div><span className={`${styles.jobStatus} ${application.status === "APPROVED" ? styles.job_completed : application.status === "PENDING" ? styles.job_queued : styles.job_failed}`}>{humanStatus(application.status)}</span><small>{humanStatus(application.source)} ┬╖ revision {application.revision}</small></div>
+        <div><span className={`${styles.jobStatus} ${application.status === "APPROVED" ? styles.job_completed : application.status === "PENDING" ? styles.job_queued : styles.job_failed}`}>{humanStatus(application.status)}</span><small>{humanStatus(application.source)} · revision {application.revision}</small></div>
         <h3>{application.properties.Year} {application.properties.Make} {application.properties.Model}</h3>
-        <p>{Object.entries(application.properties).map(([name, value]) => `${name}: ${value}`).join(" ┬╖ ")}</p>
+        <p>{Object.entries(application.properties).map(([name, value]) => `${name}: ${value}`).join(" · ")}</p>
         {application.sourceVehicle && <small>Evidence VIN: {application.sourceVehicle.vin}</small>}
         {application.notes && <small>{application.notes}</small>}
         {application.decisionReason && <small>Decision: {application.decisionReason}</small>}
@@ -1042,10 +1217,10 @@ export default function CatalogWorkspace() {
           {application.status === "APPROVED" && <button disabled={manualFitmentBusy} onClick={() => void decideManualApplication(application, "SUPERSEDE")}>Remove approval</button>}
           {application.source !== "EBAY_CATALOG" && application.status !== "SUPERSEDED" && <button disabled={manualFitmentBusy} onClick={() => void reviseManualApplication(application)}>Revise</button>}
         </div>
-        {application.revisions.length > 0 && <details><summary>Revision history</summary>{application.revisions.map((revision) => <small key={revision.id}>v{revision.revision} ┬╖ {revision.reason || "Updated"} ┬╖ {new Date(revision.createdAt).toLocaleString()}</small>)}</details>}
+        {application.revisions.length > 0 && <details><summary>Revision history</summary>{application.revisions.map((revision) => <small key={revision.id}>v{revision.revision} · {revision.reason || "Updated"} · {new Date(revision.createdAt).toLocaleString()}</small>)}</details>}
       </article>)}</div>
     </section></div>}
-    {detail && <div className={styles.modalBackdrop} role="presentation"><section className={styles.drawer} role="dialog" aria-modal="true" aria-labelledby="edit-part-title"><header><div><span className={styles.eyebrow}>INVENTORY DETAILS</span><h2 id="edit-part-title">{detail.partName || detail.sku}</h2></div><button aria-label="Close editor" onClick={() => setDetail(null)}>├ù</button></header>
+    {detail && <div className={styles.modalBackdrop} role="presentation"><section className={styles.drawer} role="dialog" aria-modal="true" aria-labelledby="edit-part-title"><header><div><span className={styles.eyebrow}>INVENTORY DETAILS</span><h2 id="edit-part-title">{detail.partName || detail.sku}</h2></div><button aria-label="Close editor" onClick={() => setDetail(null)}>×</button></header>
       {detailMode === "view" ? <div style={{ padding: "22px 24px" }}>
           <div className={styles.detailHero}>
             <div className={styles.detailImages}>
@@ -1059,18 +1234,18 @@ export default function CatalogWorkspace() {
             </div>
           </div>
           <div className={styles.detailGrid}>
-            <div className={styles.detailRow}><span>Brand</span><strong>{detail.brand || "ΓÇö"}</strong></div>
-            <div className={styles.detailRow}><span>Part Type</span><strong>{detail.partName || "ΓÇö"}</strong></div>
+            <div className={styles.detailRow}><span>Brand</span><strong>{detail.brand || "—"}</strong></div>
+            <div className={styles.detailRow}><span>Part Type</span><strong>{detail.partName || "—"}</strong></div>
             <div className={styles.detailRow}><span>SKU</span><strong>{detail.sku}</strong></div>
             <div className={styles.detailRow}><span>OEM / Part #</span><strong>{detail.primaryPartNumber}</strong></div>
             <div className={styles.detailRow}><span>Condition</span><strong><span className={styles.condition}>{detail.condition}</span></strong></div>
             <div className={styles.detailRow}><span>Status</span><strong><span className={`${styles.statusPill} ${styles[detail.status.toLowerCase()]}`}>{humanStatus(detail.status)}</span></strong></div>
             <div className={styles.detailRow}><span>Quantity</span><strong>{detail.inventoryItem?.quantity ?? 0}</strong></div>
-            <div className={styles.detailRow}><span>Cost</span><strong>{detail.inventoryItem ? money(detail.inventoryItem.cost, detail.inventoryItem.currency) : "ΓÇö"}</strong></div>
-            <div className={styles.detailRow}><span>Warehouse</span><strong>{detail.inventoryItem?.warehouse?.code || "ΓÇö"}</strong></div>
+            <div className={styles.detailRow}><span>Cost</span><strong>{detail.inventoryItem ? money(detail.inventoryItem.cost, detail.inventoryItem.currency) : "—"}</strong></div>
+            <div className={styles.detailRow}><span>Warehouse</span><strong>{detail.inventoryItem?.warehouse?.code || "—"}</strong></div>
             <div className={styles.detailRow}><span>Bin</span><strong>{detail.inventoryItem?.binLocation?.code || "Unassigned"}</strong></div>
-            <div className={styles.detailRow}><span>Placement</span><strong>{detail.placement || "ΓÇö"}</strong></div>
-            <div className={styles.detailRow}><span>Donor</span><strong>{detail.donorVehicle ? [detail.donorVehicle.year, detail.donorVehicle.make, detail.donorVehicle.model].filter(Boolean).join(" ") : "ΓÇö"}</strong></div>
+            <div className={styles.detailRow}><span>Placement</span><strong>{detail.placement || "—"}</strong></div>
+            <div className={styles.detailRow}><span>Donor</span><strong>{detail.donorVehicle ? [detail.donorVehicle.year, detail.donorVehicle.make, detail.donorVehicle.model].filter(Boolean).join(" ") : "—"}</strong></div>
           </div>
           <div className={styles.detailSection}><h3>Description</h3><p>{detail.description || "No description provided."}</p></div>
           <div className={styles.detailSection}><h3>Internal notes</h3><p>{detail.notes || "No internal notes."}</p></div>
@@ -1081,8 +1256,8 @@ export default function CatalogWorkspace() {
     {draftDetail && <div className={styles.modalBackdrop} role="presentation">
       <section className={styles.drawer} role="dialog" aria-modal="true" aria-labelledby="edit-draft-title">
         <header>
-          <div><span className={styles.eyebrow}>EBAY LISTING DRAFT ┬╖ VERSION {draftDetail.version}</span><h2 id="edit-draft-title">{draftDetail.part.sku}</h2></div>
-          <button aria-label="Close draft editor" onClick={() => setDraftDetail(null)}>├ù</button>
+          <div><span className={styles.eyebrow}>EBAY LISTING DRAFT · VERSION {draftDetail.version}</span><h2 id="edit-draft-title">{draftDetail.part.sku}</h2></div>
+          <button aria-label="Close draft editor" onClick={() => setDraftDetail(null)}>×</button>
         </header>
         <div className={styles.readinessBox}>
           <b>{draftDetail.status === "READY" ? "Ready for publication workflow" : "Publication blocked"}</b>
@@ -1096,7 +1271,7 @@ export default function CatalogWorkspace() {
         </div>
         {inventoryPreparationJob && ["QUEUED", "RUNNING", "FAILED"].includes(inventoryPreparationJob.status) && <div className={styles.preparationStatus}><b>Image staging: {inventoryPreparationJob.status.toLowerCase()}</b>{inventoryPreparationJob.lastError && <span>{inventoryPreparationJob.lastError}</span>}</div>}
         {inventoryPreparation && <section className={styles.inventoryPreview}>
-          <div><b>Inventory payload ┬╖ {inventoryPreparation.sku}</b><span>{inventoryPreparation.draftVersion === draftDetail.version ? "Current draft version" : "Outdated ΓÇö prepare this draft version again"}</span></div>
+          <div><b>Inventory payload · {inventoryPreparation.sku}</b><span>{inventoryPreparation.draftVersion === draftDetail.version ? "Current draft version" : "Outdated — prepare this draft version again"}</span></div>
           <small>SHA-256 {inventoryPreparation.payloadHash}</small>
           {inventoryPreparation.warnings.map((warning) => <p key={warning}>{warning}</p>)}
           <details><summary>View Inventory API JSON</summary><pre>{JSON.stringify(inventoryPreparation.inventoryPayload, null, 2)}</pre></details>
@@ -1104,7 +1279,7 @@ export default function CatalogWorkspace() {
           <button type="button" className={styles.primary} disabled={draftBusy || inventoryPreparation.draftVersion !== draftDetail.version || Boolean(inventorySyncJob && ["QUEUED", "RUNNING"].includes(inventorySyncJob.status))} onClick={() => void applyInventoryToEbay()}>
             {inventorySyncJob && ["QUEUED", "RUNNING"].includes(inventorySyncJob.status) ? "Writing inventory..." : "Write inventory to eBay"}
           </button>
-          {inventorySyncJob && <p><b>eBay inventory sync: {inventorySyncJob.status.toLowerCase()}</b>{inventorySyncJob.status === "COMPLETED" ? " ΓÇö inventory only; not published." : inventorySyncJob.lastError ? ` ΓÇö ${inventorySyncJob.lastError}` : ""}</p>}
+          {inventorySyncJob && <p><b>eBay inventory sync: {inventorySyncJob.status.toLowerCase()}</b>{inventorySyncJob.status === "COMPLETED" ? " — inventory only; not published." : inventorySyncJob.lastError ? ` — ${inventorySyncJob.lastError}` : ""}</p>}
           {inventorySyncJob?.status === "COMPLETED" && (!ebayOffer || ["PREPARING", "FAILED"].includes(ebayOffer.status)) && <button type="button" onClick={() => void prepareEbayOffer()} disabled={draftBusy || Boolean(ebayOfferJob && ["QUEUED", "RUNNING"].includes(ebayOfferJob.status))}>
             {ebayOfferJob?.action === "PREPARE" && ["QUEUED", "RUNNING"].includes(ebayOfferJob.status) ? "Preparing offer..." : "Prepare offer & preview fees"}
           </button>}
@@ -1114,7 +1289,7 @@ export default function CatalogWorkspace() {
           {ebayOffer.ebayOfferId && <span>eBay offer ID: {ebayOffer.ebayOfferId}</span>}
           {ebayOffer.ebayListingId && <span>Listing ID: {ebayOffer.ebayListingId}</span>}
           {ebayOffer.feeTotal != null && <span>Expected listing fees: {money(ebayOffer.feeTotal, ebayOffer.feeCurrency ?? draftDetail.currency)}</span>}
-          {ebayOffer.remoteListingStatus && <span>Remote status: {humanStatus(ebayOffer.remoteListingStatus)}{ebayOffer.lastReconciledAt ? ` ┬╖ checked ${new Date(ebayOffer.lastReconciledAt).toLocaleString()}` : ""}</span>}
+          {ebayOffer.remoteListingStatus && <span>Remote status: {humanStatus(ebayOffer.remoteListingStatus)}{ebayOffer.lastReconciledAt ? ` · checked ${new Date(ebayOffer.lastReconciledAt).toLocaleString()}` : ""}</span>}
           {ebayOffer.revisionCount > 0 && <span>{ebayOffer.revisionCount} controlled revision{ebayOffer.revisionCount === 1 ? "" : "s"}</span>}
           {ebayOffer.status === "FEES_READY" && <button type="button" className={styles.primary} disabled={draftBusy} onClick={() => void publishEbayOffer()}>Approve fees & publish live</button>}
           {ebayOffer.status === "PUBLISHED" && inventorySyncJob?.status === "COMPLETED" && inventorySyncJob.draftVersion > ebayOffer.draftVersion && <button type="button" className={styles.primary} disabled={draftBusy || Boolean(listingOperationJob && ["QUEUED", "RUNNING"].includes(listingOperationJob.status))} onClick={() => void reviseLiveListing()}>Approve & revise live listing</button>}

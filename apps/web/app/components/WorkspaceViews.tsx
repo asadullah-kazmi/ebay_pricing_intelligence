@@ -2,11 +2,12 @@
 
 import { useEffect, useState, type ComponentType } from "react";
 
-type WorkspaceKey = "dashboard" | "catalog" | "pipeline";
+type WorkspaceKey = "dashboard" | "catalog" | "pipeline" | "orders";
 
 function resolveWorkspace(pathname: string): WorkspaceKey {
   const path = pathname.split("#")[0] ?? pathname;
   if (path.startsWith("/pipeline")) return "pipeline";
+  if (path.startsWith("/orders")) return "orders";
   if (path.startsWith("/catalog")) return "catalog";
   return "dashboard";
 }
@@ -17,11 +18,13 @@ export default function WorkspaceViews({ pathname }: { pathname: string }) {
     dashboard: active === "dashboard",
     catalog: active === "catalog",
     pipeline: active === "pipeline",
+    orders: active === "orders",
   });
   const [shown, setShown] = useState<WorkspaceKey>(active);
   const [Dashboard, setDashboard] = useState<ComponentType | null>(null);
   const [Catalog, setCatalog] = useState<ComponentType | null>(null);
   const [Pipeline, setPipeline] = useState<ComponentType | null>(null);
+  const [Orders, setOrders] = useState<ComponentType | null>(null);
 
   useEffect(() => {
     setMounted((current) => (current[active] ? current : { ...current, [active]: true }));
@@ -61,18 +64,31 @@ export default function WorkspaceViews({ pathname }: { pathname: string }) {
   }, [Pipeline, mounted.pipeline]);
 
   useEffect(() => {
+    if (!mounted.orders || Orders) return;
+    let cancelled = false;
+    void import("../(app)/orders/OrdersWorkspace").then((mod) => {
+      if (!cancelled) setOrders(() => mod.default);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [Orders, mounted.orders]);
+
+  useEffect(() => {
     const ready =
       (active === "dashboard" && Dashboard) ||
       (active === "catalog" && Catalog) ||
-      (active === "pipeline" && Pipeline);
+      (active === "pipeline" && Pipeline) ||
+      (active === "orders" && Orders);
     if (ready) setShown(active);
-  }, [Dashboard, Catalog, Pipeline, active]);
+  }, [Dashboard, Catalog, Pipeline, Orders, active]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void import("../(app)/dashboard/DashboardWorkspace");
       void import("../(app)/catalog/CatalogWorkspace");
       void import("../(app)/pipeline/PipelineWorkspace");
+      void import("../(app)/orders/OrdersWorkspace");
     }, 400);
     return () => window.clearTimeout(timer);
   }, []);
@@ -92,6 +108,11 @@ export default function WorkspaceViews({ pathname }: { pathname: string }) {
       {mounted.pipeline && Pipeline ? (
         <div hidden={shown !== "pipeline"}>
           <Pipeline />
+        </div>
+      ) : null}
+      {mounted.orders && Orders ? (
+        <div hidden={shown !== "orders"}>
+          <Orders />
         </div>
       ) : null}
     </>

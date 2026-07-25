@@ -69,6 +69,7 @@ const catalogQuerySchema = z.object({
   q: z.string().trim().max(100).optional(),
   status: catalogStatusSchema.optional(),
   condition: z.enum(["NEW", "USED"]).optional(),
+  brand: z.string().trim().max(100).optional(),
   hasImages: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
   hasPricing: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
   hasFitment: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
@@ -129,6 +130,7 @@ const catalogBulkUpdateSchema = z.object({
 }).strict();
 const savedCatalogFiltersSchema = z.object({
   q: z.string().max(100).optional(),
+  brand: z.string().max(100).optional(),
   status: catalogStatusSchema.optional(),
   condition: z.enum(["NEW", "USED"]).optional(),
   hasImages: z.enum(["true", "false"]).optional(),
