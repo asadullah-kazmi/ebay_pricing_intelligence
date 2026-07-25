@@ -74,13 +74,8 @@ export default function LoginForm() {
   }
 
   return <main className={styles.page}>
-    <aside className={styles.authAside}>
-      <a href="/"><BrandMark inverse tagline="Automotive commerce workspace"/></a>
-      <div><span>BUILT FOR AUTOMOTIVE TEAMS</span><h2>Run your parts operation from one secure workspace.</h2><p>Catalog, price, enrich, and publish inventory with a workflow your whole team can trust.</p></div>
-      <ul><li>Secure organization access</li><li>eBay marketplace operations</li><li>Inventory workflows at scale</li></ul>
-    </aside>
     <section className={styles.card}>
-      <a className={styles.mobileBrand} href="/"><BrandMark /></a>
+      <a className={styles.brand} href="/"><BrandMark /></a>
       <span className={styles.eyebrow}>SECURE WORKSPACE</span>
       <h1>{challengeToken ? "Verify it’s you" : "Welcome back"}</h1>
       <p>{challengeToken ? "Multi-factor authentication protects this account." : "Sign in to continue to your PartPulse workspace."}</p>
@@ -96,7 +91,9 @@ export default function LoginForm() {
         <button disabled={busy}>{busy ? "Signing in…" : organizations.length ? "Open organization" : "Sign in to PartPulse"}</button>
       </form>}
       {verificationRequired && <button className={styles.primary} disabled={busy} onClick={() => void resendVerification()}>Resend verification email</button>}
-      <div className={styles.links}><span>New to PartPulse? <a href="/register">Create your workspace</a></span><a href="/account-recovery">Recover account</a></div>
+      <div className={styles.links}>
+        <span className={styles.linkLine}>New to PartPulse? <a href="/register">Create your workspace</a></span>
+      </div>
     </section>
   </main>;
 }

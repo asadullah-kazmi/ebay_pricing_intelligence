@@ -27,13 +27,8 @@ export default function RegisterForm() {
   }
 
   return <main className={styles.page}>
-    <aside className={styles.authAside}>
-      <a href="/"><BrandMark inverse tagline="Automotive commerce workspace"/></a>
-      <div><span>START BUILDING WITH PARTPULSE</span><h2>Your inventory. Your team. One connected operation.</h2><p>Create a secure workspace for catalog management, market pricing, vehicle compatibility, and eBay publishing.</p></div>
-      <ul><li>Invite and manage your team</li><li>Keep every listing organized</li><li>Publish with confidence</li></ul>
-    </aside>
     <section className={styles.card}>
-      <a className={styles.mobileBrand} href="/"><BrandMark /></a>
+      <a className={styles.brand} href="/"><BrandMark /></a>
       {result ? <div className={styles.center}><span className={styles.eyebrow}>CHECK YOUR EMAIL</span><h1>Verify your account</h1><p>Registration is complete. Open the verification link before signing in.</p>{result.emailDelivery === "failed" && <div className={styles.error}>The account was created, but email delivery failed. Check SMTP configuration and request another verification email.</div>}{result.developmentUrl && <a className={styles.devLink} href={result.developmentUrl}>Development verification link</a>}<a className={styles.continueLink} href="/login">Continue to sign in</a></div> : <>
         <span className={styles.eyebrow}>CREATE YOUR ACCOUNT</span><h1>Create your workspace</h1><p>Set up your organization and become its first owner.</p>
         {error && <div className={styles.error}>{error}</div>}
