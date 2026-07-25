@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import styles from "./team.module.css";
 import BrandMark from "../../components/BrandMark";
+import { refreshAccessSession } from "../../lib/auth-session";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const roles = ["OWNER", "ADMIN", "MANAGER", "CATALOG_OPERATOR", "PRICING_OPERATOR", "PUBLISHER", "VIEWER"] as const;
@@ -52,10 +53,19 @@ export default function TeamManagement() {
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
-    fetch(`${apiBase}/api/auth/refresh`, { method: "POST", credentials: "include" })
-      .then(async (response) => response.ok ? response.json() : Promise.reject())
-      .then((data: { accessToken: string }) => { setToken(data.accessToken); setAuthState("ready"); })
-      .catch(() => setAuthState("required"));
+    let cancelled = false;
+    void refreshAccessSession()
+      .then((session) => {
+        if (cancelled) return;
+        setToken(session.accessToken);
+        setAuthState("ready");
+      })
+      .catch(() => {
+        if (!cancelled) setAuthState("required");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {

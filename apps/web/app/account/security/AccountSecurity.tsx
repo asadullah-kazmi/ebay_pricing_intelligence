@@ -1,6 +1,7 @@
 "use client";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import styles from "../../auth-ui.module.css";
+import { refreshAccessSession } from "../../lib/auth-session";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 interface Security { email: string; emailVerified: boolean; hasPassword: boolean; passwordChangedAt: string | null; mfaEnabled: boolean; recoveryCodesRemaining: number }
@@ -9,7 +10,13 @@ export default function AccountSecurity() {
   const [token, setToken] = useState(""); const [auth, setAuth] = useState<"loading"|"ready"|"required">("loading");
   const [security, setSecurity] = useState<Security | null>(null); const [setup, setSetup] = useState<{ secret: string; otpauthUri: string } | null>(null);
   const [codes, setCodes] = useState<string[]>([]); const [busy, setBusy] = useState(""); const [error, setError] = useState(""); const [notice, setNotice] = useState("");
-  useEffect(() => { fetch(`${apiBase}/api/auth/refresh`, { method: "POST", credentials: "include" }).then(async (response) => response.ok ? response.json() : Promise.reject()).then((body: { accessToken: string }) => { setToken(body.accessToken); setAuth("ready"); }).catch(() => setAuth("required")); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    void refreshAccessSession()
+      .then((session) => { if (!cancelled) { setToken(session.accessToken); setAuth("ready"); } })
+      .catch(() => { if (!cancelled) setAuth("required"); });
+    return () => { cancelled = true; };
+  }, []);
   const request = useCallback(async (path: string, init: RequestInit = {}) => { const response = await fetch(`${apiBase}${path}`, { ...init, credentials: "include", headers: { ...(init.body ? { "Content-Type": "application/json" } : {}), ...init.headers, Authorization: `Bearer ${token}` } }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.error || body.issues?.[0]?.message || "Request failed"); return body; }, [token]);
   const load = useCallback(async () => { if (auth !== "ready") return; try { setSecurity(await request("/api/auth/security") as Security); } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to load account security"); } }, [auth, request]);
   useEffect(() => { void load(); }, [load]);

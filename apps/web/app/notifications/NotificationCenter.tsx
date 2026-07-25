@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import styles from "./notifications.module.css";
 import BrandMark from "../components/BrandMark";
+import { refreshAccessSession } from "../lib/auth-session";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -52,10 +53,19 @@ export default function NotificationCenter() {
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
-    fetch(`${apiBase}/api/auth/refresh`, { method: "POST", credentials: "include" })
-      .then(async (response) => response.ok ? response.json() : Promise.reject())
-      .then((body: { accessToken: string }) => { setToken(body.accessToken); setAuth("ready"); })
-      .catch(() => setAuth("required"));
+    let cancelled = false;
+    void refreshAccessSession()
+      .then((session) => {
+        if (cancelled) return;
+        setToken(session.accessToken);
+        setAuth("ready");
+      })
+      .catch(() => {
+        if (!cancelled) setAuth("required");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {

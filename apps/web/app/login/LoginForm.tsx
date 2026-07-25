@@ -46,7 +46,7 @@ export default function LoginForm() {
         setChallengeToken(result.challengeToken);
         setNotice("Enter the code from your authenticator app or a recovery code.");
       } else {
-        window.location.assign("/catalog");
+        window.location.assign("/dashboard");
       }
     } catch (caught) {
       const failure = caught as Error & { details?: { verificationRequired?: boolean } };
@@ -60,7 +60,7 @@ export default function LoginForm() {
     setBusy(true); setError("");
     try {
       await post("/api/auth/login/mfa", { challengeToken, code });
-      window.location.assign("/catalog");
+      window.location.assign("/dashboard");
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to verify code"); }
     finally { setBusy(false); }
   }

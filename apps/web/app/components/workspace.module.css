@@ -1,0 +1,42 @@
+.signInPanel {
+  min-height: 100%;
+  display: grid;
+  place-content: center;
+  justify-items: start;
+  gap: 8px;
+  padding: 48px 32px;
+  color: #0f172a;
+  font-family: "Plus Jakarta Sans", "DM Sans", sans-serif;
+}
+
+.signInPanel h1 {
+  margin: 8px 0 0;
+  font: 800 32px/1.15 "Plus Jakarta Sans", sans-serif;
+  letter-spacing: -1px;
+}
+
+.signInPanel p {
+  margin: 0 0 18px;
+  max-width: 420px;
+  color: #64748b;
+  line-height: 1.55;
+}
+
+.eyebrow {
+  color: #0052ff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.signInButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: #0052ff;
+  color: #fff;
+  font-weight: 800;
+  text-decoration: none;
+}

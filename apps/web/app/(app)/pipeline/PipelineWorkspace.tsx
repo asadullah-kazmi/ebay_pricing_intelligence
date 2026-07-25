@@ -1,11 +1,10 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
-import AppShell from "../components/AppShell";
-import BrandMark from "../components/BrandMark";
+import { FormEvent, useState } from "react";
+import Link from "next/link";
+import { useAuth } from "../../components/AuthProvider";
+import { apiBase } from "../../lib/auth-session";
 import styles from "./pipeline.module.css";
-
-const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 type QueueItem = {
   id: string;
@@ -23,8 +22,7 @@ const demoQueue: QueueItem[] = [
 ];
 
 export default function PipelineWorkspace() {
-  const [token, setToken] = useState("");
-  const [authState, setAuthState] = useState<"loading" | "required" | "ready">("loading");
+  const { status, token } = useAuth();
   const [team, setTeam] = useState("default");
   const [condition, setCondition] = useState("USED");
   const [file, setFile] = useState<File | null>(null);
@@ -32,21 +30,6 @@ export default function PipelineWorkspace() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [queue, setQueue] = useState<QueueItem[]>(demoQueue);
-
-  useEffect(() => {
-    fetch(`${apiBase}/api/auth/refresh`, { method: "POST", credentials: "include" })
-      .then(async (response) => (response.ok ? response.json() : Promise.reject()))
-      .then((data: { accessToken: string }) => {
-        setToken(data.accessToken);
-        setAuthState("ready");
-      })
-      .catch(() => setAuthState("required"));
-  }, []);
-
-  async function logout() {
-    await fetch(`${apiBase}/api/auth/logout`, { method: "POST", credentials: "include" });
-    window.location.href = "/login";
-  }
 
   async function uploadSpreadsheet(event: FormEvent) {
     event.preventDefault();
@@ -85,48 +68,29 @@ export default function PipelineWorkspace() {
     }
   }
 
-  if (authState === "loading") {
-    return (
-      <main className={styles.authScreen}>
-        <div className={styles.loader} />
-        <p>Opening pipeline...</p>
-      </main>
-    );
-  }
-
-  if (authState === "required") {
-    return (
-      <main className={styles.authScreen}>
-        <section className={styles.authCard}>
-          <BrandMark />
-          <span className={styles.eyebrow}>PIPELINE</span>
-          <h1>Sign in to upload inventory</h1>
-          <p>Your session ended. Sign in again to stage spreadsheet and photo imports.</p>
-          <a className={styles.authPrimary} href="/login">
-            Sign in to PartPulse
-          </a>
-        </section>
-      </main>
-    );
-  }
+  if (status !== "ready") return null;
 
   return (
-    <AppShell active="pipeline" userName="PartPulse" userRole="Import operator" badgeCount={queue.length} onSignOut={() => void logout()}>
+    <>
       <header className={styles.topbar}>
         <div>
           <h1>Pipeline</h1>
           <p>Bulk-upload spreadsheets and photo archives into the catalog intake queue.</p>
         </div>
         <div className={styles.topActions}>
-          <a className={styles.secondary} href="/api/imports/template" onClick={(event) => {
-            event.preventDefault();
-            window.open(`${apiBase}/api/imports/template`, "_blank");
-          }}>
+          <a
+            className={styles.secondary}
+            href="/api/imports/template"
+            onClick={(event) => {
+              event.preventDefault();
+              window.open(`${apiBase}/api/imports/template`, "_blank");
+            }}
+          >
             Download template
           </a>
-          <a className={styles.primary} href="/catalog">
+          <Link className={styles.primary} href="/catalog">
             Open catalog
-          </a>
+          </Link>
         </div>
       </header>
 
@@ -230,6 +194,6 @@ export default function PipelineWorkspace() {
           </table>
         </div>
       </section>
-    </AppShell>
+    </>
   );
 }

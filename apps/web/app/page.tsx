@@ -1,5 +1,6 @@
 "use client";
 import { FormEvent, useEffect, useState } from "react";
+import { refreshAccessSession } from "./lib/auth-session";
 
 type Result = { oem:string; marketplace:string; conditionFilter:"ANY"|"NEW"|"USED"; searchedAt:string; analytics:null|{count:number;lowest:number;average:number;median:number;highest:number;recommendedPrice:number;currency:string}; listings:Array<{id:string;title:string;seller:string;price:number;shipping:number;landedPrice:number;currency:string;condition:string;url:string}> };
 const api = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -10,10 +11,11 @@ export default function Home() {
   const [authState, setAuthState] = useState<"loading" | "signedOut" | "signedIn">("loading");
 
   useEffect(() => {
-    fetch(`${api}/api/auth/refresh`, { method: "POST", credentials: "include" })
-      .then(async (response) => (response.ok ? response.json() : Promise.reject()))
-      .then(() => setAuthState("signedIn"))
-      .catch(() => setAuthState("signedOut"));
+    let cancelled = false;
+    void refreshAccessSession()
+      .then(() => { if (!cancelled) setAuthState("signedIn"); })
+      .catch(() => { if (!cancelled) setAuthState("signedOut"); });
+    return () => { cancelled = true; };
   }, []);
 
   async function search(event:FormEvent){event.preventDefault();setLoading(true);setError("");try{const response=await fetch(`${api}/api/search`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({oem,marketplace,condition})});const data=await response.json();if(!response.ok)throw new Error(data.error??"Search failed");setResult(data)}catch(err){setError(err instanceof Error?err.message:"Search failed")}finally{setLoading(false)}}
@@ -25,7 +27,7 @@ export default function Home() {
       <div className="headerRight">
         {authState !== "loading" && (
           authState === "signedIn"
-            ? <a className="headerCta" href="/catalog">Dashboard</a>
+            ? <a className="headerCta" href="/dashboard">Dashboard</a>
             : <a className="headerCta" href="/login">Sign in</a>
         )}
         <div className="status"><i/> MARKET DATA ONLINE</div>
