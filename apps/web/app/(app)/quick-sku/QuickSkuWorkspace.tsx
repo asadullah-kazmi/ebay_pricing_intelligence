@@ -1,8 +1,9 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "../../components/AuthProvider";
+import type { PricingJob } from "../catalog/types";
 import styles from "./quick-sku.module.css";
 
 type QuickSkuResult = {
@@ -32,6 +33,11 @@ type QuickSkuResult = {
     fitmentCount: number;
     marketplace: string;
   };
+  pricing?: {
+    jobId?: string;
+    status: "QUEUED" | "SKIPPED";
+    reason?: string;
+  };
 };
 
 function money(value: number, currency: string) {
@@ -49,12 +55,60 @@ export default function QuickSkuWorkspace() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<QuickSkuResult | null>(null);
+  const [pricingJob, setPricingJob] = useState<PricingJob | null>(null);
+  const [demoMarketPrice, setDemoMarketPrice] = useState<number | null>(null);
+
+  const marketPriceItem = pricingJob?.items.find((item) => item.part.id === result?.part.id);
+  const marketPrice = demoMarketPrice ?? marketPriceItem?.recommendedPrice ?? null;
+  const marketCurrency = result?.part.inventoryItem?.currency ?? marketPriceItem?.currency ?? "USD";
+  const marketPricingBusy = Boolean(
+    result?.pricing?.jobId
+    && pricingJob
+    && ["QUEUED", "RUNNING"].includes(pricingJob.status)
+    && marketPrice == null
+    && marketPriceItem?.status !== "NO_MATCHES",
+  );
+
+  useEffect(() => {
+    if (!result?.pricing?.jobId || demo) return;
+    let active = true;
+    void apiFetch(`/api/pricing/jobs/${result.pricing.jobId}`)
+      .then((job) => {
+        if (active) setPricingJob(job as PricingJob);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [apiFetch, demo, result?.pricing?.jobId]);
+
+  useEffect(() => {
+    if (!pricingJob || demo || !["QUEUED", "RUNNING"].includes(pricingJob.status)) return;
+    const timer = window.setTimeout(() => {
+      void apiFetch(`/api/pricing/jobs/${pricingJob.id}`)
+        .then((job) => setPricingJob(job as PricingJob))
+        .catch(() => undefined);
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [apiFetch, demo, pricingJob]);
+
+  useEffect(() => {
+    if (!result || !demo) return;
+    setDemoMarketPrice(null);
+    const timer = window.setTimeout(() => {
+      const base = result.part.inventoryItem?.cost ?? 89.5;
+      setDemoMarketPrice(Math.round(base * 1.18 * 100) / 100);
+    }, 1200);
+    return () => window.clearTimeout(timer);
+  }, [demo, result]);
 
   async function upload(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
     setError("");
     setResult(null);
+    setPricingJob(null);
+    setDemoMarketPrice(null);
     try {
       if (demo) {
         await new Promise((resolve) => window.setTimeout(resolve, 500));
@@ -95,6 +149,7 @@ export default function QuickSkuWorkspace() {
             fitmentCount: 2,
             marketplace,
           },
+          pricing: { jobId: "demo-pricing-job", status: "QUEUED" },
         });
         return;
       }
@@ -111,6 +166,7 @@ export default function QuickSkuWorkspace() {
         }),
       }) as QuickSkuResult;
       setResult(created);
+      setPricingJob(null);
       setPartNumber("");
       setBrand("");
       setPrice("");
@@ -165,7 +221,7 @@ export default function QuickSkuWorkspace() {
           </label>
           <div className={styles.row}>
             <label>
-              <span>Price</span>
+              <span>Your price</span>
               <input
                 type="number"
                 min="0.01"
@@ -241,8 +297,23 @@ export default function QuickSkuWorkspace() {
                   <b>{result.part.partName || "—"}</b>
                 </article>
                 <article>
-                  <span>Price</span>
+                  <span>Your price</span>
                   <b>{result.part.inventoryItem ? money(result.part.inventoryItem.cost, result.part.inventoryItem.currency) : "—"}</b>
+                </article>
+                <article>
+                  <span>Market price</span>
+                  <b>
+                    {marketPrice != null
+                      ? money(marketPrice, marketCurrency)
+                      : marketPriceItem?.status === "NO_MATCHES"
+                        ? "No matches"
+                        : marketPricingBusy
+                          ? "Pricing…"
+                          : result.pricing?.status === "SKIPPED"
+                            ? "Queued later"
+                            : "—"}
+                  </b>
+                  {marketPricingBusy && <small>eBay comps running</small>}
                 </article>
                 <article>
                   <span>Quantity</span>

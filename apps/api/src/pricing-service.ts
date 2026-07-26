@@ -338,6 +338,27 @@ export function startPricingJob(jobId: string, options: JobRunOptions = inlineJo
   setImmediate(() => void runPricingJob(jobId, options));
 }
 
+export async function queuePartMarketPricing(
+  organizationId: string,
+  createdById: string,
+  input: { partIds: string[]; marketplace: Marketplace; conditionMode?: PricingConditionMode },
+): Promise<{ jobId: string } | { skipped: true; reason: string }> {
+  try {
+    const job = await createPricingJob(organizationId, createdById, {
+      partIds: input.partIds,
+      marketplace: input.marketplace,
+      conditionMode: input.conditionMode ?? "MATCH_PART",
+    });
+    if (getConfig().jobs.executionMode === "inline") startPricingJob(job.id);
+    return { jobId: job.id };
+  } catch (error) {
+    if (error instanceof PricingJobError && error.statusCode === 409) {
+      return { skipped: true, reason: error.message };
+    }
+    throw error;
+  }
+}
+
 export async function startQueuedPricingJobs(options: JobRunOptions = inlineJobOptions): Promise<number> {
   const queued = await prisma.pricingJob.findMany({
     where: { status: "QUEUED" },

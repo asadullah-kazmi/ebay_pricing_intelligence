@@ -1191,8 +1191,8 @@ export default function CatalogWorkspace() {
                   <th>Title</th>
                   <th>Condition</th>
                   <th>Stock</th>
-                  <th>Location</th>
                   <th>Price</th>
+                  <th>Market price</th>
                   <th>Date Added</th>
                   <th>Status</th>
                 </tr>
@@ -1200,6 +1200,8 @@ export default function CatalogWorkspace() {
               <tbody>
                 {catalog.parts.map((part) => {
                   const latestPrice = part.pricingJobItems[0];
+                  const yourPrice = part.inventoryItem?.cost != null ? Number(part.inventoryItem.cost) : null;
+                  const priceCurrency = latestPrice?.currency ?? part.inventoryItem?.currency ?? "USD";
                   const qty = part.inventoryItem?.quantity ?? 0;
                   const stockLabel = qty === 0 ? "Out of Stock" : qty <= 5 ? "Low Stock" : "In Stock";
                   const stockTone = qty === 0 ? styles.stockOut : qty <= 5 ? styles.stockLow : styles.stockIn;
@@ -1223,13 +1225,16 @@ export default function CatalogWorkspace() {
                         <span className={stockTone}>{stockLabel}</span>
                       </td>
                       <td>
-                        {part.inventoryItem?.warehouse?.code || "—"}
-                        <span className={styles.subtle}>{part.inventoryItem?.binLocation?.code || "Unassigned"}</span>
+                        {yourPrice != null && yourPrice > 0
+                          ? <span className={styles.priceCell}><b>{money(yourPrice, priceCurrency)}</b></span>
+                          : <span className={styles.subtle}>—</span>}
                       </td>
                       <td>
                         {latestPrice?.recommendedPrice != null
-                          ? <span className={styles.priceCell}><b>{money(latestPrice.recommendedPrice, latestPrice.currency!)}</b><small>{latestPrice.currency}</small></span>
-                          : <span className={styles.subtle}>{latestPrice ? "No matches" : "Not priced"}</span>}
+                          ? <span className={styles.priceCell}><b>{money(latestPrice.recommendedPrice, latestPrice.currency!)}</b></span>
+                          : latestPrice?.status === "NO_MATCHES"
+                            ? <span className={styles.subtle}>No matches</span>
+                            : <span className={styles.subtle}>—</span>}
                       </td>
                       <td className={styles.dateCell}>{new Date(part.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</td>
                       <td>

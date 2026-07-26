@@ -4,6 +4,7 @@ import { prisma } from "./db.js";
 import { normalizePartNumber } from "./domain/matching.js";
 import { normalizeFitmentApplications, scoreFitmentCandidate } from "./fitment-service.js";
 import { discoverEbayFitment, getEbayProductCompatibilities } from "./providers/ebay-fitment.js";
+import { queuePartMarketPricing } from "./pricing-service.js";
 import type { Marketplace } from "./types.js";
 
 export class QuickSkuError extends Error {
@@ -225,6 +226,12 @@ export async function createQuickSku(
       return part;
     }, { maxWait: 10_000, timeout: 60_000 });
 
+    const pricing = await queuePartMarketPricing(organizationId, userId, {
+      partIds: [created.id],
+      marketplace,
+      conditionMode: "MATCH_PART",
+    });
+
     return {
       part: {
         ...created,
@@ -249,6 +256,9 @@ export async function createQuickSku(
         fitmentCount: applications.length,
         marketplace,
       },
+      pricing: "jobId" in pricing
+        ? { jobId: pricing.jobId, status: "QUEUED" as const }
+        : { status: "SKIPPED" as const, reason: pricing.reason },
     };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
