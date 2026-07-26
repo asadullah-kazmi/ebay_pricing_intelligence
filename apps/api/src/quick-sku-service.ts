@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { recordAuditEvent } from "./audit-service.js";
 import { prisma } from "./db.js";
 import { normalizePartNumber } from "./domain/matching.js";
-import { buildEbayListingTitle } from "./domain/listing-title.js";
+import { buildEbayListingTitle, cleanPartNameForTitle, isWeakPartName, modelFromText, yearRangeFromText } from "./domain/listing-title.js";
 import { normalizeFitmentApplications, scoreFitmentCandidate } from "./fitment-service.js";
 import { discoverEbayFitment, getEbayProductCompatibilities, isBrowseDerivedEpid, type EbayFitmentDiscovery } from "./providers/ebay-fitment.js";
 import { identifyPartWithGemini, type AiPartIdentificationResult } from "./providers/gemini-part-identification.js";
@@ -104,19 +104,53 @@ function buildSku(brand: string, partNumber: string) {
   return `${brandCode}-${number}`.slice(0, 100);
 }
 
-function derivePartName(title: string, brand: string, partNumber: string) {
-  let name = title;
-  const patterns = [
-    new RegExp(`\\b${brand.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "ig"),
-    new RegExp(partNumber.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "ig"),
-    new RegExp(normalizePartNumber(partNumber), "ig"),
-    /\bOEM\b/gi,
-    /\bNew\b/gi,
-    /\bUsed\b/gi,
+function partNameFromAspects(aspects: Record<string, string[]>): string | null {
+  const preferredKeys = [
+    "Type",
+    "Part Type",
+    "Item Type",
+    "Product Type",
+    "Part Name",
+    "Compatible Part",
   ];
-  for (const pattern of patterns) name = name.replace(pattern, " ");
-  name = name.replace(/[|/·•]+/g, " ").replace(/\s+/g, " ").trim();
-  return name.slice(0, 120) || title.slice(0, 120);
+  for (const key of preferredKeys) {
+    const match = Object.entries(aspects).find(([name]) => name.toLowerCase() === key.toLowerCase());
+    const value = match?.[1]?.[0]?.trim();
+    if (value && !isWeakPartName(value)) return value.slice(0, 120);
+  }
+  return null;
+}
+
+function derivePartName(
+  title: string,
+  brand: string,
+  partNumber: string,
+  aspects: Record<string, string[]> = {},
+) {
+  const fromAspects = partNameFromAspects(aspects);
+  if (fromAspects) return fromAspects;
+
+  const yearRange = yearRangeFromText(title);
+  const model = modelFromText(title);
+  const cleaned = cleanPartNameForTitle({
+    partName: title,
+    brand,
+    primaryPartNumber: partNumber,
+    extraRemovals: [yearRange, model],
+  }).slice(0, 120);
+  if (!isWeakPartName(cleaned)) return cleaned;
+
+  // Lighter cleanup when aggressive stripping wiped the useful part words.
+  let light = title
+    .replace(/\b((?:19|20)\d{2})\s*(?:[-–]|to)\s*((?:19|20)\d{2})\b/gi, " ")
+    .replace(/\b(?:19|20)\d{2}\b/g, " ");
+  for (const token of [brand, partNumber, yearRange, model, "OEM", "New", "Used", "Genuine"]) {
+    if (!token) continue;
+    light = light.replace(new RegExp(`\\b${token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "ig"), " ");
+  }
+  light = light.replace(/[|/·•,;:()[\]]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
+  if (light && !isWeakPartName(light)) return light;
+  return cleaned;
 }
 
 function aspectsToDescription(aspects: Record<string, string[]>, categoryName: string | null) {
@@ -193,7 +227,9 @@ export async function identifyQuickSkuPart(
 
   const best = rankCandidates(discovery, partNumber, brand)[0] ?? null;
   const identifiedBrand = best?.brand?.trim() || brand;
-  const partName = best ? derivePartName(best.title, identifiedBrand, partNumber) : `${brand} Automotive Part`;
+  const partName = best
+    ? derivePartName(best.title, identifiedBrand, partNumber, best.aspects)
+    : `${brand} Automotive Part`;
 
   return {
     partNumber,
@@ -222,25 +258,33 @@ export async function identifyQuickSkuPart(
   };
 }
 
+export function needsAiPartNameEnhancement(identify: Pick<QuickSkuIdentifyResult, "identificationSource" | "partName" | "matched">): boolean {
+  if (identify.identificationSource === "AI") return false;
+  if (!identify.matched) return true;
+  return isWeakPartName(identify.partName);
+}
+
 export async function enhanceQuickSkuWithAi(
   identify: QuickSkuIdentifyResult,
   input: Pick<QuickSkuInput, "condition"> = {},
 ): Promise<QuickSkuIdentifyResult> {
-  if (identify.matched || identify.identificationSource === "AI") return identify;
+  if (!needsAiPartNameEnhancement(identify)) return identify;
 
   const ai = await identifyPartWithGemini({
     partNumber: identify.partNumber,
-    brand: identify.brand,
+    brand: identify.identifiedBrand || identify.brand,
     condition: input.condition ?? "USED",
     marketplace: identify.marketplace,
+    sourceTitle: identify.best?.title ?? null,
   });
-  if (!ai) return identify;
+  if (!ai || isWeakPartName(ai.partName)) return identify;
 
   return {
     ...identify,
-    identificationSource: "AI",
+    // Keep eBay epid/fitment when present; AI only fills the missing part name.
+    identificationSource: identify.matched ? "EBAY" : "AI",
     partName: ai.partName,
-    placement: ai.placement,
+    placement: identify.placement ?? ai.placement,
     ai: toAiPayload(ai),
   };
 }
@@ -390,7 +434,7 @@ async function persistQuickSkuPart(
         condition,
         status: "READY_FOR_ENRICHMENT",
         notes: prepared.identificationSource === "EBAY"
-          ? `Quick SKU identified via eBay ${prepared.discoverySource ?? "catalog"} (${prepared.candidateEpid})${prepared.categoryName ? ` · ${prepared.categoryName}` : ""}`
+          ? `Quick SKU identified via eBay ${prepared.discoverySource ?? "catalog"} (${prepared.candidateEpid})${prepared.categoryName ? ` · ${prepared.categoryName}` : ""}${prepared.aiModel ? ` · part name filled by AI (${prepared.aiModel})` : ""}`
           : prepared.identificationSource === "AI"
             ? `Quick SKU AI-suggested via ${prepared.aiModel ?? "Gemini"}${prepared.aiConfidence ? ` · confidence ${prepared.aiConfidence}` : ""} — review recommended`
             : "Quick SKU created without a confident eBay catalog or AI match",

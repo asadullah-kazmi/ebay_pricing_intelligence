@@ -158,7 +158,12 @@ export default function QuickSkuWorkspace() {
       progress = activateNext(progress, "identify");
       setSteps([...progress]);
 
-      if (identify.matched) {
+      const weakPartName = !identify.partName
+        || /^automotive parts?$/i.test(identify.partName.trim())
+        || /automotive parts?$/i.test(identify.partName.trim());
+      const needsAi = !identify.matched || weakPartName;
+
+      if (!needsAi) {
         progress = activateNext(progress, "ai", "skipped");
         setSteps([...progress]);
       } else {
@@ -166,7 +171,7 @@ export default function QuickSkuWorkspace() {
           method: "POST",
           body: JSON.stringify({ condition: payload.condition, identify }),
         }) as IdentifyResponse;
-        progress = activateNext(progress, "ai", identify.identificationSource === "AI" ? "done" : "skipped");
+        progress = activateNext(progress, "ai", identify.ai ? "done" : "skipped");
         setSteps([...progress]);
       }
 
@@ -415,7 +420,12 @@ export default function QuickSkuWorkspace() {
                         AI suggested — review recommended
                       </span>
                     )}
-                    {result.identification.source === "EBAY" && (
+                    {result.identification.source === "EBAY" && result.identification.aiModel && (
+                      <span className={styles.listingSourceChip} title={result.identification.aiModel}>
+                        eBay match · AI part name
+                      </span>
+                    )}
+                    {result.identification.source === "EBAY" && !result.identification.aiModel && (
                       <span className={styles.listingSourceChipMuted}>eBay catalog match</span>
                     )}
                   </div>
@@ -426,7 +436,7 @@ export default function QuickSkuWorkspace() {
                   <span>All {STEP_DEFS.length} pipeline stages completed</span>
                 </div>
 
-                <Link className={styles.catalogBtn} href={`/catalog?q=${encodeURIComponent(result.part.sku)}`}>
+                <Link className={styles.catalogBtn} href={`/catalog?sort=newest&highlight=${encodeURIComponent(result.part.id)}`}>
                   View in catalog
                   <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
                     <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>

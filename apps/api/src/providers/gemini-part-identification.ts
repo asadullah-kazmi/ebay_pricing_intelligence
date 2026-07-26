@@ -7,6 +7,8 @@ export type AiPartIdentificationInput = {
   brand: string;
   condition?: "NEW" | "USED";
   marketplace?: string;
+  /** Optional weak/messy catalog title for extra context. */
+  sourceTitle?: string | null;
 };
 
 export type AiPartIdentificationResult = {
@@ -50,7 +52,8 @@ function buildPrompt(input: AiPartIdentificationInput): string {
     `Part number: ${input.partNumber}`,
     `Condition: ${input.condition ?? "USED"}`,
     `Marketplace: ${input.marketplace ?? "EBAY_US"}`,
-  ].join("\n");
+    input.sourceTitle?.trim() ? `Catalog title hint: ${input.sourceTitle.trim().slice(0, 160)}` : "",
+  ].filter(Boolean).join("\n");
 }
 
 function extractJsonObject(text: string): unknown {

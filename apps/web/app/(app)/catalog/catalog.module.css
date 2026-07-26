@@ -730,6 +730,38 @@
   background: #f8fafc;
 }
 
+.tableRefreshing {
+  position: relative;
+}
+
+.tableRefreshing table {
+  opacity: 0.72;
+  transition: opacity 160ms ease;
+}
+
+.refreshBanner {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 8px 14px;
+  background: #eff6ff;
+  border-bottom: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.highlightedRow td {
+  background: #eff6ff;
+  box-shadow: inset 3px 0 0 #0052ff;
+  animation: highlightFade 6s ease forwards;
+}
+
+@keyframes highlightFade {
+  0%, 70% { background: #eff6ff; }
+  100% { background: transparent; }
+}
+
 .partCell {
   display: flex;
   align-items: center;

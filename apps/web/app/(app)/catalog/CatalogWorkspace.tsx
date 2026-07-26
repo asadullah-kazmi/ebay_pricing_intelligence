@@ -94,7 +94,8 @@ export default function CatalogWorkspace() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
+  const highlightFromUrl = searchParams.get("highlight");
+  const [search, setSearch] = useState(() => (highlightFromUrl ? "" : searchParams.get("q") ?? ""));
   const deferredSearch = useDeferredValue(search);
   const [status, setStatus] = useState("");
   const [condition, setCondition] = useState("");
@@ -114,20 +115,38 @@ export default function CatalogWorkspace() {
   const [maxCost, setMaxCost] = useState("");
   const [createdFrom, setCreatedFrom] = useState("");
   const [createdTo, setCreatedTo] = useState("");
-  const [sort, setSort] = useState("newest");
+  const [sort, setSort] = useState(() => {
+    const value = searchParams.get("sort");
+    return value === "oldest" || value === "updated" || value === "sku" ? value : "newest";
+  });
   const [page, setPage] = useState(1);
   const [view, setView] = useState<"table" | "gallery">("table");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detail, setDetail] = useState<CatalogPartDetail | null>(null);
   const [saving, setSaving] = useState(false);
+  const [highlightedPartId, setHighlightedPartId] = useState<string | null>(() => highlightFromUrl);
 
   useEffect(() => {
+    const highlight = searchParams.get("highlight");
     const query = searchParams.get("q");
-    if (query && query !== search) {
+    const sortParam = searchParams.get("sort");
+
+    if (highlight) {
+      setHighlightedPartId(highlight);
+      setSearch("");
+      setSort(sortParam === "oldest" || sortParam === "updated" || sortParam === "sku" ? sortParam : "newest");
+      setPage(1);
+      return;
+    }
+
+    if (query != null && query !== search) {
       setSearch(query);
       setPage(1);
     }
-  }, [search, searchParams]);
+    if (sortParam === "oldest" || sortParam === "updated" || sortParam === "sku" || sortParam === "newest") {
+      setSort(sortParam);
+    }
+  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps -- sync URL-driven catalog entry points only
   const [pricingMarketplace, setPricingMarketplace] = useState("EBAY_US");
   const [pricingCondition, setPricingCondition] = useState<PricingConditionMode>("MATCH_PART");
   const [pricingJob, setPricingJob] = useState<PricingJob | null>(null);
@@ -179,11 +198,13 @@ export default function CatalogWorkspace() {
       .then((value) => {
         const views = value as CatalogSavedView[];
         setSavedViews(views);
+        // Coming from Quick SKU with highlight: show full newest-first list, not a saved filter.
+        if (searchParams.get("highlight")) return;
         const defaultView = views.find(({ isDefault }) => isDefault);
         if (defaultView) { setActiveSavedViewId(defaultView.id); applySavedFilters(defaultView.filters); }
       })
       .catch(() => undefined);
-  }, [authStatus, demo, request]);
+  }, [authStatus, demo, request, searchParams]);
 
   const queryString = useMemo(() => {
     const query = new URLSearchParams({ page: String(page), pageSize: "25", sort });
@@ -221,6 +242,15 @@ export default function CatalogWorkspace() {
   }, [authStatus, demo, queryString, request]);
 
   useEffect(() => { void loadCatalog(); }, [loadCatalog]);
+
+  useEffect(() => {
+    if (!highlightedPartId || loading) return;
+    const row = document.querySelector<HTMLElement>(`[data-part-id="${highlightedPartId}"]`);
+    if (!row) return;
+    row.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    const timer = window.setTimeout(() => setHighlightedPartId(null), 6_000);
+    return () => window.clearTimeout(timer);
+  }, [highlightedPartId, catalog.parts, loading]);
 
   useEffect(() => {
     setKnownBrands((current) => {
@@ -1180,8 +1210,9 @@ export default function CatalogWorkspace() {
           </div>
         )}
 
-        {loading ? <div className={styles.loadingRows}>Refreshing catalog...</div> : catalog.parts.length === 0 ? <div className={styles.empty}><b>No parts found</b><span>Adjust your filters or confirm a catalog import.</span></div> : view === "table" ? (
-          <div className={styles.tableWrap}>
+        {loading && catalog.parts.length === 0 ? <div className={styles.loadingRows}>Loading catalog...</div> : catalog.parts.length === 0 ? <div className={styles.empty}><b>No parts found</b><span>Adjust your filters or confirm a catalog import.</span></div> : view === "table" ? (
+          <div className={`${styles.tableWrap}${loading ? ` ${styles.tableRefreshing}` : ""}`}>
+            {loading && <div className={styles.refreshBanner}>Updating catalog…</div>}
             <table>
               <thead>
                 <tr>
@@ -1207,8 +1238,9 @@ export default function CatalogWorkspace() {
                   const stockTone = qty === 0 ? styles.stockOut : qty <= 5 ? styles.stockLow : styles.stockIn;
                   const needsImages = part.status === "NEEDS_IMAGES" || part._count.media === 0;
                   const published = part.status === "IMPORTED";
+                  const isHighlighted = highlightedPartId === part.id;
                   return (
-                    <tr key={part.id}>
+                    <tr key={part.id} data-part-id={part.id} className={isHighlighted ? styles.highlightedRow : undefined}>
                       <td><input aria-label={`Select ${part.sku}`} type="checkbox" checked={selected.has(part.id)} onChange={() => togglePart(part.id)}/></td>
                       <td>
                         <button type="button" className={styles.skuLink} onClick={() => void openPart(part.id)}>{part.sku}</button>

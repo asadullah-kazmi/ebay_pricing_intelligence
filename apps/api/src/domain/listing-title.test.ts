@@ -3,7 +3,10 @@ import {
   buildEbayListingTitle,
   cleanPartNameForTitle,
   extractPosition,
+  isWeakPartName,
+  modelFromText,
   yearRangeFromFitment,
+  yearRangeFromText,
 } from "./listing-title.js";
 
 const audiA6Fitment = Array.from({ length: 7 }, (_, index) => ({
@@ -71,7 +74,29 @@ describe("buildEbayListingTitle", () => {
       primaryPartNumber: "4E0831051C",
       condition: "USED",
       sourceTitle: "LEFT FRONT DOOR GRIS 834611 FOR A8 4E2 3.0",
-    })).toBe("Audi Front Left Door Gris 4E0831051C OEM Used");
+    })).toBe("Audi A8 Front Left Door 4E0831051C OEM Used");
+  });
+
+  it("cleans messy eBay catalog titles into guideline order", () => {
+    expect(buildEbayListingTitle({
+      brand: "Audi",
+      partName: "Exterior Door Handle Base A8 2004-2010 4e0-839-886-e",
+      primaryPartNumber: "4EO 839 886 E",
+      condition: "USED",
+      sourceTitle: "Audi Exterior Door Handle Base A8 2004-2010 4e0-839-886-e",
+    })).toBe("2004-2010 Audi A8 Exterior Door Handle Base 4EO 839 886 E OEM Used");
+
+    expect(buildEbayListingTitle({
+      brand: "Audi",
+      partName: "Exterior Door Handle Base A8 2004-2010 4e0-839-886-e",
+      primaryPartNumber: "4EO 839 886 E",
+      condition: "USED",
+      fitmentApplications: [
+        { Year: "2004", Make: "Audi", Model: "A8" },
+        { Year: "2010", Make: "Audi", Model: "A8" },
+      ],
+      sourceTitle: "Audi Exterior Door Handle Base A8 2004-2010 4e0-839-886-e",
+    })).toBe("2004-2010 Audi A8 Exterior Door Handle Base 4EO 839 886 E OEM Used");
   });
 
   it("never exceeds 80 characters", () => {
@@ -111,5 +136,30 @@ describe("cleanPartNameForTitle", () => {
       primaryPartNumber: "8T0941699E",
       position: "Front Left",
     })).toBe("Fog Light");
+  });
+
+  it("strips years, model codes, colors, and alternate MPN spellings", () => {
+    expect(cleanPartNameForTitle({
+      partName: "Exterior Door Handle Base A8 2004-2010 4e0-839-886-e",
+      brand: "Audi",
+      primaryPartNumber: "4EO 839 886 E",
+      extraRemovals: ["2004-2010", "A8"],
+    })).toBe("Exterior Door Handle Base");
+  });
+});
+
+describe("yearRangeFromText / modelFromText", () => {
+  it("extracts year range and model from catalog text", () => {
+    expect(yearRangeFromText("Exterior Door Handle Base A8 2004-2010")).toBe("2004-2010");
+    expect(modelFromText("Exterior Door Handle Base A8 2004-2010")).toBe("A8");
+    expect(modelFromText("LEFT FRONT DOOR GRIS FOR A8 4E2 3.0")).toBe("A8");
+  });
+});
+
+describe("isWeakPartName", () => {
+  it("detects generic placeholders that need AI enhancement", () => {
+    expect(isWeakPartName("Automotive Part")).toBe(true);
+    expect(isWeakPartName("Audi Automotive Part")).toBe(true);
+    expect(isWeakPartName("Exterior Door Handle Base")).toBe(false);
   });
 });
