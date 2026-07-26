@@ -197,7 +197,7 @@ export default function TeamManagement() {
 
   const assignableRoles = session?.role === "OWNER" ? roles : roles.filter((role) => !["OWNER", "ADMIN"].includes(role));
   return <main className={styles.shell}>
-    <aside className={styles.sidebar}><a className={styles.brand} href="/"><BrandMark inverse tagline="Organization access"/></a><nav><a href="/catalog"><span>◇</span>Catalog</a><a href="/admin"><span>▥</span>Reports</a><a className={styles.active} href="/admin/team"><span>♙</span>Team</a></nav><div className={styles.identity}>{session?.organization.name}<span>{session ? human(session.role) : ""}</span></div></aside>
+    <aside className={styles.sidebar}><a className={styles.brand} href="/"><BrandMark inverse tagline="Organization access"/></a><nav><a href="/catalog"><span>◇</span>Catalog</a><a href="/reports"><span>▥</span>Reports</a><a className={styles.active} href="/admin/team"><span>♙</span>Team</a></nav><div className={styles.identity}>{session?.organization.name}<span>{session ? human(session.role) : ""}</span></div></aside>
     <section className={styles.content}>
       <header><div><span className={styles.eyebrow}>ORGANIZATION ACCESS</span><h1>Team management</h1><p>Invite people and give each person only the access their work requires.</p></div><button onClick={() => void load()} disabled={loading}>{loading ? "Refreshing…" : "Refresh"}</button></header>
       {error && <div className={styles.error}>{error}</div>}

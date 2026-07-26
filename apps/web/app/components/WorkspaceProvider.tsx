@@ -31,19 +31,20 @@ export function useWorkspacePathname() {
 }
 
 function resolveActive(pathname: string): NavKey {
-  const [path = "", hash = ""] = pathname.split("#");
+  const path = pathname.split("#")[0] ?? pathname;
   if (path.startsWith("/pipeline")) return "pipeline";
   if (path.startsWith("/orders")) return "orders";
-  if (path.startsWith("/catalog")) {
-    if (hash === "listing-drafts") return "listings";
-    if (hash === "fitment-workflow") return "fitment";
-    return "catalog";
-  }
+  if (path.startsWith("/inventory")) return "inventory";
+  if (path.startsWith("/pricing")) return "pricing";
+  if (path.startsWith("/fitment")) return "fitment";
+  if (path.startsWith("/shipping")) return "shipping";
+  if (path.startsWith("/reports")) return "reports";
+  if (path.startsWith("/settings")) return "settings";
+  if (path.startsWith("/catalog")) return "catalog";
   if (path.startsWith("/admin/team")) return "team";
   if (path.startsWith("/admin")) return "reports";
   if (path.startsWith("/notifications")) return "notifications";
   if (path.startsWith("/account")) return "settings";
-  if (path === "/") return "pricing";
   return "dashboard";
 }
 
@@ -52,8 +53,14 @@ function isShellWorkspace(pathname: string) {
   return (
     path.startsWith("/dashboard") ||
     path.startsWith("/catalog") ||
+    path.startsWith("/inventory") ||
+    path.startsWith("/pricing") ||
+    path.startsWith("/fitment") ||
+    path.startsWith("/shipping") ||
     path.startsWith("/pipeline") ||
-    path.startsWith("/orders")
+    path.startsWith("/orders") ||
+    path.startsWith("/reports") ||
+    path.startsWith("/settings")
   );
 }
 

@@ -137,7 +137,7 @@ export default function NotificationCenter() {
   return <main className={styles.page}>
     <aside>
       <a className={styles.brand} href="/catalog"><BrandMark inverse tagline="Operational inbox"/></a>
-      <nav><a href="/catalog">Catalog</a><a href="/admin">Admin</a><a href="/account/security">Account security</a></nav>
+      <nav><a href="/catalog">Catalog</a><a href="/reports">Reports</a><a href="/settings">Settings</a></nav>
       <div className={styles.unread}><strong>{result.unreadCount}</strong><span>unread alerts</span></div>
     </aside>
     <section className={styles.content}>

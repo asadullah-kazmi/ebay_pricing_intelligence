@@ -1,11 +1,5 @@
-import type { Metadata } from "next";
-import AdminOperations from "./AdminOperations";
-
-export const metadata: Metadata = {
-  title: "Operations Admin | PartPulse",
-  description: "Tenant publishing oversight, audit history, worker health, and failed-job recovery",
-};
+import { redirect } from "next/navigation";
 
 export default function AdminPage() {
-  return <AdminOperations />;
+  redirect("/reports");
 }

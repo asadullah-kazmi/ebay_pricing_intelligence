@@ -64,7 +64,7 @@ export default function InvitationAcceptance() {
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "Unable to accept invitation");
       setState("complete");
-      window.setTimeout(() => window.location.assign("/account/security?welcome=1"), 900);
+      window.setTimeout(() => window.location.assign("/settings?welcome=1"), 900);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to accept invitation");
       setState("ready");
