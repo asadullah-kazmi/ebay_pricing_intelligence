@@ -82,6 +82,7 @@ export default function ChannelsWorkspace() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [warning, setWarning] = useState("");
 
   const ebayConnected = ebay.connected && ebay.status === "ACTIVE";
 
@@ -184,12 +185,20 @@ export default function ChannelsWorkspace() {
     setBusy("sync");
     setError("");
     setNotice("");
+    setWarning("");
     try {
-      setResources(await apiFetch("/api/ebay/resources/sync", {
+      const result = await apiFetch("/api/ebay/resources/sync", {
         method: "POST",
         body: JSON.stringify({ marketplace }),
-      }) as EbaySellerResources);
-      setNotice(`Synced payment, return, shipping policies and inventory locations for ${marketplaceLabel(marketplace)}.`);
+      }) as EbaySellerResources;
+      setResources(result);
+      if (result.warnings?.length) {
+        setWarning(result.warnings.join(" "));
+        const syncedSomething = result.paymentPolicies.length + result.returnPolicies.length + result.fulfillmentPolicies.length + result.inventoryLocations.length > 0;
+        setNotice(syncedSomething ? "Partial sync completed. Enable Business Policies on eBay, then sync again." : "");
+      } else {
+        setNotice(`Synced payment, return, shipping policies and inventory locations for ${marketplaceLabel(marketplace)}.`);
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to sync seller details from eBay");
     } finally {
@@ -232,6 +241,7 @@ export default function ChannelsWorkspace() {
       </header>
 
       {notice && <div className={styles.notice}>{notice}</div>}
+      {warning && <div className={styles.warn}>{warning}</div>}
       {error && <div className={styles.error}>{error}</div>}
       {!ebay.setup?.configured && !demo && (
         <div className={styles.error}>{ebay.setup?.message ?? "eBay seller OAuth is not configured on the API service."}</div>

@@ -148,8 +148,9 @@ export function normalizeCategoryAspects(rows: Array<Record<string, unknown>>): 
   });
 }
 
-export async function fetchSellerResources(organizationId: string, marketplace: Marketplace): Promise<SellerResource[]> {
-  const [payment, returns, fulfillment, locations] = await Promise.all([
+export async function fetchSellerResources(organizationId: string, marketplace: Marketplace): Promise<{ resources: SellerResource[]; warnings: string[] }> {
+  const warnings: string[] = [];
+  const tasks = await Promise.allSettled([
     sellerGet<{ paymentPolicies?: Array<Record<string, unknown>> }>(
       organizationId,
       `/sell/account/v1/payment_policy?marketplace_id=${marketplace}`,
@@ -175,12 +176,35 @@ export async function fetchSellerResources(organizationId: string, marketplace: 
       "eBay inventory location lookup",
     ),
   ]);
-  return [
+
+  const read = <T>(index: number, label: string, fallback: T): T => {
+    const result = tasks[index];
+    if (result?.status === "fulfilled") return result.value;
+    const reason = result?.status === "rejected" ? result.reason : undefined;
+    const message = reason instanceof EbayApiError ? reason.message : reason instanceof Error ? reason.message : `${label} failed`;
+    warnings.push(message);
+    return fallback;
+  };
+
+  const payment = read(0, "Payment policies", { paymentPolicies: [] });
+  const returns = read(1, "Return policies", { returnPolicies: [] });
+  const fulfillment = read(2, "Shipping policies", { fulfillmentPolicies: [] });
+  const locations = read(3, "Inventory locations", { locations: [] });
+
+  const resources = [
     ...policyResources("PAYMENT_POLICY", payment.paymentPolicies ?? [], "paymentPolicyId"),
     ...policyResources("RETURN_POLICY", returns.returnPolicies ?? [], "returnPolicyId"),
     ...policyResources("FULFILLMENT_POLICY", fulfillment.fulfillmentPolicies ?? [], "fulfillmentPolicyId"),
     ...normalizeInventoryLocations(locations.locations ?? []),
   ];
+
+  if (warnings.some((warning) => /not eligible for business policy/i.test(warning))) {
+    warnings.push(
+      "Enable eBay Business Policies on this seller account: Seller Hub → Listings → Business policies → Get started, then create payment, return, and shipping policies for eBay US.",
+    );
+  }
+
+  return { resources, warnings };
 }
 
 export async function fetchCategoryAspects(marketplace: Marketplace, categoryId: string): Promise<EbayAspectRequirement[]> {

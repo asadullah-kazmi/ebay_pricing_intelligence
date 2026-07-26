@@ -65,6 +65,17 @@
   border: 1px solid #bfdbfe;
 }
 
+.warn {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  background: #fffbeb;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+
 .error {
   background: #fef2f2;
   color: #b42318;

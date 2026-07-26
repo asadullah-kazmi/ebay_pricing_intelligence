@@ -341,6 +341,7 @@ export interface EbaySellerResources {
   returnPolicies: EbaySellerResource[];
   fulfillmentPolicies: EbaySellerResource[];
   inventoryLocations: EbaySellerResource[];
+  warnings?: string[];
 }
 
 export interface EbayAspectRequirement {

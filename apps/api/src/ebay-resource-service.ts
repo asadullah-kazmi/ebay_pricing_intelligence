@@ -36,7 +36,7 @@ export async function listCachedSellerResources(organizationId: string, marketpl
 }
 
 export async function syncSellerResources(organizationId: string, marketplace: Marketplace) {
-  const resources = await fetchSellerResources(organizationId, marketplace);
+  const { resources, warnings } = await fetchSellerResources(organizationId, marketplace);
   const fetchedAt = new Date();
   await prisma.$transaction(async (tx) => {
     await tx.ebaySellerResource.deleteMany({ where: { organizationId, marketplace } });
@@ -55,7 +55,7 @@ export async function syncSellerResources(organizationId: string, marketplace: M
       });
     }
   });
-  return listCachedSellerResources(organizationId, marketplace);
+  return { ...await listCachedSellerResources(organizationId, marketplace), warnings };
 }
 
 export async function refreshCategoryMetadata(marketplace: Marketplace, categoryId: string) {
