@@ -1,5 +1,6 @@
 import { Prisma, type ListingDraft, type PartCondition } from "@prisma/client";
 import { prisma } from "./db.js";
+import { buildEbayListingTitle } from "./domain/listing-title.js";
 import { enqueueOutboxEvent } from "./outbox-service.js";
 import { getCachedReadinessMetadata, refreshCategoryMetadata, syncSellerResources } from "./ebay-resource-service.js";
 import { getApprovedPricingContext } from "./pricing-governance-service.js";
@@ -144,9 +145,28 @@ function snapshot(values: DraftValues, status: "BLOCKED" | "READY", issues: Read
   return asJson({ ...values, status, validationIssues: issues });
 }
 
-function generatedTitle(part: { brand: string | null; partName: string | null; primaryPartNumber: string; condition: PartCondition }): string {
-  const title = [part.condition === "USED" ? "OEM" : "New", part.brand, part.partName, part.primaryPartNumber].filter(Boolean).join(" ");
-  return title.slice(0, 80).trim();
+function generatedTitle(part: {
+  brand: string | null;
+  partName: string | null;
+  primaryPartNumber: string;
+  condition: PartCondition;
+  placement?: string | null;
+  fitmentApplications?: Array<{ properties: Prisma.JsonValue }>;
+  description?: string | null;
+}): string {
+  return buildEbayListingTitle({
+    brand: part.brand,
+    partName: part.partName,
+    primaryPartNumber: part.primaryPartNumber,
+    condition: part.condition,
+    placement: part.placement,
+    fitmentApplications: (part.fitmentApplications ?? []).flatMap((application) => {
+      if (!application.properties || typeof application.properties !== "object" || Array.isArray(application.properties)) return [];
+      return [Object.fromEntries(Object.entries(application.properties).flatMap(([key, value]) =>
+        typeof value === "string" && value.trim() ? [[key, value.trim()]] : [],
+      ))];
+    }),
+  });
 }
 
 const contextInclude = {
@@ -198,7 +218,10 @@ export async function createListingDrafts(input: {
       include: {
         inventoryItem: true,
         media: { where: { approved: true, mediaAsset: { status: "READY" } }, select: { id: true } },
-        fitmentApplications: { where: { status: "APPROVED", marketplace: input.marketplace }, select: { id: true } },
+        fitmentApplications: {
+          where: { status: "APPROVED", marketplace: input.marketplace },
+          select: { id: true, properties: true },
+        },
         pricingJobItems: {
           where: { status: "COMPLETED", pricingJob: { marketplace: input.marketplace } },
           orderBy: { completedAt: "desc" },

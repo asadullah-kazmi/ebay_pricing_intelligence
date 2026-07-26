@@ -43,7 +43,7 @@ import { decidePricingProposal, getOrganizationPricingRule, listPricingProposals
 import { createManualFitment, decideManualFitment, listPartFitment, ManualFitmentError, reviseManualFitment } from "./manual-fitment-service.js";
 import { CatalogSavedViewError, deleteCatalogSavedView, listCatalogSavedViews, saveCatalogView } from "./catalog-saved-view-service.js";
 import { getNotificationPreferences, listNotifications, markAllNotificationsRead, markNotificationRead, NotificationError, updateNotificationPreferences } from "./notification-service.js";
-import { createQuickSku, QuickSkuError } from "./quick-sku-service.js";
+import { assembleQuickSkuPrepared, createQuickSku, fetchQuickSkuFitment, finalizeQuickSku, identifyQuickSkuPart, QuickSkuError } from "./quick-sku-service.js";
 import { createRetentionRun, getRetentionPolicy, listRetentionRuns, RetentionError, startRetentionJob, updateRetentionPolicy } from "./retention-service.js";
 
 const searchSchema = z.object({
@@ -192,6 +192,68 @@ const quickSkuSchema = z.object({
   condition: z.enum(["NEW", "USED"]).default("USED"),
   marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).default("EBAY_US"),
   currency: z.string().trim().length(3).default("USD"),
+}).strict();
+const quickSkuIdentifySchema = z.object({
+  partNumber: z.string().trim().min(2).max(80),
+  brand: z.string().trim().min(1).max(80),
+  marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).default("EBAY_US"),
+}).strict();
+const quickSkuFitmentSchema = quickSkuIdentifySchema.extend({
+  epid: z.string().trim().max(120).nullable(),
+}).strict();
+const quickSkuPreparedSchema = z.object({
+  identifiedBrand: z.string().trim().min(1).max(80),
+  partName: z.string().trim().min(1).max(200),
+  listingTitle: z.string().trim().min(1).max(120),
+  description: z.string().trim().max(4000).nullable(),
+  matched: z.boolean(),
+  candidateEpid: z.string().trim().max(120).nullable(),
+  candidateScore: z.number().nullable(),
+  matchedOn: z.array(z.string()),
+  aspects: z.record(z.string(), z.array(z.string())),
+  categoryId: z.string().nullable(),
+  categoryName: z.string().nullable(),
+  discoverySource: z.string().nullable(),
+  fitmentCount: z.number().int().min(0),
+  fitmentReason: z.string().nullable(),
+  applications: z.array(z.object({
+    fingerprint: z.string(),
+    properties: z.record(z.string(), z.string()),
+  })),
+}).strict();
+const quickSkuPrepareSchema = z.object({
+  condition: z.enum(["NEW", "USED"]),
+  identify: z.object({
+    partNumber: z.string(),
+    brand: z.string(),
+    marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]),
+    matched: z.boolean(),
+    identifiedBrand: z.string(),
+    partName: z.string(),
+    best: z.object({
+      epid: z.string(),
+      title: z.string(),
+      score: z.number(),
+      matchedOn: z.array(z.string()),
+      aspects: z.record(z.string(), z.array(z.string())),
+    }).nullable(),
+    discovery: z.object({
+      categoryId: z.string().nullable(),
+      categoryName: z.string().nullable(),
+      source: z.string().nullable(),
+    }),
+  }),
+  fitment: z.object({
+    applications: z.array(z.object({
+      fingerprint: z.string(),
+      properties: z.record(z.string(), z.string()),
+    })),
+    fitmentCount: z.number().int().min(0),
+    fitmentReason: z.string().nullable(),
+  }),
+}).strict();
+const quickSkuFinalizeSchema = quickSkuSchema.extend({
+  prepared: quickSkuPreparedSchema,
 }).strict();
 const approveFitmentSchema = z.object({ candidateId: z.string().min(1) }).strict();
 const fitmentRoles = requireOrganizationRoles(...organizationPermissionRoles.fitment);
@@ -814,10 +876,46 @@ app.get("/api/parts", requireTenantContext, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+app.post("/api/parts/quick-sku/identify", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const input = quickSkuIdentifySchema.parse(req.body);
+    res.json(await identifyQuickSkuPart(tenant.organization.id, input));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/parts/quick-sku/fitment", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const input = quickSkuFitmentSchema.parse(req.body);
+    res.json(await fetchQuickSkuFitment(tenant.organization.id, input));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/parts/quick-sku/prepare", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+  try {
+    const input = quickSkuPrepareSchema.parse(req.body);
+    res.json(assembleQuickSkuPrepared(input));
+  } catch (error) { next(error); }
+});
+
 app.post("/api/parts/quick-sku", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
-    const input = quickSkuSchema.parse(req.body);
+    const body = req.body as Record<string, unknown>;
+    if (body.prepared) {
+      const input = quickSkuFinalizeSchema.parse(body);
+      const { prepared, ...quickSkuInput } = input;
+      res.status(201).json(await finalizeQuickSku(
+        tenant.organization.id,
+        tenant.user.id,
+        quickSkuInput,
+        prepared,
+        res.locals.requestId,
+      ));
+      return;
+    }
+    const input = quickSkuSchema.parse(body);
     res.status(201).json(await createQuickSku(tenant.organization.id, tenant.user.id, input, res.locals.requestId));
   } catch (error) { next(error); }
 });
