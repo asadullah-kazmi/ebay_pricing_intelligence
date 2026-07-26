@@ -52,7 +52,7 @@ export default function Home() {
       </section>
 
       <footer className={styles.footer}>
-        PartPulse · Exact matches. Better margins.
+        PartPulse · Exact matches. Better margins. · <Link href="/about">About us</Link>
       </footer>
     </main>
   );
