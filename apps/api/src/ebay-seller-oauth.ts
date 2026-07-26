@@ -56,6 +56,10 @@ function apiBase(environment: EbayEnvironment): string {
   return environment === "production" ? "https://api.ebay.com" : "https://api.sandbox.ebay.com";
 }
 
+function identityApiBase(environment: EbayEnvironment): string {
+  return environment === "production" ? "https://apiz.ebay.com" : "https://apiz.sandbox.ebay.com";
+}
+
 export function encryptSellerToken(value: string, key: Buffer): EncryptedSecret {
   if (key.length !== 32) throw new Error("Seller token encryption requires a 32-byte key");
   const iv = randomBytes(12);
@@ -112,8 +116,12 @@ async function tokenRequest(config: ReturnType<typeof oauthConfig>, body: URLSea
 }
 
 async function fetchEbayIdentity(environment: EbayEnvironment, accessToken: string) {
-  const response = await fetch(`${apiBase(environment)}/commerce/identity/v1/user/`, {
-    signal: AbortSignal.timeout(20_000), headers: { Authorization: `Bearer ${accessToken}` },
+  const response = await fetch(`${identityApiBase(environment)}/commerce/identity/v1/user`, {
+    signal: AbortSignal.timeout(20_000),
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: "application/json",
+    },
   });
   if (!response.ok) throw new EbaySellerOAuthError(`eBay identity lookup failed (${response.status})`, 502);
   return response.json() as Promise<{

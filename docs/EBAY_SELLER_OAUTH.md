@@ -62,6 +62,7 @@ Disconnecting deletes the local token material but does not promise remote revoc
 - **Seller OAuth is not configured:** one or more of the client ID, client secret, RuName, or encryption key is missing from the API service.
 - **Invalid or expired state:** restart from **Connect eBay**. Consent links expire after 10 minutes and can be used only once.
 - **Token request failed:** verify production credentials are paired with `EBAY_ENVIRONMENT=production` and that `EBAY_RUNAME` exactly matches the production RuName.
+- **Identity lookup failed (404):** the Commerce Identity API uses `apiz.ebay.com`, not `api.ebay.com`. Redeploy the API if you are on an older build that called the wrong host.
 - **Authorization expired:** reconnect the seller. eBay can revoke a grant before its displayed refresh-token expiry.
 - **Callback opens the wrong service:** the accepted URL must use the API Railway domain, while `WEB_ORIGIN` must use the web Railway domain.
 

@@ -42,4 +42,9 @@ describe("eBay OAuth redirect diagnostics", () => {
     expect(ebayOAuthRedirectReason(error)).toBe("token");
     expect(ebayOAuthRedirectMessage(error)).toContain("invalid_grant");
   });
+
+  it("maps identity failures to the identity reason", () => {
+    const error = new EbaySellerOAuthError("eBay identity lookup failed (404)", 502);
+    expect(ebayOAuthRedirectReason(error)).toBe("identity");
+  });
 });
