@@ -24,7 +24,7 @@ Add these variables to the **API service**, alongside the production `EBAY_CLIEN
 EBAY_ENVIRONMENT=production
 EBAY_RUNAME=your-production-runame
 EBAY_OAUTH_ENCRYPTION_KEY=one-base64-encoded-32-byte-key
-EBAY_OAUTH_SCOPES=https://api.ebay.com/oauth/api_scope/sell.inventory https://api.ebay.com/oauth/api_scope/sell.account https://api.ebay.com/oauth/api_scope/commerce.identity.readonly https://api.ebay.com/oauth/api_scope/commerce.catalog.readonly
+EBAY_OAUTH_SCOPES=https://api.ebay.com/oauth/api_scope/sell.inventory https://api.ebay.com/oauth/api_scope/sell.account https://api.ebay.com/oauth/api_scope/commerce.identity.readonly
 WEB_ORIGIN=https://YOUR-WEB-DOMAIN.up.railway.app
 ```
 

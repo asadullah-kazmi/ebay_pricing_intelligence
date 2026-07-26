@@ -110,7 +110,6 @@ export function getConfig(): AppConfig {
     "https://api.ebay.com/oauth/api_scope/sell.inventory",
     "https://api.ebay.com/oauth/api_scope/sell.account",
     "https://api.ebay.com/oauth/api_scope/commerce.identity.readonly",
-    "https://api.ebay.com/oauth/api_scope/commerce.catalog.readonly",
   ];
   const ebayOAuthScopes = (process.env.EBAY_OAUTH_SCOPES?.trim() || defaultEbayOAuthScopes.join(" ")).split(/\s+/).filter(Boolean);
   if (!ebayOAuthScopes.length || ebayOAuthScopes.some((scope) => !/^https:\/\/api\.ebay\.com\/oauth\/api_scope\/[a-z0-9._-]+$/i.test(scope))) {
