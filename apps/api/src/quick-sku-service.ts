@@ -5,8 +5,11 @@ import { normalizePartNumber } from "./domain/matching.js";
 import { buildEbayListingTitle } from "./domain/listing-title.js";
 import { normalizeFitmentApplications, scoreFitmentCandidate } from "./fitment-service.js";
 import { discoverEbayFitment, getEbayProductCompatibilities, isBrowseDerivedEpid, type EbayFitmentDiscovery } from "./providers/ebay-fitment.js";
+import { identifyPartWithGemini, type AiPartIdentificationResult } from "./providers/gemini-part-identification.js";
 import { queuePartMarketPricing } from "./pricing-service.js";
 import type { Marketplace } from "./types.js";
+
+export type QuickSkuIdentificationSource = "EBAY" | "AI" | "GENERIC";
 
 export class QuickSkuError extends Error {
   constructor(message: string, readonly statusCode: 400 | 404 | 409 | 502 = 400) {
@@ -31,16 +34,50 @@ export type QuickSkuPrepared = {
   listingTitle: string;
   description: string | null;
   matched: boolean;
+  identificationSource: QuickSkuIdentificationSource;
   candidateEpid: string | null;
   candidateScore: number | null;
   matchedOn: string[];
   aspects: Record<string, string[]>;
+  placement: string | null;
   categoryId: string | null;
   categoryName: string | null;
   discoverySource: string | null;
+  aiModel: string | null;
+  aiConfidence: string | null;
   fitmentCount: number;
   fitmentReason: string | null;
   applications: Array<{ fingerprint: string; properties: Record<string, string> }>;
+};
+
+export type QuickSkuIdentifyResult = {
+  partNumber: string;
+  brand: string;
+  marketplace: Marketplace;
+  matched: boolean;
+  identificationSource: QuickSkuIdentificationSource;
+  identifiedBrand: string;
+  partName: string;
+  placement: string | null;
+  best: {
+    epid: string;
+    title: string;
+    score: number;
+    matchedOn: string[];
+    aspects: Record<string, string[]>;
+  } | null;
+  discovery: {
+    categoryId: string | null;
+    categoryName: string | null;
+    source: string | null;
+  };
+  ai: {
+    model: string;
+    confidence: string;
+    partName: string;
+    placement: string | null;
+    titleHint: string | null;
+  } | null;
 };
 
 function asJson(value: unknown): Prisma.InputJsonValue {
@@ -116,10 +153,20 @@ async function allocateUniqueSku(organizationId: string, preferred: string) {
   throw new QuickSkuError("Unable to allocate a unique SKU for this part number", 409);
 }
 
+function toAiPayload(result: AiPartIdentificationResult) {
+  return {
+    model: result.model,
+    confidence: result.confidence,
+    partName: result.partName,
+    placement: result.placement,
+    titleHint: result.titleHint,
+  };
+}
+
 export async function identifyQuickSkuPart(
   organizationId: string,
   input: Pick<QuickSkuInput, "partNumber" | "brand" | "marketplace">,
-) {
+): Promise<QuickSkuIdentifyResult> {
   const { partNumber, brand, marketplace } = parseQuickSkuBase({
     ...input,
     price: 1,
@@ -153,8 +200,10 @@ export async function identifyQuickSkuPart(
     brand,
     marketplace,
     matched: Boolean(best),
+    identificationSource: best ? "EBAY" : "GENERIC",
     identifiedBrand,
     partName,
+    placement: null,
     best: best
       ? {
           epid: best.epid,
@@ -169,6 +218,30 @@ export async function identifyQuickSkuPart(
       categoryName: discovery.categoryName,
       source: discovery.source ?? null,
     },
+    ai: null,
+  };
+}
+
+export async function enhanceQuickSkuWithAi(
+  identify: QuickSkuIdentifyResult,
+  input: Pick<QuickSkuInput, "condition"> = {},
+): Promise<QuickSkuIdentifyResult> {
+  if (identify.matched || identify.identificationSource === "AI") return identify;
+
+  const ai = await identifyPartWithGemini({
+    partNumber: identify.partNumber,
+    brand: identify.brand,
+    condition: input.condition ?? "USED",
+    marketplace: identify.marketplace,
+  });
+  if (!ai) return identify;
+
+  return {
+    ...identify,
+    identificationSource: "AI",
+    partName: ai.partName,
+    placement: ai.placement,
+    ai: toAiPayload(ai),
   };
 }
 
@@ -226,6 +299,7 @@ export function buildQuickSkuListingTitle(input: {
   applications: Array<{ properties: Record<string, string> }>;
   aspects?: Record<string, string[]>;
   sourceTitle?: string | null;
+  placement?: string | null;
 }) {
   const listingTitle = buildEbayListingTitle({
     brand: input.identifiedBrand,
@@ -235,20 +309,27 @@ export function buildQuickSkuListingTitle(input: {
     fitmentApplications: input.applications.map(({ properties }) => properties),
     aspects: input.aspects,
     sourceTitle: input.sourceTitle ?? null,
+    placement: input.placement ?? null,
   });
 
   return { listingTitle };
 }
 
 export function assembleQuickSkuPrepared(input: {
-  identify: Awaited<ReturnType<typeof identifyQuickSkuPart>>;
-  fitment: Awaited<ReturnType<typeof fetchQuickSkuFitment>>;
+  identify: QuickSkuIdentifyResult;
+  fitment: {
+    applications: Array<{ fingerprint: string; properties: Record<string, string> }>;
+    fitmentCount: number;
+    fitmentReason: string | null;
+  };
   condition: "NEW" | "USED";
 }): QuickSkuPrepared {
   const { identify, fitment, condition } = input;
   const description = identify.best
     ? aspectsToDescription(identify.best.aspects, identify.discovery.categoryName)
-    : `Quick SKU created for ${identify.brand} ${identify.partNumber}`;
+    : identify.identificationSource === "AI"
+      ? `Quick SKU AI-suggested part name for ${identify.brand} ${identify.partNumber}${identify.ai?.model ? ` (${identify.ai.model})` : ""}`
+      : `Quick SKU created for ${identify.brand} ${identify.partNumber}`;
   const { listingTitle } = buildQuickSkuListingTitle({
     partNumber: identify.partNumber,
     brand: identify.brand,
@@ -257,7 +338,8 @@ export function assembleQuickSkuPrepared(input: {
     partName: identify.partName,
     applications: fitment.applications,
     aspects: identify.best?.aspects,
-    sourceTitle: identify.best?.title ?? null,
+    sourceTitle: identify.best?.title ?? identify.ai?.titleHint ?? null,
+    placement: identify.placement,
   });
 
   return {
@@ -266,13 +348,17 @@ export function assembleQuickSkuPrepared(input: {
     listingTitle,
     description,
     matched: identify.matched,
+    identificationSource: identify.identificationSource,
     candidateEpid: identify.best?.epid ?? null,
     candidateScore: identify.best?.score ?? null,
     matchedOn: identify.best?.matchedOn ?? [],
     aspects: identify.best?.aspects ?? {},
+    placement: identify.placement,
     categoryId: identify.discovery.categoryId,
     categoryName: identify.discovery.categoryName,
     discoverySource: identify.discovery.source,
+    aiModel: identify.ai?.model ?? null,
+    aiConfidence: identify.ai?.confidence ?? null,
     fitmentCount: fitment.fitmentCount,
     fitmentReason: fitment.fitmentReason,
     applications: fitment.applications,
@@ -303,9 +389,11 @@ async function persistQuickSkuPart(
         description: prepared.description,
         condition,
         status: "READY_FOR_ENRICHMENT",
-        notes: prepared.matched
+        notes: prepared.identificationSource === "EBAY"
           ? `Quick SKU identified via eBay ${prepared.discoverySource ?? "catalog"} (${prepared.candidateEpid})${prepared.categoryName ? ` · ${prepared.categoryName}` : ""}`
-          : "Quick SKU created without a confident eBay catalog match",
+          : prepared.identificationSource === "AI"
+            ? `Quick SKU AI-suggested via ${prepared.aiModel ?? "Gemini"}${prepared.aiConfidence ? ` · confidence ${prepared.aiConfidence}` : ""} — review recommended`
+            : "Quick SKU created without a confident eBay catalog or AI match",
         createdById: userId,
         partNumbers: {
           create: [{
@@ -373,7 +461,9 @@ async function persistQuickSkuPart(
         brand: prepared.identifiedBrand,
         marketplace,
         identified: prepared.matched,
+        identificationSource: prepared.identificationSource,
         candidateEpid: prepared.candidateEpid,
+        aiModel: prepared.aiModel,
         fitmentCount: prepared.fitmentCount,
         requestId: requestId ?? null,
       },
@@ -399,15 +489,19 @@ function toQuickSkuResponse(
     },
     identification: {
       matched: prepared.matched,
+      source: prepared.identificationSource,
       title: prepared.listingTitle,
       brand: prepared.identifiedBrand,
       partName: prepared.partName,
+      placement: prepared.placement,
       categoryId: prepared.categoryId,
       categoryName: prepared.categoryName,
       epid: prepared.candidateEpid,
       score: prepared.candidateScore,
       matchedOn: prepared.matchedOn,
       aspects: prepared.aspects,
+      aiModel: prepared.aiModel,
+      aiConfidence: prepared.aiConfidence,
       fitmentCount: prepared.fitmentCount,
       fitmentReason: prepared.fitmentReason,
       marketplace,
@@ -449,7 +543,8 @@ export async function createQuickSku(
   requestId?: string,
 ) {
   const { condition } = parseQuickSkuBase(input);
-  const identify = await identifyQuickSkuPart(organizationId, input);
+  const identified = await identifyQuickSkuPart(organizationId, input);
+  const identify = await enhanceQuickSkuWithAi(identified, { condition });
   const fitment = await fetchQuickSkuFitment(organizationId, {
     partNumber: input.partNumber,
     brand: input.brand,

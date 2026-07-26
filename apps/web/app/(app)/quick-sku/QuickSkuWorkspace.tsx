@@ -7,7 +7,11 @@ import styles from "./quick-sku.module.css";
 
 type QuickSkuResult = {
   part: { id: string; sku: string };
-  identification: { title: string };
+  identification: {
+    title: string;
+    source?: "EBAY" | "AI" | "GENERIC";
+    aiModel?: string | null;
+  };
 };
 
 type IdentifyResponse = {
@@ -15,8 +19,10 @@ type IdentifyResponse = {
   brand: string;
   marketplace: string;
   matched: boolean;
+  identificationSource: "EBAY" | "AI" | "GENERIC";
   identifiedBrand: string;
   partName: string;
+  placement: string | null;
   best: {
     epid: string;
     title: string;
@@ -29,6 +35,13 @@ type IdentifyResponse = {
     categoryName: string | null;
     source: string | null;
   };
+  ai: {
+    model: string;
+    confidence: string;
+    partName: string;
+    placement: string | null;
+    titleHint: string | null;
+  } | null;
 };
 
 type FitmentResponse = {
@@ -40,11 +53,12 @@ type FitmentResponse = {
 type ProgressStep = {
   id: string;
   label: string;
-  status: "pending" | "active" | "done" | "error";
+  status: "pending" | "active" | "done" | "error" | "skipped";
 };
 
 const STEP_DEFS = [
   { id: "identify", label: "Identifying part in eBay catalog" },
+  { id: "ai", label: "Enhancing with AI fallback" },
   { id: "fitment", label: "Applying vehicle fitment" },
   { id: "title", label: "Building listing title" },
   { id: "catalog", label: "Adding to your catalog" },
@@ -59,13 +73,21 @@ function setStepStatus(steps: ProgressStep[], id: string, status: ProgressStep["
   return steps.map((step) => (step.id === id ? { ...step, status } : step));
 }
 
-function activateNext(steps: ProgressStep[], doneId: string) {
+function activateNext(steps: ProgressStep[], doneId: string, doneStatus: ProgressStep["status"] = "done") {
   const nextIndex = STEP_DEFS.findIndex((step) => step.id === doneId) + 1;
-  let updated = setStepStatus(steps, doneId, "done");
+  let updated = setStepStatus(steps, doneId, doneStatus);
   if (nextIndex < STEP_DEFS.length) {
     updated = setStepStatus(updated, STEP_DEFS[nextIndex]!.id, "active");
   }
   return updated;
+}
+
+function stepCaption(status: ProgressStep["status"]) {
+  if (status === "done") return "Complete";
+  if (status === "skipped") return "Not needed";
+  if (status === "active") return "In progress…";
+  if (status === "error") return "Failed";
+  return "Waiting";
 }
 
 export default function QuickSkuWorkspace() {
@@ -82,7 +104,7 @@ export default function QuickSkuWorkspace() {
   const [steps, setSteps] = useState<ProgressStep[]>(initialSteps());
 
   const showProgress = busy || (!result && steps.some((step) => step.status !== "pending"));
-  const completedSteps = steps.filter((step) => step.status === "done").length;
+  const completedSteps = steps.filter((step) => step.status === "done" || step.status === "skipped").length;
   const progressPercent = Math.round((completedSteps / STEP_DEFS.length) * 100);
   const activeStep = steps.find((step) => step.status === "active");
 
@@ -107,7 +129,7 @@ export default function QuickSkuWorkspace() {
       if (demo) {
         for (const step of STEP_DEFS) {
           await new Promise((resolve) => window.setTimeout(resolve, 420));
-          progress = activateNext(progress, step.id);
+          progress = activateNext(progress, step.id, step.id === "ai" ? "skipped" : "done");
           setSteps([...progress]);
         }
         const demoPartNumber = payload.partNumber || "8K0615301M";
@@ -119,12 +141,13 @@ export default function QuickSkuWorkspace() {
           },
           identification: {
             title: `2012-2018 ${demoBrand} A6 C7 Front Left Rear Brake Caliper ${demoPartNumber} OEM Used`,
+            source: "EBAY",
           },
         });
         return;
       }
 
-      const identify = await apiFetch("/api/parts/quick-sku/identify", {
+      let identify = await apiFetch("/api/parts/quick-sku/identify", {
         method: "POST",
         body: JSON.stringify({
           partNumber: payload.partNumber,
@@ -134,6 +157,18 @@ export default function QuickSkuWorkspace() {
       }) as IdentifyResponse;
       progress = activateNext(progress, "identify");
       setSteps([...progress]);
+
+      if (identify.matched) {
+        progress = activateNext(progress, "ai", "skipped");
+        setSteps([...progress]);
+      } else {
+        identify = await apiFetch("/api/parts/quick-sku/identify-ai", {
+          method: "POST",
+          body: JSON.stringify({ condition: payload.condition, identify }),
+        }) as IdentifyResponse;
+        progress = activateNext(progress, "ai", identify.identificationSource === "AI" ? "done" : "skipped");
+        setSteps([...progress]);
+      }
 
       const fitment = await apiFetch("/api/parts/quick-sku/fitment", {
         method: "POST",
@@ -157,7 +192,14 @@ export default function QuickSkuWorkspace() {
       const created = await apiFetch("/api/parts/quick-sku", {
         method: "POST",
         body: JSON.stringify({ ...payload, prepared }),
-      }) as { part: { id: string; sku: string }; identification: { title: string } };
+      }) as {
+        part: { id: string; sku: string };
+        identification: {
+          title: string;
+          source?: "EBAY" | "AI" | "GENERIC";
+          aiModel?: string | null;
+        };
+      };
 
       progress = activateNext(progress, "catalog");
       setSteps([...progress]);
@@ -166,7 +208,11 @@ export default function QuickSkuWorkspace() {
 
       setResult({
         part: { id: created.part.id, sku: created.part.sku },
-        identification: { title: created.identification.title },
+        identification: {
+          title: created.identification.title,
+          source: created.identification.source ?? identify.identificationSource,
+          aiModel: created.identification.aiModel ?? identify.ai?.model ?? null,
+        },
       });
       setPartNumber("");
       setBrand("");
@@ -307,7 +353,7 @@ export default function QuickSkuWorkspace() {
                     <li key={step.id} className={styles[`step_${step.status}`]}>
                       <div className={styles.stepRail}>
                         <span className={styles.stepIcon} aria-hidden="true">
-                          {step.status === "done" ? (
+                          {step.status === "done" || step.status === "skipped" ? (
                             <svg viewBox="0 0 16 16" fill="none"><path d="M3.5 8.2 6.4 11 12.5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
                           ) : step.status === "active" ? (
                             <span className={styles.stepSpinner} />
@@ -319,15 +365,7 @@ export default function QuickSkuWorkspace() {
                       </div>
                       <div className={styles.stepCopy}>
                         <strong>{step.label}</strong>
-                        <span>
-                          {step.status === "done"
-                            ? "Complete"
-                            : step.status === "active"
-                              ? "Running…"
-                              : step.status === "error"
-                                ? "Failed"
-                                : "Queued"}
-                        </span>
+                        <span>{stepCaption(step.status)}</span>
                       </div>
                     </li>
                   ))}
@@ -372,12 +410,20 @@ export default function QuickSkuWorkspace() {
                   <p className={styles.listingTitle}>{result.identification.title}</p>
                   <div className={styles.listingMeta}>
                     <span className={styles.listingSkuChip}>{result.part.sku}</span>
+                    {result.identification.source === "AI" && (
+                      <span className={styles.listingSourceChip} title={result.identification.aiModel ?? "Gemini"}>
+                        AI suggested — review recommended
+                      </span>
+                    )}
+                    {result.identification.source === "EBAY" && (
+                      <span className={styles.listingSourceChipMuted}>eBay catalog match</span>
+                    )}
                   </div>
                 </article>
 
                 <div className={styles.successSummary}>
                   <span className={styles.successSummaryIcon} aria-hidden="true">✓</span>
-                  <span>All 5 pipeline stages completed</span>
+                  <span>All {STEP_DEFS.length} pipeline stages completed</span>
                 </div>
 
                 <Link className={styles.catalogBtn} href={`/catalog?q=${encodeURIComponent(result.part.sku)}`}>

@@ -53,6 +53,11 @@ export interface AppConfig {
       scopes: string[];
     };
   };
+  gemini: {
+    apiKey?: string;
+    models: string[];
+    enabled: boolean;
+  };
   ownSellers: Set<string>;
 }
 
@@ -301,6 +306,14 @@ export function getConfig(): AppConfig {
         encryptionKey: ebayEncryptionKey,
         scopes: ebayOAuthScopes,
       },
+    },
+    gemini: {
+      apiKey: process.env.GEMINI_API_KEY?.trim() || undefined,
+      models: (process.env.GEMINI_MODELS?.trim() || "gemini-3.5-flash-lite,gemini-3.1-flash-lite")
+        .split(",")
+        .map((model) => model.trim())
+        .filter(Boolean),
+      enabled: Boolean(process.env.GEMINI_API_KEY?.trim()) && process.env.GEMINI_IDENTIFICATION_ENABLED !== "false",
     },
     ownSellers: new Set(
       (process.env.OWN_SELLERS ?? "")

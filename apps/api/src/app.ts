@@ -43,7 +43,7 @@ import { decidePricingProposal, getOrganizationPricingRule, listPricingProposals
 import { createManualFitment, decideManualFitment, listPartFitment, ManualFitmentError, reviseManualFitment } from "./manual-fitment-service.js";
 import { CatalogSavedViewError, deleteCatalogSavedView, listCatalogSavedViews, saveCatalogView } from "./catalog-saved-view-service.js";
 import { getNotificationPreferences, listNotifications, markAllNotificationsRead, markNotificationRead, NotificationError, updateNotificationPreferences } from "./notification-service.js";
-import { assembleQuickSkuPrepared, createQuickSku, fetchQuickSkuFitment, finalizeQuickSku, identifyQuickSkuPart, QuickSkuError } from "./quick-sku-service.js";
+import { assembleQuickSkuPrepared, createQuickSku, enhanceQuickSkuWithAi, fetchQuickSkuFitment, finalizeQuickSku, identifyQuickSkuPart, QuickSkuError } from "./quick-sku-service.js";
 import { createRetentionRun, getRetentionPolicy, listRetentionRuns, RetentionError, startRetentionJob, updateRetentionPolicy } from "./retention-service.js";
 
 const searchSchema = z.object({
@@ -201,19 +201,54 @@ const quickSkuIdentifySchema = z.object({
 const quickSkuFitmentSchema = quickSkuIdentifySchema.extend({
   epid: z.string().trim().max(120).nullable(),
 }).strict();
+const quickSkuIdentificationSourceSchema = z.enum(["EBAY", "AI", "GENERIC"]);
+const quickSkuAiSchema = z.object({
+  model: z.string(),
+  confidence: z.string(),
+  partName: z.string(),
+  placement: z.string().nullable(),
+  titleHint: z.string().nullable(),
+}).nullable();
+const quickSkuIdentifyResultSchema = z.object({
+  partNumber: z.string(),
+  brand: z.string(),
+  marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]),
+  matched: z.boolean(),
+  identificationSource: quickSkuIdentificationSourceSchema.default("GENERIC"),
+  identifiedBrand: z.string(),
+  partName: z.string(),
+  placement: z.string().nullable().optional().default(null),
+  best: z.object({
+    epid: z.string(),
+    title: z.string(),
+    score: z.number(),
+    matchedOn: z.array(z.string()),
+    aspects: z.record(z.string(), z.array(z.string())),
+  }).nullable(),
+  discovery: z.object({
+    categoryId: z.string().nullable(),
+    categoryName: z.string().nullable(),
+    source: z.string().nullable(),
+  }),
+  ai: quickSkuAiSchema.optional().default(null),
+});
 const quickSkuPreparedSchema = z.object({
   identifiedBrand: z.string().trim().min(1).max(80),
   partName: z.string().trim().min(1).max(200),
   listingTitle: z.string().trim().min(1).max(120),
   description: z.string().trim().max(4000).nullable(),
   matched: z.boolean(),
+  identificationSource: quickSkuIdentificationSourceSchema.default("GENERIC"),
   candidateEpid: z.string().trim().max(120).nullable(),
   candidateScore: z.number().nullable(),
   matchedOn: z.array(z.string()),
   aspects: z.record(z.string(), z.array(z.string())),
+  placement: z.string().nullable().optional().default(null),
   categoryId: z.string().nullable(),
   categoryName: z.string().nullable(),
   discoverySource: z.string().nullable(),
+  aiModel: z.string().nullable().optional().default(null),
+  aiConfidence: z.string().nullable().optional().default(null),
   fitmentCount: z.number().int().min(0),
   fitmentReason: z.string().nullable(),
   applications: z.array(z.object({
@@ -223,26 +258,7 @@ const quickSkuPreparedSchema = z.object({
 }).strict();
 const quickSkuPrepareSchema = z.object({
   condition: z.enum(["NEW", "USED"]),
-  identify: z.object({
-    partNumber: z.string(),
-    brand: z.string(),
-    marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]),
-    matched: z.boolean(),
-    identifiedBrand: z.string(),
-    partName: z.string(),
-    best: z.object({
-      epid: z.string(),
-      title: z.string(),
-      score: z.number(),
-      matchedOn: z.array(z.string()),
-      aspects: z.record(z.string(), z.array(z.string())),
-    }).nullable(),
-    discovery: z.object({
-      categoryId: z.string().nullable(),
-      categoryName: z.string().nullable(),
-      source: z.string().nullable(),
-    }),
-  }),
+  identify: quickSkuIdentifyResultSchema,
   fitment: z.object({
     applications: z.array(z.object({
       fingerprint: z.string(),
@@ -251,6 +267,10 @@ const quickSkuPrepareSchema = z.object({
     fitmentCount: z.number().int().min(0),
     fitmentReason: z.string().nullable(),
   }),
+}).strict();
+const quickSkuAiEnhanceSchema = z.object({
+  condition: z.enum(["NEW", "USED"]).default("USED"),
+  identify: quickSkuIdentifyResultSchema,
 }).strict();
 const quickSkuFinalizeSchema = quickSkuSchema.extend({
   prepared: quickSkuPreparedSchema,
@@ -881,6 +901,13 @@ app.post("/api/parts/quick-sku/identify", writeRateLimit, requireTenantContext, 
     const tenant = getTenantContext(res);
     const input = quickSkuIdentifySchema.parse(req.body);
     res.json(await identifyQuickSkuPart(tenant.organization.id, input));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/parts/quick-sku/identify-ai", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+  try {
+    const input = quickSkuAiEnhanceSchema.parse(req.body);
+    res.json(await enhanceQuickSkuWithAi(input.identify, { condition: input.condition }));
   } catch (error) { next(error); }
 });
 
