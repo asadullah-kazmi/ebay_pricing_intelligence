@@ -2,7 +2,6 @@
 
 import { FormEvent, useState } from "react";
 import { useAuth } from "../../components/AuthProvider";
-import { apiBase } from "../../lib/auth-session";
 import styles from "./pricing.module.css";
 
 type SearchResult = {
@@ -10,6 +9,8 @@ type SearchResult = {
   marketplace: string;
   conditionFilter: "ANY" | "NEW" | "USED";
   searchedAt: string;
+  provider?: "demo" | "live";
+  candidateCount?: number;
   analytics: null | {
     count: number;
     lowest: number;
@@ -37,6 +38,8 @@ const demoResult: SearchResult = {
   marketplace: "EBAY_US",
   conditionFilter: "ANY",
   searchedAt: new Date().toISOString(),
+  provider: "demo",
+  candidateCount: 3,
   analytics: {
     count: 12,
     lowest: 74.99,
@@ -92,7 +95,7 @@ function ebayListingId(id: string) {
 }
 
 export default function PricingWorkspace() {
-  const { status: authStatus, token, demo } = useAuth();
+  const { status: authStatus, demo, apiFetch } = useAuth();
   const [oem, setOem] = useState("8K0615301M");
   const [marketplace, setMarketplace] = useState("EBAY_US");
   const [condition, setCondition] = useState<"ANY" | "NEW" | "USED">("ANY");
@@ -116,17 +119,10 @@ export default function PricingWorkspace() {
         });
         return;
       }
-      const response = await fetch(`${apiBase}/api/search`, {
+      const data = await apiFetch("/api/search", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        credentials: "include",
         body: JSON.stringify({ oem, marketplace, condition }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Search failed");
       setResult(data as SearchResult);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Search failed");
@@ -199,6 +195,22 @@ export default function PricingWorkspace() {
       {error && <div className={styles.error}>{error}</div>}
       {demo && !result && (
         <div className={styles.notice}>Development preview — run Analyze market to see a sample snapshot.</div>
+      )}
+      {result?.provider === "demo" && (
+        <div className={styles.warn}>
+          Showing sample eBay data — the API is in demo mode because <code>EBAY_CLIENT_ID</code> and{" "}
+          <code>EBAY_CLIENT_SECRET</code> are not both set. Add your App ID from the{" "}
+          <a href="https://developer.ebay.com/my/keys" target="_blank" rel="noreferrer">
+            eBay Developer Portal
+          </a>
+          , restart the API, then analyze again.
+        </div>
+      )}
+      {result?.provider === "live" && typeof result.candidateCount === "number" && (
+        <div className={styles.notice}>
+          eBay returned {result.candidateCount} candidates; {result.listings.length} passed exact
+          item-specific matching (website keyword search counts can be higher).
+        </div>
       )}
 
       {!result && !error && (

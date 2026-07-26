@@ -1,9 +1,10 @@
 ﻿"use client";
 
 import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import styles from "./catalog.module.css";
 import { useAuth } from "../../components/AuthProvider";
-import { apiBase } from "../../lib/auth-session";
+import { apiBase, apiRequest, refreshAccessSession, SessionExpiredError } from "../../lib/auth-session";
 import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogSavedView, CatalogStatus, EbayAspectRequirement, EbayConditionOption, EbayConnection, EbayInventorySyncJob, EbayListingOperationJob, EbayOffer, EbayOfferJob, EbaySellerResources, FitmentJob, FitmentJobSummary, InventoryPreparation, InventoryPreparationJob, ListingDraft, LiveDraftValidation, ManualFitmentApplication, PartCondition, PartFitment, PricingConditionMode, PricingJob, PricingJobSummary } from "./types";
 
 const statuses: CatalogStatus[] = ["IMPORTED", "NEEDS_IMAGES", "IMPORT_ERROR", "READY_FOR_ENRICHMENT", "ARCHIVED"];
@@ -28,27 +29,63 @@ function money(value: string | number, currency: string) {
   return new Intl.NumberFormat("en", { style: "currency", currency }).format(Number(value));
 }
 
-function CatalogImage({ mediaId, token, demo }: { mediaId?: string; token: string; demo: boolean }) {
+function detailTitle(part: CatalogPartDetail) {
+  const donor = part.donorVehicle
+    ? [part.donorVehicle.year, part.donorVehicle.make, part.donorVehicle.model].filter(Boolean).join(" ")
+    : "";
+  return [donor, part.partName || "Automotive Part", part.primaryPartNumber].filter(Boolean).join(" ");
+}
+
+function fitmentLabel(properties: Record<string, string>) {
+  const map = new Map(Object.entries(properties).map(([key, value]) => [key.toLowerCase(), value]));
+  const year = map.get("year");
+  const make = map.get("make");
+  const model = map.get("model");
+  const trim = map.get("trim");
+  const label = [make, model, year].filter(Boolean).join(" ");
+  return trim ? `${label} ${trim}` : label || Object.values(properties).slice(0, 3).join(" ");
+}
+
+function stockStatus(quantity: number) {
+  if (quantity <= 0) return { label: "Out of Stock", tone: "bad" as const };
+  if (quantity <= 2) return { label: "Low Stock", tone: "warn" as const };
+  return { label: "In Stock", tone: "good" as const };
+}
+
+function ebayStatusLabel(part: CatalogPartDetail) {
+  const draft = part.listingDrafts?.[0];
+  if (draft?.status === "READY") return { label: "Ready to Publish", tone: "good" as const };
+  if (draft?.status === "BLOCKED") return { label: "Needs Fixes", tone: "warn" as const };
+  if (part.status === "NEEDS_IMAGES") return { label: "Need Images", tone: "warn" as const };
+  if (part.status === "READY_FOR_ENRICHMENT") return { label: "Ready to Publish", tone: "good" as const };
+  if (part.status === "ARCHIVED") return { label: "Archived", tone: "muted" as const };
+  return { label: humanStatus(part.status), tone: "muted" as const };
+}
+
+function CatalogImage({ mediaId, demo }: { mediaId?: string; token?: string; demo: boolean }) {
   const [url, setUrl] = useState("");
   useEffect(() => {
-    if (!mediaId || !token || demo) return;
+    if (!mediaId || demo) return;
     let active = true;
-    fetch(`${apiBase}/api/media/${mediaId}/download-url`, { headers: { Authorization: `Bearer ${token}` }, credentials: "include" })
-      .then(async (response) => response.ok ? response.json() : Promise.reject())
-      .then((data: { downloadUrl: string }) => { if (active) setUrl(data.downloadUrl); })
+    void apiRequest(`/api/media/${mediaId}/download-url`)
+      .then((data) => {
+        const downloadUrl = (data as { downloadUrl?: string }).downloadUrl;
+        if (active && downloadUrl) setUrl(downloadUrl);
+      })
       .catch(() => undefined);
     return () => { active = false; };
-  }, [demo, mediaId, token]);
+  }, [demo, mediaId]);
   return <div className={styles.thumb}>{url ? <img src={url} alt="Catalog part" /> : <span>{demo || mediaId ? "PART" : "NO IMAGE"}</span>}</div>;
 }
 
 export default function CatalogWorkspace() {
   const { status: authStatus, token, demo, apiFetch } = useAuth();
+  const searchParams = useSearchParams();
   const [catalog, setCatalog] = useState<CatalogResponse>(emptyCatalog);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
   const deferredSearch = useDeferredValue(search);
   const [status, setStatus] = useState("");
   const [condition, setCondition] = useState("");
@@ -74,6 +111,14 @@ export default function CatalogWorkspace() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detail, setDetail] = useState<CatalogPartDetail | null>(null);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const query = searchParams.get("q");
+    if (query && query !== search) {
+      setSearch(query);
+      setPage(1);
+    }
+  }, [search, searchParams]);
   const [pricingMarketplace, setPricingMarketplace] = useState("EBAY_US");
   const [pricingCondition, setPricingCondition] = useState<PricingConditionMode>("MATCH_PART");
   const [pricingJob, setPricingJob] = useState<PricingJob | null>(null);
@@ -165,7 +210,10 @@ export default function CatalogWorkspace() {
     setLoading(true);
     setError("");
     try { setCatalog(await request(`/api/parts?${queryString}`) as CatalogResponse); }
-    catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to load catalog"); }
+    catch (caught) {
+      if (caught instanceof SessionExpiredError) return;
+      setError(caught instanceof Error ? caught.message : "Unable to load catalog");
+    }
     finally { setLoading(false); }
   }, [authStatus, demo, queryString, request]);
 
@@ -237,15 +285,57 @@ export default function CatalogWorkspace() {
     if (demo) {
       const card = demoParts.find((part) => part.id === id)!;
       setDetailMode("view");
-      setDetail({ ...card, description: "Verified dismantled automotive component ready for enrichment.", donorMileage: 48600, donorColor: "Black", placement: "Rear", notes: null, partNumbers: [{ id: "pn", type: "PRIMARY", value: card.primaryPartNumber }], inventoryItem: card.inventoryItem ? { ...card.inventoryItem, weight: null, weightUnit: null, length: null, width: null, height: null, dimensionUnit: null } : null, media: [] });
+      setDetail({
+        ...card,
+        description: "This used OEM seat track cover was carefully removed from a donor vehicle. Surface wear is consistent with age. Compatible with listed Audi A6 applications. Part number 4F088134701C verified.",
+        donorMileage: 48600,
+        donorColor: "Black",
+        placement: "Rear",
+        notes: null,
+        partNumbers: [{ id: "pn", type: "PRIMARY", value: card.primaryPartNumber }],
+        inventoryItem: card.inventoryItem
+          ? { ...card.inventoryItem, weight: null, weightUnit: null, length: null, width: null, height: null, dimensionUnit: null }
+          : null,
+        media: [
+          { id: "m1", displayOrder: 0, mediaAsset: { id: "", originalFilename: "main.jpg", mimeType: "image/jpeg" } },
+          { id: "m2", displayOrder: 1, mediaAsset: { id: "", originalFilename: "side.jpg", mimeType: "image/jpeg" } },
+          { id: "m3", displayOrder: 2, mediaAsset: { id: "", originalFilename: "detail.jpg", mimeType: "image/jpeg" } },
+        ],
+        fitmentApplications: [
+          { id: "f1", marketplace: "EBAY_US", properties: { Year: "2016", Make: "Audi", Model: "A6" }, source: "EBAY_CATALOG", approvedAt: new Date().toISOString() },
+          { id: "f2", marketplace: "EBAY_US", properties: { Year: "2015", Make: "Audi", Model: "A6" }, source: "EBAY_CATALOG", approvedAt: new Date().toISOString() },
+          { id: "f3", marketplace: "EBAY_US", properties: { Year: "2014", Make: "Audi", Model: "A6" }, source: "DONOR_VEHICLE", approvedAt: new Date().toISOString() },
+        ],
+        listingDrafts: [{
+          id: "d1",
+          marketplace: "EBAY_US",
+          status: "READY",
+          title: `${card.partName || "Automotive Part"} ${card.primaryPartNumber}`,
+          categoryId: "262201",
+          shippingPolicyId: "ship-custom",
+          price: Number(card.inventoryItem?.cost ?? 19.58),
+          currency: "USD",
+          updatedAt: new Date().toISOString(),
+        }],
+      });
       return;
     }
     setError("");
     try {
       setDetailMode("view");
       setDetail(await request(`/api/parts/${id}`) as CatalogPartDetail);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to open part");
     }
-    catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to open part"); }
+  }
+
+  async function copySku(value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setNotice(`Copied SKU ${value}`);
+    } catch {
+      setError("Unable to copy SKU");
+    }
   }
 
   async function savePart(event: FormEvent<HTMLFormElement>) {
@@ -875,7 +965,22 @@ export default function CatalogWorkspace() {
   async function downloadCsv() {
     if (demo) return;
     try {
-      const response = await fetch(`${apiBase}/api/parts/export?${queryString}`, { headers: { Authorization: `Bearer ${token}` }, credentials: "include" });
+      const access = await refreshAccessSession();
+      const response = await fetch(`${apiBase}/api/parts/export?${queryString}`, {
+        headers: { Authorization: `Bearer ${access.accessToken}` },
+        credentials: "include",
+      });
+      if (response.status === 401) {
+        const retry = await refreshAccessSession({ force: true });
+        const again = await fetch(`${apiBase}/api/parts/export?${queryString}`, {
+          headers: { Authorization: `Bearer ${retry.accessToken}` },
+          credentials: "include",
+        });
+        if (!again.ok) throw new Error("Unable to export catalog");
+        const url = URL.createObjectURL(await again.blob());
+        const anchor = document.createElement("a"); anchor.href = url; anchor.download = "partpulse-catalog.csv"; anchor.click(); URL.revokeObjectURL(url);
+        return;
+      }
       if (!response.ok) throw new Error("Unable to export catalog");
       const url = URL.createObjectURL(await response.blob());
       const anchor = document.createElement("a"); anchor.href = url; anchor.download = "partpulse-catalog.csv"; anchor.click(); URL.revokeObjectURL(url);
@@ -1220,39 +1325,194 @@ export default function CatalogWorkspace() {
         {application.revisions.length > 0 && <details><summary>Revision history</summary>{application.revisions.map((revision) => <small key={revision.id}>v{revision.revision} · {revision.reason || "Updated"} · {new Date(revision.createdAt).toLocaleString()}</small>)}</details>}
       </article>)}</div>
     </section></div>}
-    {detail && <div className={styles.modalBackdrop} role="presentation"><section className={styles.drawer} role="dialog" aria-modal="true" aria-labelledby="edit-part-title"><header><div><span className={styles.eyebrow}>INVENTORY DETAILS</span><h2 id="edit-part-title">{detail.partName || detail.sku}</h2></div><button aria-label="Close editor" onClick={() => setDetail(null)}>×</button></header>
-      {detailMode === "view" ? <div style={{ padding: "22px 24px" }}>
-          <div className={styles.detailHero}>
-            <div className={styles.detailImages}>
-              {(detail.media.length ? detail.media : [{ id: "placeholder", sortOrder: 0, mediaAsset: { id: "" } }]).slice(0, 6).map((item, index) => (
-                <div key={item.id} className={styles.detailImage}>
-                  <CatalogImage mediaId={item.mediaAsset.id || undefined} token={token} demo={demo}/>
-                  <span className={styles.badge}>{index + 1}</span>
-                  {index === 0 && <span className={styles.mainTag}>Main</span>}
+    {detail && <div className={styles.modalBackdrop} role="presentation" onClick={(event) => { if (event.target === event.currentTarget) setDetail(null); }}>
+      <section className={`${styles.drawer} ${styles.inventoryModal}`} role="dialog" aria-modal="true" aria-labelledby="edit-part-title">
+        <header className={styles.inventoryHeader}>
+          <h2 id="edit-part-title">Inventory Details</h2>
+          <div className={styles.inventoryHeaderActions}>
+            {detailMode === "view" ? (
+              <button type="button" className={styles.primary} onClick={() => setDetailMode("edit")}>Edit Details</button>
+            ) : (
+              <button type="button" className={styles.ghostBtn} onClick={() => setDetailMode("view")}>Cancel edit</button>
+            )}
+            <button type="button" className={styles.iconClose} aria-label="Close editor" onClick={() => setDetail(null)}>×</button>
+          </div>
+        </header>
+
+        {detailMode === "view" ? (
+          <div className={styles.inventoryBody}>
+            <div className={styles.inventoryTitleBlock}>
+              <h3>{detailTitle(detail)}</h3>
+              <button type="button" className={styles.skuCopy} onClick={() => void copySku(detail.sku)}>
+                SKU: {detail.sku}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+              </button>
+            </div>
+
+            <div className={styles.inventoryMetaGrid}>
+              <div className={styles.inventoryMetaCol}>
+                <div className={styles.metaItem}>
+                  <span>Brand</span>
+                  <strong>{detail.brand || "—"}</strong>
                 </div>
-              ))}
+                <div className={styles.metaItem}>
+                  <span>Part Type</span>
+                  <strong>{detail.partName || "—"}</strong>
+                </div>
+                <div className={styles.metaItem}>
+                  <span>OEM / Part #</span>
+                  <strong>{detail.primaryPartNumber}</strong>
+                </div>
+                <div className={styles.metaItem}>
+                  <span>Shipping Policy</span>
+                  <strong>
+                    {detail.listingDrafts?.[0]?.shippingPolicyId || "Not assigned"}
+                    {detail.listingDrafts?.[0]?.shippingPolicyId && <em className={styles.customPill}>Custom</em>}
+                  </strong>
+                </div>
+                <div className={styles.metaItem}>
+                  <span>Placement</span>
+                  <strong>{detail.placement || "—"}</strong>
+                </div>
+                <div className={styles.metaItem}>
+                  <span>Storage Location</span>
+                  <strong>
+                    {[detail.inventoryItem?.warehouse?.code, detail.inventoryItem?.binLocation?.code].filter(Boolean).join(" / ") || "Unassigned"}
+                  </strong>
+                </div>
+              </div>
+              <div className={styles.inventoryMetaCol}>
+                <div className={styles.metaItem}>
+                  <span>Condition</span>
+                  <strong className={styles.conditionValue}>{humanStatus(detail.condition)}</strong>
+                </div>
+                <div className={styles.metaItem}>
+                  <span>Price</span>
+                  <strong>
+                    {detail.listingDrafts?.[0]?.price != null
+                      ? money(detail.listingDrafts[0].price, detail.listingDrafts[0].currency)
+                      : detail.inventoryItem
+                        ? money(detail.inventoryItem.cost, detail.inventoryItem.currency)
+                        : "—"}
+                  </strong>
+                </div>
+                <div className={styles.metaItem}>
+                  <span>Quantity</span>
+                  <strong>{detail.inventoryItem?.quantity ?? 0}</strong>
+                </div>
+                <div className={styles.metaItem}>
+                  <span>Stock Status</span>
+                  <strong className={styles[`stock_${stockStatus(detail.inventoryItem?.quantity ?? 0).tone}`]}>
+                    {stockStatus(detail.inventoryItem?.quantity ?? 0).label}
+                  </strong>
+                </div>
+                <div className={styles.metaItem}>
+                  <span>eBay Status</span>
+                  <strong className={styles[`stock_${ebayStatusLabel(detail).tone}`]}>
+                    {ebayStatusLabel(detail).label}
+                  </strong>
+                </div>
+                <div className={styles.metaItem}>
+                  <span>Date Added</span>
+                  <strong>{new Date(detail.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</strong>
+                </div>
+              </div>
+            </div>
+
+            <div className={styles.inventoryBlock}>
+              <span className={styles.blockLabel}>Category</span>
+              <p>
+                {detail.listingDrafts?.[0]?.categoryId
+                  ? `eBay Motors category ID ${detail.listingDrafts[0].categoryId}`
+                  : detail.donorVehicle
+                    ? `Donor vehicle context · ${[detail.donorVehicle.year, detail.donorVehicle.make, detail.donorVehicle.model].filter(Boolean).join(" ")}`
+                    : "Category not assigned yet"}
+              </p>
+            </div>
+
+            <div className={styles.inventoryBlock}>
+              <span className={styles.blockLabel}>Notes / Description</span>
+              <p>{detail.description || detail.notes || "No description provided."}</p>
+            </div>
+
+            <div className={styles.inventoryBlock}>
+              <div className={styles.blockHead}>
+                <span className={styles.blockLabel}>Product Images ({detail.media.length}/{detail.media.length || 0})</span>
+                <button type="button" className={styles.uploadGhost} onClick={() => setNotice("Image upload is available from the import pipeline for this part.")}>
+                  Upload Images
+                </button>
+              </div>
+              <div className={styles.detailImages}>
+                {(detail.media.length ? detail.media : [{ id: "placeholder", displayOrder: 0, mediaAsset: { id: "", originalFilename: "", mimeType: "" } }]).slice(0, 8).map((item, index) => (
+                  <div key={item.id} className={`${styles.detailImage} ${index === 0 ? styles.detailImageMain : ""}`}>
+                    <CatalogImage mediaId={item.mediaAsset.id || undefined} token={token} demo={demo} />
+                    <span className={styles.badge}>{index + 1}</span>
+                    {index === 0 && <span className={styles.mainTag}>Main</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className={styles.inventoryBlock}>
+              <div className={styles.blockHead}>
+                <span className={styles.blockLabel}>
+                  Fitments / Compatibility
+                  <em className={styles.countPill}>{(detail.fitmentApplications?.length || (detail.donorVehicle ? 1 : 0))}</em>
+                </span>
+                <button type="button" className={styles.uploadGhost} onClick={() => void openManualFitment(detail.id)}>Manage</button>
+              </div>
+              <div className={styles.fitmentChips}>
+                {(detail.fitmentApplications && detail.fitmentApplications.length > 0
+                  ? detail.fitmentApplications
+                  : detail.donorVehicle
+                    ? [{ id: "donor", properties: { Year: String(detail.donorVehicle.year ?? ""), Make: detail.donorVehicle.make ?? "", Model: detail.donorVehicle.model ?? "" } }]
+                    : []
+                ).map((application) => (
+                  <span key={application.id} className={styles.fitmentChip}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M3 13l2-5h14l2 5M5 13v5h2v-2h10v2h2v-5"/><circle cx="7.5" cy="16.5" r="1.5"/><circle cx="16.5" cy="16.5" r="1.5"/></svg>
+                    {fitmentLabel(application.properties)}
+                    <i>✓</i>
+                  </span>
+                ))}
+                {!(detail.fitmentApplications?.length || detail.donorVehicle) && (
+                  <span className={styles.emptyFitment}>No approved fitment yet. Use Manage to add compatibility.</span>
+                )}
+              </div>
             </div>
           </div>
-          <div className={styles.detailGrid}>
-            <div className={styles.detailRow}><span>Brand</span><strong>{detail.brand || "—"}</strong></div>
-            <div className={styles.detailRow}><span>Part Type</span><strong>{detail.partName || "—"}</strong></div>
-            <div className={styles.detailRow}><span>SKU</span><strong>{detail.sku}</strong></div>
-            <div className={styles.detailRow}><span>OEM / Part #</span><strong>{detail.primaryPartNumber}</strong></div>
-            <div className={styles.detailRow}><span>Condition</span><strong><span className={styles.condition}>{detail.condition}</span></strong></div>
-            <div className={styles.detailRow}><span>Status</span><strong><span className={`${styles.statusPill} ${styles[detail.status.toLowerCase()]}`}>{humanStatus(detail.status)}</span></strong></div>
-            <div className={styles.detailRow}><span>Quantity</span><strong>{detail.inventoryItem?.quantity ?? 0}</strong></div>
-            <div className={styles.detailRow}><span>Cost</span><strong>{detail.inventoryItem ? money(detail.inventoryItem.cost, detail.inventoryItem.currency) : "—"}</strong></div>
-            <div className={styles.detailRow}><span>Warehouse</span><strong>{detail.inventoryItem?.warehouse?.code || "—"}</strong></div>
-            <div className={styles.detailRow}><span>Bin</span><strong>{detail.inventoryItem?.binLocation?.code || "Unassigned"}</strong></div>
-            <div className={styles.detailRow}><span>Placement</span><strong>{detail.placement || "—"}</strong></div>
-            <div className={styles.detailRow}><span>Donor</span><strong>{detail.donorVehicle ? [detail.donorVehicle.year, detail.donorVehicle.make, detail.donorVehicle.model].filter(Boolean).join(" ") : "—"}</strong></div>
-          </div>
-          <div className={styles.detailSection}><h3>Description</h3><p>{detail.description || "No description provided."}</p></div>
-          <div className={styles.detailSection}><h3>Internal notes</h3><p>{detail.notes || "No internal notes."}</p></div>
-          {detail.donorVehicle && <div className={styles.detailSection}><h3>Fitments</h3><div className={styles.fitmentChips}><span className={styles.fitmentChip}><i>Γ£ô</i>{[detail.donorVehicle.year, detail.donorVehicle.make, detail.donorVehicle.model].filter(Boolean).join(" ")}</span></div></div>}
-          <div className={styles.formActions}><button type="button" onClick={() => setDetail(null)}>Close</button><button type="button" className={styles.secondary} onClick={() => void openManualFitment(detail.id)}>Manage fitment</button><button type="button" className={styles.primary} onClick={() => setDetailMode("edit")}>Edit details</button></div>
-        </div> : <form onSubmit={savePart}><div className={styles.formGrid}><label><span>SKU</span><input name="sku" defaultValue={detail.sku} required/></label><label><span>Primary part number</span><input name="primaryPartNumber" defaultValue={detail.primaryPartNumber} required/></label><label><span>Brand</span><input name="brand" defaultValue={detail.brand ?? ""}/></label><label><span>Part name</span><input name="partName" defaultValue={detail.partName ?? ""}/></label><label><span>Condition</span><select name="condition" defaultValue={detail.condition}><option value="NEW">New</option><option value="USED">Used</option></select></label><label><span>Catalog status</span><select name="status" defaultValue={detail.status}>{statuses.map((value) => <option key={value} value={value}>{humanStatus(value)}</option>)}</select></label><label><span>Quantity</span><input name="quantity" type="number" min="0" defaultValue={detail.inventoryItem?.quantity ?? 0}/></label><label><span>Cost</span><input name="cost" type="number" min="0" step="0.01" defaultValue={Number(detail.inventoryItem?.cost ?? 0)}/></label><label><span>Currency</span><input name="currency" maxLength={3} defaultValue={detail.inventoryItem?.currency ?? "USD"}/></label><label><span>Warehouse</span><input name="warehouseCode" defaultValue={detail.inventoryItem?.warehouse?.code ?? ""}/></label><label><span>Bin location</span><input name="binLocation" defaultValue={detail.inventoryItem?.binLocation?.code ?? ""}/></label><label><span>Placement</span><input name="placement" defaultValue={detail.placement ?? ""}/></label><label><span>Weight</span><input name="weight" type="number" min="0" step="0.001" defaultValue={detail.inventoryItem?.weight == null ? "" : Number(detail.inventoryItem.weight)}/></label><label><span>Weight unit</span><select name="weightUnit" defaultValue={detail.inventoryItem?.weightUnit ?? "LB"}><option value="LB">lb</option><option value="KG">kg</option></select></label><label><span>Length</span><input name="length" type="number" min="0" step="0.01" defaultValue={detail.inventoryItem?.length == null ? "" : Number(detail.inventoryItem.length)}/></label><label><span>Width</span><input name="width" type="number" min="0" step="0.01" defaultValue={detail.inventoryItem?.width == null ? "" : Number(detail.inventoryItem.width)}/></label><label><span>Height</span><input name="height" type="number" min="0" step="0.01" defaultValue={detail.inventoryItem?.height == null ? "" : Number(detail.inventoryItem.height)}/></label><label><span>Dimension unit</span><select name="dimensionUnit" defaultValue={detail.inventoryItem?.dimensionUnit ?? "IN"}><option value="IN">in</option><option value="CM">cm</option></select></label><label className={styles.wide}><span>Description</span><textarea name="description" defaultValue={detail.description ?? ""}/></label><label className={styles.wide}><span>Internal notes</span><textarea name="notes" defaultValue={detail.notes ?? ""}/></label></div><div className={styles.formActions}><button type="button" onClick={() => setDetailMode("view")}>Back</button><button type="button" onClick={() => setDetail(null)}>Cancel</button><button className={styles.primary} disabled={saving}>{saving ? "Saving..." : demo ? "Close preview" : "Save changes"}</button></div></form>}
-    </section></div>}
+        ) : (
+          <form onSubmit={savePart}>
+            <div className={styles.formGrid}>
+              <label><span>SKU</span><input name="sku" defaultValue={detail.sku} required/></label>
+              <label><span>Primary part number</span><input name="primaryPartNumber" defaultValue={detail.primaryPartNumber} required/></label>
+              <label><span>Brand</span><input name="brand" defaultValue={detail.brand ?? ""}/></label>
+              <label><span>Part name</span><input name="partName" defaultValue={detail.partName ?? ""}/></label>
+              <label><span>Condition</span><select name="condition" defaultValue={detail.condition}><option value="NEW">New</option><option value="USED">Used</option></select></label>
+              <label><span>Catalog status</span><select name="status" defaultValue={detail.status}>{statuses.map((value) => <option key={value} value={value}>{humanStatus(value)}</option>)}</select></label>
+              <label><span>Quantity</span><input name="quantity" type="number" min="0" defaultValue={detail.inventoryItem?.quantity ?? 0}/></label>
+              <label><span>Cost</span><input name="cost" type="number" min="0" step="0.01" defaultValue={Number(detail.inventoryItem?.cost ?? 0)}/></label>
+              <label><span>Currency</span><input name="currency" maxLength={3} defaultValue={detail.inventoryItem?.currency ?? "USD"}/></label>
+              <label><span>Warehouse</span><input name="warehouseCode" defaultValue={detail.inventoryItem?.warehouse?.code ?? ""}/></label>
+              <label><span>Bin location</span><input name="binLocation" defaultValue={detail.inventoryItem?.binLocation?.code ?? ""}/></label>
+              <label><span>Placement</span><input name="placement" defaultValue={detail.placement ?? ""}/></label>
+              <label><span>Weight</span><input name="weight" type="number" min="0" step="0.001" defaultValue={detail.inventoryItem?.weight == null ? "" : Number(detail.inventoryItem.weight)}/></label>
+              <label><span>Weight unit</span><select name="weightUnit" defaultValue={detail.inventoryItem?.weightUnit ?? "LB"}><option value="LB">lb</option><option value="KG">kg</option></select></label>
+              <label><span>Length</span><input name="length" type="number" min="0" step="0.01" defaultValue={detail.inventoryItem?.length == null ? "" : Number(detail.inventoryItem.length)}/></label>
+              <label><span>Width</span><input name="width" type="number" min="0" step="0.01" defaultValue={detail.inventoryItem?.width == null ? "" : Number(detail.inventoryItem.width)}/></label>
+              <label><span>Height</span><input name="height" type="number" min="0" step="0.01" defaultValue={detail.inventoryItem?.height == null ? "" : Number(detail.inventoryItem.height)}/></label>
+              <label><span>Dimension unit</span><select name="dimensionUnit" defaultValue={detail.inventoryItem?.dimensionUnit ?? "IN"}><option value="IN">in</option><option value="CM">cm</option></select></label>
+              <label className={styles.wide}><span>Description</span><textarea name="description" defaultValue={detail.description ?? ""}/></label>
+              <label className={styles.wide}><span>Internal notes</span><textarea name="notes" defaultValue={detail.notes ?? ""}/></label>
+            </div>
+            <div className={styles.formActions}>
+              <button type="button" onClick={() => setDetailMode("view")}>Back</button>
+              <button type="button" onClick={() => setDetail(null)}>Cancel</button>
+              <button className={styles.primary} disabled={saving}>{saving ? "Saving..." : demo ? "Close preview" : "Save changes"}</button>
+            </div>
+          </form>
+        )}
+      </section>
+    </div>}
     {draftDetail && <div className={styles.modalBackdrop} role="presentation">
       <section className={styles.drawer} role="dialog" aria-modal="true" aria-labelledby="edit-draft-title">
         <header>

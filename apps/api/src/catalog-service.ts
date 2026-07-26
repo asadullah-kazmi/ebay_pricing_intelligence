@@ -171,6 +171,33 @@ export async function getCatalogPart(organizationId: string, partId: string) {
         include: { mediaAsset: { select: { id: true, originalFilename: true, mimeType: true, byteSize: true, width: true, height: true, status: true } } },
       },
       sourceImportRow: { select: { importBatchId: true, rowNumber: true } },
+      fitmentApplications: {
+        where: { status: "APPROVED" },
+        orderBy: { approvedAt: "desc" },
+        take: 24,
+        select: {
+          id: true,
+          marketplace: true,
+          properties: true,
+          source: true,
+          approvedAt: true,
+        },
+      },
+      listingDrafts: {
+        orderBy: { updatedAt: "desc" },
+        take: 5,
+        select: {
+          id: true,
+          marketplace: true,
+          status: true,
+          title: true,
+          categoryId: true,
+          shippingPolicyId: true,
+          price: true,
+          currency: true,
+          updatedAt: true,
+        },
+      },
     },
   });
   if (!part) throw new CatalogError("Catalog part not found", 404);

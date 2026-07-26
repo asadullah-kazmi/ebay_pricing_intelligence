@@ -1543,6 +1543,308 @@
   background: #fff;
 }
 
+.inventoryModal {
+  width: min(920px, 96vw);
+  max-height: 92vh;
+}
+
+.inventoryHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 22px;
+  border-bottom: 1px solid #e2e8f0;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #fff;
+}
+
+.inventoryHeader h2 {
+  margin: 0;
+  font: 800 18px/1.2 "Plus Jakarta Sans", sans-serif;
+  color: #0c274d;
+}
+
+.inventoryHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.iconClose {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #64748b;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.iconClose:hover {
+  background: #f1f5f9;
+}
+
+.inventoryBody {
+  padding: 22px 24px 28px;
+}
+
+.inventoryTitleBlock {
+  margin-bottom: 18px;
+}
+
+.inventoryTitleBlock h3 {
+  margin: 0;
+  font: 800 28px/1.2 "Plus Jakarta Sans", sans-serif;
+  letter-spacing: -0.8px;
+  color: #0c274d;
+}
+
+.skuCopy {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  font: 600 13px/1 "Plus Jakarta Sans", sans-serif;
+  cursor: pointer;
+  padding: 0;
+}
+
+.skuCopy svg {
+  width: 14px;
+  height: 14px;
+}
+
+.skuCopy:hover {
+  color: #0052ff;
+}
+
+.inventoryMetaGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 36px;
+  margin-bottom: 8px;
+}
+
+.metaItem {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 13px 0;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.metaItem span {
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.metaItem strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.customPill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #efeaff;
+  color: #6d28d9;
+  font-size: 10px;
+  font-weight: 800;
+  font-style: normal;
+  text-transform: uppercase;
+}
+
+.conditionValue {
+  color: #0f172a;
+}
+
+.stock_good { color: #0f7a45 !important; }
+.stock_warn { color: #c2410c !important; }
+.stock_bad { color: #b42318 !important; }
+.stock_muted { color: #64748b !important; }
+
+.inventoryBlock {
+  margin-top: 18px;
+  padding-top: 4px;
+}
+
+.blockLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.55px;
+  text-transform: uppercase;
+}
+
+.inventoryBlock > p {
+  margin: 8px 0 0;
+  color: #334155;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.blockHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.uploadGhost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid #c7d7ff;
+  background: #fff;
+  color: #0052ff;
+  font: 700 12px/1 "Plus Jakarta Sans", sans-serif;
+  cursor: pointer;
+}
+
+.countPill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 800;
+  font-style: normal;
+}
+
+.detailImages {
+  display: flex;
+  gap: 10px;
+  overflow: auto;
+  padding-bottom: 4px;
+}
+
+.detailImage {
+  position: relative;
+  width: 112px;
+  height: 112px;
+  flex: none;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+}
+
+.detailImageMain {
+  border-color: #0052ff;
+  box-shadow: 0 0 0 1px #0052ff;
+}
+
+.detailImage img,
+.detailImage .thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.detailImage .badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  color: #0f172a;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 800;
+  box-shadow: 0 2px 8px #0b142620;
+}
+
+.detailImage .mainTag {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #0052ff;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.fitmentChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fitmentChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.fitmentChip svg {
+  width: 16px;
+  height: 16px;
+  color: #64748b;
+  flex: none;
+}
+
+.fitmentChip i {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #e8f8ef;
+  color: #0f7a45;
+  display: grid;
+  place-items: center;
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 800;
+  margin-left: 4px;
+}
+
+.emptyFitment {
+  color: #64748b;
+  font-size: 13px;
+}
+
 .drawer header h2 {
   margin: 4px 0 0;
   font: 800 22px/1.2 "Plus Jakarta Sans", sans-serif;
@@ -1596,141 +1898,6 @@
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-}
-
-.detailHero {
-  display: grid;
-  gap: 10px;
-  margin-bottom: 22px;
-}
-
-.detailImages {
-  display: flex;
-  gap: 10px;
-  overflow: auto;
-  padding-bottom: 4px;
-}
-
-.detailImage {
-  position: relative;
-  width: 120px;
-  height: 120px;
-  flex: none;
-  border-radius: 12px;
-  overflow: hidden;
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
-}
-
-.detailImage img,
-.detailImage .thumb {
-  width: 100%;
-  height: 100%;
-  border-radius: 0;
-}
-
-.detailImage .badge {
-  position: absolute;
-  left: 8px;
-  top: 8px;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: #0f172a;
-  color: #fff;
-  display: grid;
-  place-items: center;
-  font: 700 10px/1 "Plus Jakarta Sans", sans-serif;
-}
-
-.detailImage .mainTag {
-  position: absolute;
-  left: 8px;
-  bottom: 8px;
-  background: #0055ff;
-  color: #fff;
-  border-radius: 999px;
-  padding: 3px 8px;
-  font: 700 10px/1 "Plus Jakarta Sans", sans-serif;
-}
-
-.detailGrid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0 28px;
-}
-
-.detailRow {
-  display: grid;
-  grid-template-columns: 180px minmax(0, 1fr);
-  gap: 12px;
-  align-items: center;
-  padding: 14px 0;
-  border-bottom: 1px solid #eef2f7;
-}
-
-.detailRow span {
-  color: #64748b;
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-}
-
-.detailRow strong {
-  color: #0f172a;
-  font-size: 14px;
-  font-weight: 600;
-  word-break: break-word;
-}
-
-.detailSection {
-  margin-top: 18px;
-  padding-top: 8px;
-}
-
-.detailSection h3 {
-  margin: 0 0 8px;
-  font: 800 14px "Plus Jakarta Sans", sans-serif;
-}
-
-.detailSection p {
-  margin: 0;
-  color: #334155;
-  line-height: 1.6;
-  font-size: 14px;
-}
-
-.fitmentChips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.fitmentChip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 10px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.fitmentChip i {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #e8f8ef;
-  color: #0f7a45;
-  display: grid;
-  place-items: center;
-  font-style: normal;
-  font-size: 10px;
-  font-weight: 800;
 }
 
 .fitmentManager > form {
@@ -1834,7 +2001,7 @@
   }
 
   .advancedFilters,
-  .detailGrid,
+  .inventoryMetaGrid,
   .formGrid,
   .rulePanel form {
     grid-template-columns: 1fr;
@@ -1864,7 +2031,11 @@
     width: 100%;
   }
 
-  .detailRow {
+  .inventoryMetaGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .metaItem {
     grid-template-columns: 1fr;
     gap: 4px;
   }

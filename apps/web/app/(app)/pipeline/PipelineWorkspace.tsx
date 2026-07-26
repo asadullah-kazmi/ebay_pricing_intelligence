@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "../../components/AuthProvider";
-import { apiBase } from "../../lib/auth-session";
+import { apiBase, refreshAccessSession } from "../../lib/auth-session";
 import styles from "./pipeline.module.css";
 
 type QueueItem = {
@@ -22,7 +22,7 @@ const demoQueue: QueueItem[] = [
 ];
 
 export default function PipelineWorkspace() {
-  const { status, token } = useAuth();
+  const { status } = useAuth();
   const [team, setTeam] = useState("default");
   const [condition, setCondition] = useState("USED");
   const [file, setFile] = useState<File | null>(null);
@@ -33,19 +33,27 @@ export default function PipelineWorkspace() {
 
   async function uploadSpreadsheet(event: FormEvent) {
     event.preventDefault();
-    if (!file || !token || busy) return;
+    if (!file || busy) return;
     setBusy(true);
     setError("");
     setNotice("");
     try {
-      const body = new FormData();
-      body.append("file", file);
-      const response = await fetch(`${apiBase}/api/imports/validate`, {
-        method: "POST",
-        credentials: "include",
-        headers: { Authorization: `Bearer ${token}` },
-        body,
-      });
+      let access = await refreshAccessSession();
+      const send = async (accessToken: string) => {
+        const body = new FormData();
+        body.append("file", file);
+        return fetch(`${apiBase}/api/imports/validate`, {
+          method: "POST",
+          credentials: "include",
+          headers: { Authorization: `Bearer ${accessToken}` },
+          body,
+        });
+      };
+      let response = await send(access.accessToken);
+      if (response.status === 401) {
+        access = await refreshAccessSession({ force: true });
+        response = await send(access.accessToken);
+      }
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || "Upload failed");
       setQueue((current) => [

@@ -40,6 +40,7 @@ function resolveActive(pathname: string): NavKey {
   if (path.startsWith("/shipping")) return "shipping";
   if (path.startsWith("/reports")) return "reports";
   if (path.startsWith("/settings")) return "settings";
+  if (path.startsWith("/quick-sku")) return "quickSku";
   if (path.startsWith("/catalog")) return "catalog";
   if (path.startsWith("/admin/team")) return "team";
   if (path.startsWith("/admin")) return "reports";
@@ -53,6 +54,7 @@ function isShellWorkspace(pathname: string) {
   return (
     path.startsWith("/dashboard") ||
     path.startsWith("/catalog") ||
+    path.startsWith("/quick-sku") ||
     path.startsWith("/inventory") ||
     path.startsWith("/pricing") ||
     path.startsWith("/fitment") ||

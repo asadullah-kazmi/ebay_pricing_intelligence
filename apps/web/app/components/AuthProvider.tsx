@@ -15,6 +15,7 @@ import {
   getCachedWorkspaceSession,
   logoutSession,
   refreshAccessSession,
+  SessionExpiredError,
   setCachedWorkspaceSession,
   type CachedWorkspaceSession,
 } from "../lib/auth-session";
@@ -81,6 +82,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<WorkspaceSession | null>(boot.session);
   const [demo, setDemo] = useState(boot.demo);
 
+  const markRequired = useCallback(() => {
+    setToken("");
+    setSession(null);
+    setCachedWorkspaceSession(null);
+    setStatus("required");
+  }, []);
+
+  const syncToken = useCallback(() => {
+    const access = getCachedAccessSession();
+    if (access) setToken(access.accessToken);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -106,25 +119,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setStatus("ready");
           return;
         }
-        const body = (await apiGetCached("/api/session", access.accessToken)) as WorkspaceSession;
+        const body = (await apiGetCached("/api/session")) as WorkspaceSession;
         if (cancelled) return;
         setCachedWorkspaceSession(body);
         setSession(body);
         setStatus("ready");
       })
       .catch(() => {
-        if (!cancelled) {
-          setToken("");
-          setSession(null);
-          setCachedWorkspaceSession(null);
-          setStatus("required");
-        }
+        if (!cancelled) markRequired();
       });
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [markRequired]);
+
+  // Quietly renew the access token before it expires so workspace polls never 401.
+  useEffect(() => {
+    if (demo || status !== "ready") return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let cancelled = false;
+
+    const schedule = () => {
+      const access = getCachedAccessSession();
+      const delayMs = access
+        ? Math.max(5_000, access.expiresAt - Date.now() - 90_000)
+        : 5_000;
+      timer = setTimeout(() => {
+        void refreshAccessSession({ force: true })
+          .then((next) => {
+            if (cancelled) return;
+            setToken(next.accessToken);
+            schedule();
+          })
+          .catch(() => {
+            if (!cancelled) markRequired();
+          });
+      }, delayMs);
+    };
+
+    schedule();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [demo, markRequired, status, token]);
 
   const logout = useCallback(async () => {
     await logoutSession().catch(() => undefined);
@@ -132,8 +171,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const apiFetch = useCallback(async (path: string, init: RequestInit = {}) => {
-    return apiGetCached(path, token, init);
-  }, [token]);
+    if (demo) throw new Error("Demo mode cannot call the live API");
+    try {
+      const result = await apiGetCached(path, init);
+      syncToken();
+      return result;
+    } catch (error) {
+      if (error instanceof SessionExpiredError) markRequired();
+      throw error;
+    }
+  }, [demo, markRequired, syncToken]);
 
   const value = useMemo(
     () => ({ status, token, session, demo, logout, apiFetch }),

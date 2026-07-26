@@ -92,6 +92,24 @@ export interface CatalogPartDetail extends Omit<CatalogPartCard, "media" | "inve
     dimensionUnit: "IN" | "CM" | null;
   } | null;
   media: Array<{ id: string; displayOrder: number; mediaAsset: { id: string; originalFilename: string; mimeType: string } }>;
+  fitmentApplications?: Array<{
+    id: string;
+    marketplace: string;
+    properties: Record<string, string>;
+    source: string;
+    approvedAt: string | null;
+  }>;
+  listingDrafts?: Array<{
+    id: string;
+    marketplace: string;
+    status: string;
+    title: string;
+    categoryId: string | null;
+    shippingPolicyId: string | null;
+    price: string | number | null;
+    currency: string;
+    updatedAt: string;
+  }>;
 }
 
 export type ManualFitmentStatus = "PENDING" | "APPROVED" | "REJECTED" | "SUPERSEDED";

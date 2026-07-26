@@ -192,7 +192,8 @@
 }
 
 .error,
-.notice {
+.notice,
+.warn {
   margin-bottom: 14px;
   padding: 12px 14px;
   border-radius: 10px;
@@ -209,6 +210,21 @@
   background: #eef4ff;
   border: 1px solid #dbeafe;
   color: #1d4ed8;
+}
+
+.warn {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #9a3412;
+}
+
+.warn a {
+  color: inherit;
+  font-weight: 600;
+}
+
+.warn code {
+  font-size: 12px;
 }
 
 .guide {

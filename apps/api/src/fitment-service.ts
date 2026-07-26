@@ -157,7 +157,7 @@ async function processFitmentItem(item: {
         partNumber: item.part.primaryPartNumber,
         brand: item.part.brand,
         partName: item.part.partName,
-      }, marketplace);
+      }, marketplace, { organizationId: item.organizationId });
     }, options, async (error, attempt, delayMs) => {
       const message = error instanceof Error ? error.message.slice(0, 500) : "Unknown fitment discovery error";
       await prisma.fitmentJobItem.update({ where: { id: item.id }, data: { error: `Attempt ${attempt} failed; retrying in ${delayMs}ms: ${message}` } });
@@ -266,7 +266,7 @@ export async function approveFitmentCandidate(organizationId: string, userId: st
   const candidate = item.candidates[0];
   if (!candidate) throw new FitmentJobError("Candidate does not belong to this fitment item", 404);
   let compatibility;
-  try { compatibility = await getEbayProductCompatibilities(candidate.epid, item.fitmentJob.marketplace as Marketplace); }
+  try { compatibility = await getEbayProductCompatibilities(candidate.epid, item.fitmentJob.marketplace as Marketplace, { organizationId }); }
   catch (error) { throw new FitmentJobError(error instanceof Error ? error.message : "eBay compatibility lookup failed", 502); }
   const applications = normalizeFitmentApplications(compatibility.applications);
   if (!applications.length) throw new FitmentJobError("eBay returned no compatibility applications for this product candidate");

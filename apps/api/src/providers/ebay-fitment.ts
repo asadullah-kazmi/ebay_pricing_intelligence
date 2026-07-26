@@ -1,7 +1,8 @@
 import { getConfig } from "../config.js";
 import { normalizePartNumber } from "../domain/matching.js";
+import { EbaySellerOAuthError, getEbaySellerAccessToken } from "../ebay-seller-oauth.js";
 import type { Marketplace } from "../types.js";
-import { EbayApiError, getEbayApplicationToken } from "./ebay.js";
+import { EbayApiError, getEbayApplicationToken, searchEbay } from "./ebay.js";
 
 export interface FitmentPartInput {
   partNumber: string;
@@ -22,12 +23,17 @@ export interface EbayFitmentDiscovery {
   categoryId: string | null;
   categoryName: string | null;
   candidates: EbayFitmentCandidate[];
+  source?: "catalog" | "browse" | "demo";
 }
 
 export interface EbayFitmentApplications {
   metadataVersion: string | null;
   applications: Array<Record<string, string>>;
 }
+
+export type EbayFitmentOptions = {
+  organizationId?: string;
+};
 
 const metadataMarketplaces: Record<Marketplace, string> = {
   EBAY_US: "EBAY_MOTORS_US",
@@ -39,6 +45,10 @@ function apiBase(): string {
   return getConfig().ebay.environment === "production" ? "https://api.ebay.com" : "https://api.sandbox.ebay.com";
 }
 
+export function isBrowseDerivedEpid(epid: string): boolean {
+  return epid.startsWith("browse:");
+}
+
 async function ebayError(response: Response, operation: string): Promise<EbayApiError> {
   let detail = "";
   try {
@@ -48,8 +58,25 @@ async function ebayError(response: Response, operation: string): Promise<EbayApi
   return new EbayApiError(`${operation} failed (${response.status})${detail ? `: ${detail}` : ""}`, response.status, operation);
 }
 
-async function ebayRequest<T>(path: string, marketplace: Marketplace, operation: string, init?: RequestInit): Promise<T> {
-  const token = await getEbayApplicationToken();
+async function resolveAccessToken(organizationId?: string): Promise<string> {
+  if (organizationId) {
+    try {
+      return await getEbaySellerAccessToken(organizationId);
+    } catch (error) {
+      if (!(error instanceof EbaySellerOAuthError)) throw error;
+    }
+  }
+  return getEbayApplicationToken();
+}
+
+async function ebayRequest<T>(
+  path: string,
+  marketplace: Marketplace,
+  operation: string,
+  init?: RequestInit,
+  options?: EbayFitmentOptions,
+): Promise<T> {
+  const token = await resolveAccessToken(options?.organizationId);
   const response = await fetch(`${apiBase()}${path}`, {
     ...init,
     signal: AbortSignal.timeout(30_000),
@@ -75,6 +102,7 @@ function demoDiscovery(part: FitmentPartInput): EbayFitmentDiscovery {
   return {
     categoryId: "33596",
     categoryName: "Other Engine Parts",
+    source: "demo",
     candidates: [{
       epid: `demo-${normalizePartNumber(part.partNumber)}`,
       title: `${part.brand ?? "OEM"} ${part.partName ?? "Automotive Part"} ${part.partNumber}`,
@@ -86,34 +114,15 @@ function demoDiscovery(part: FitmentPartInput): EbayFitmentDiscovery {
   };
 }
 
-export async function discoverEbayFitment(part: FitmentPartInput, marketplace: Marketplace): Promise<EbayFitmentDiscovery> {
-  if (getConfig().ebay.mode === "demo") return demoDiscovery(part);
-
-  const tree = await ebayRequest<{ categoryTreeId?: string }>(
-    `/commerce/taxonomy/v1/get_default_category_tree_id?marketplace_id=${encodeURIComponent(marketplace)}`,
-    marketplace,
-    "eBay category tree lookup",
-  );
-  const categoryQuery = [part.brand, part.partName, part.partNumber].filter(Boolean).join(" ");
-  const suggestions = tree.categoryTreeId
-    ? await ebayRequest<{ categorySuggestions?: Array<{ category?: { categoryId?: string; categoryName?: string } }> }>(
-      `/commerce/taxonomy/v1/category_tree/${encodeURIComponent(tree.categoryTreeId)}/get_category_suggestions?q=${encodeURIComponent(categoryQuery)}`,
-      marketplace,
-      "eBay category suggestion",
-    )
-    : { categorySuggestions: [] };
-  const category = suggestions.categorySuggestions?.[0]?.category;
-  const query = new URLSearchParams({ mpn: part.partNumber, limit: "20" });
-  if (category?.categoryId) query.set("category_ids", category.categoryId);
-  const products = await ebayRequest<{ productSummaries?: Array<Record<string, unknown>> }>(
-    `/commerce/catalog/v1_beta/product_summary/search?${query}`,
-    marketplace,
-    "eBay product catalog search",
-  );
+function mapCatalogProducts(
+  products: Array<Record<string, unknown>>,
+  category: { categoryId?: string; categoryName?: string } | undefined,
+): EbayFitmentDiscovery {
   return {
     categoryId: category?.categoryId ?? null,
     categoryName: category?.categoryName ?? null,
-    candidates: (products.productSummaries ?? []).flatMap((product) => {
+    source: "catalog",
+    candidates: products.flatMap((product) => {
       const epid = String(product.epid ?? "");
       if (!epid) return [];
       const image = product.image as { imageUrl?: string } | undefined;
@@ -129,6 +138,94 @@ export async function discoverEbayFitment(part: FitmentPartInput, marketplace: M
   };
 }
 
+async function discoverFromBrowse(part: FitmentPartInput, marketplace: Marketplace): Promise<EbayFitmentDiscovery> {
+  const listings = await searchEbay(part.partNumber, marketplace, "ANY");
+  const partNumber = normalizePartNumber(part.partNumber);
+  const candidates = listings.flatMap((listing) => {
+    const titleHasPart = normalizePartNumber(listing.title).includes(partNumber);
+    const aspectHasPart = Object.entries(listing.aspects).some(([name, values]) => {
+      const key = name.toLowerCase();
+      return ["manufacturer part number", "mpn", "oe/oem part number", "interchange part number"].includes(key)
+        && values.some((value) => normalizePartNumber(value) === partNumber);
+    });
+    if (!titleHasPart && !aspectHasPart) return [];
+    const brandAspect = listing.aspects.Brand?.[0] ?? listing.aspects.brand?.[0] ?? null;
+    return [{
+      epid: `browse:${listing.id}`,
+      title: listing.title,
+      brand: brandAspect ?? part.brand,
+      imageUrl: null,
+      productWebUrl: listing.url,
+      aspects: {
+        ...listing.aspects,
+        ...(listing.aspects["Manufacturer Part Number"] || listing.aspects.MPN
+          ? {}
+          : { "Manufacturer Part Number": [part.partNumber] }),
+      },
+    }];
+  });
+  return {
+    categoryId: null,
+    categoryName: null,
+    source: "browse",
+    candidates: candidates.slice(0, 20),
+  };
+}
+
+function isPermissionError(error: unknown): boolean {
+  return error instanceof EbayApiError && (error.status === 401 || error.status === 403);
+}
+
+export async function discoverEbayFitment(
+  part: FitmentPartInput,
+  marketplace: Marketplace,
+  options?: EbayFitmentOptions,
+): Promise<EbayFitmentDiscovery> {
+  if (getConfig().ebay.mode === "demo") return demoDiscovery(part);
+
+  let category: { categoryId?: string; categoryName?: string } | undefined;
+  try {
+    const tree = await ebayRequest<{ categoryTreeId?: string }>(
+      `/commerce/taxonomy/v1/get_default_category_tree_id?marketplace_id=${encodeURIComponent(marketplace)}`,
+      marketplace,
+      "eBay category tree lookup",
+    );
+    const categoryQuery = [part.brand, part.partName, part.partNumber].filter(Boolean).join(" ");
+    const suggestions = tree.categoryTreeId
+      ? await ebayRequest<{ categorySuggestions?: Array<{ category?: { categoryId?: string; categoryName?: string } }> }>(
+        `/commerce/taxonomy/v1/category_tree/${encodeURIComponent(tree.categoryTreeId)}/get_category_suggestions?q=${encodeURIComponent(categoryQuery)}`,
+        marketplace,
+        "eBay category suggestion",
+      )
+      : { categorySuggestions: [] };
+    category = suggestions.categorySuggestions?.[0]?.category;
+  } catch (error) {
+    if (!isPermissionError(error)) throw error;
+  }
+
+  try {
+    const query = new URLSearchParams({ mpn: part.partNumber, limit: "20" });
+    if (category?.categoryId) query.set("category_ids", category.categoryId);
+    const products = await ebayRequest<{ productSummaries?: Array<Record<string, unknown>> }>(
+      `/commerce/catalog/v1_beta/product_summary/search?${query}`,
+      marketplace,
+      "eBay product catalog search",
+      undefined,
+      options,
+    );
+    return mapCatalogProducts(products.productSummaries ?? [], category);
+  } catch (error) {
+    if (!isPermissionError(error)) throw error;
+    // Catalog requires a user token with catalog/inventory scopes. Fall back to Browse search.
+    const browse = await discoverFromBrowse(part, marketplace);
+    return {
+      ...browse,
+      categoryId: browse.categoryId ?? category?.categoryId ?? null,
+      categoryName: browse.categoryName ?? category?.categoryName ?? null,
+    };
+  }
+}
+
 function demoApplications(): EbayFitmentApplications {
   return {
     metadataVersion: "demo-1",
@@ -139,8 +236,15 @@ function demoApplications(): EbayFitmentApplications {
   };
 }
 
-export async function getEbayProductCompatibilities(epid: string, marketplace: Marketplace): Promise<EbayFitmentApplications> {
+export async function getEbayProductCompatibilities(
+  epid: string,
+  marketplace: Marketplace,
+  options?: EbayFitmentOptions,
+): Promise<EbayFitmentApplications> {
   if (getConfig().ebay.mode === "demo") return demoApplications();
+  if (isBrowseDerivedEpid(epid) || epid.startsWith("demo-")) {
+    return { metadataVersion: null, applications: [] };
+  }
   const applications: Array<Record<string, string>> = [];
   const metadataVersion: string | null = null;
   let offset = 0;
@@ -153,7 +257,7 @@ export async function getEbayProductCompatibilities(epid: string, marketplace: M
       method: "POST",
       headers: { "Content-Type": "application/json", "X-EBAY-C-MARKETPLACE-ID": metadataMarketplaces[marketplace] },
       body: JSON.stringify({ productIdentifier: { epid }, dataset: ["Searchable"], paginationInput: { limit, offset } }),
-    });
+    }, options);
     const page = result.compatibilityDetails ?? [];
     applications.push(...page.flatMap((entry) => {
       const properties = Object.fromEntries((entry.productDetails ?? []).flatMap((detail) =>

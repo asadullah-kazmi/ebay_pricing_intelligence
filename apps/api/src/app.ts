@@ -43,6 +43,7 @@ import { decidePricingProposal, getOrganizationPricingRule, listPricingProposals
 import { createManualFitment, decideManualFitment, listPartFitment, ManualFitmentError, reviseManualFitment } from "./manual-fitment-service.js";
 import { CatalogSavedViewError, deleteCatalogSavedView, listCatalogSavedViews, saveCatalogView } from "./catalog-saved-view-service.js";
 import { getNotificationPreferences, listNotifications, markAllNotificationsRead, markNotificationRead, NotificationError, updateNotificationPreferences } from "./notification-service.js";
+import { createQuickSku, QuickSkuError } from "./quick-sku-service.js";
 import { createRetentionRun, getRetentionPolicy, listRetentionRuns, RetentionError, startRetentionJob, updateRetentionPolicy } from "./retention-service.js";
 
 const searchSchema = z.object({
@@ -182,6 +183,15 @@ const pricingProposalDecisionSchema = z.object({
 const createFitmentJobSchema = z.object({
   partIds: z.array(z.string().min(1)).min(1).max(10).transform((ids) => [...new Set(ids)]),
   marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).default("EBAY_US"),
+}).strict();
+const quickSkuSchema = z.object({
+  partNumber: z.string().trim().min(2).max(80),
+  brand: z.string().trim().min(1).max(80),
+  price: z.number().positive().max(1_000_000),
+  quantity: z.number().int().min(0).max(100_000),
+  condition: z.enum(["NEW", "USED"]).default("USED"),
+  marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).default("EBAY_US"),
+  currency: z.string().trim().length(3).default("USD"),
 }).strict();
 const approveFitmentSchema = z.object({ candidateId: z.string().min(1) }).strict();
 const fitmentRoles = requireOrganizationRoles(...organizationPermissionRoles.fitment);
@@ -794,6 +804,14 @@ app.get("/api/parts", requireTenantContext, async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
     res.json(await listCatalogParts(tenant.organization.id, catalogQuerySchema.parse(req.query)));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/parts/quick-sku", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const input = quickSkuSchema.parse(req.body);
+    res.status(201).json(await createQuickSku(tenant.organization.id, tenant.user.id, input, res.locals.requestId));
   } catch (error) { next(error); }
 });
 
@@ -1634,13 +1652,23 @@ app.post("/api/search", searchRateLimit, async (req, res, next) => {
     const input = searchSchema.parse(req.body);
     const oem = normalizePartNumber(input.oem);
     const ownSellers = getConfig().ownSellers;
+    const provider = getConfig().ebay.mode;
     const candidates = await searchEbay(oem, input.marketplace, input.condition);
     const listings = candidates.flatMap((item) => {
       const matchedOn = matchListing(item, oem);
       if (!matchedOn.length || ownSellers.has(item.seller.toLowerCase())) return [];
       return [{ ...item, matchedOn, landedPrice: Math.round((item.price + item.shipping) * 100) / 100 }];
     });
-    const result = { oem, marketplace: input.marketplace, conditionFilter: input.condition, searchedAt: new Date().toISOString(), listings, analytics: calculateAnalytics(listings) };
+    const result = {
+      oem,
+      marketplace: input.marketplace,
+      conditionFilter: input.condition,
+      searchedAt: new Date().toISOString(),
+      provider,
+      candidateCount: candidates.length,
+      listings,
+      analytics: calculateAnalytics(listings),
+    };
     await saveSearchResult(result);
     res.json(result);
   } catch (error) { next(error); }
@@ -1674,6 +1702,7 @@ app.use((error: unknown, req: express.Request, res: express.Response, _next: exp
   if (error instanceof ImageImportError) return response(error.statusCode, { error: error.message });
   if (error instanceof ImportReviewError) return response(error.statusCode, { error: error.message, ...(error.details ? { details: error.details } : {}) });
   if (error instanceof CatalogError) return response(error.statusCode, { error: error.message });
+  if (error instanceof QuickSkuError) return response(error.statusCode, { error: error.message });
   if (error instanceof CatalogSavedViewError) return response(error.statusCode, { error: error.message });
   if (error instanceof NotificationError) return response(error.statusCode, { error: error.message });
   if (error instanceof RetentionError) return response(error.statusCode, { error: error.message });

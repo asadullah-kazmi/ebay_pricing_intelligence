@@ -5,6 +5,7 @@ import { useEffect, useState, type ComponentType } from "react";
 type WorkspaceKey =
   | "dashboard"
   | "catalog"
+  | "quickSku"
   | "inventory"
   | "pricing"
   | "fitment"
@@ -24,6 +25,7 @@ function resolveWorkspace(pathname: string): WorkspaceKey {
   if (path.startsWith("/shipping")) return "shipping";
   if (path.startsWith("/reports")) return "reports";
   if (path.startsWith("/settings")) return "settings";
+  if (path.startsWith("/quick-sku")) return "quickSku";
   if (path.startsWith("/catalog")) return "catalog";
   return "dashboard";
 }
@@ -33,6 +35,7 @@ export default function WorkspaceViews({ pathname }: { pathname: string }) {
   const [mounted, setMounted] = useState<Record<WorkspaceKey, boolean>>({
     dashboard: active === "dashboard",
     catalog: active === "catalog",
+    quickSku: active === "quickSku",
     inventory: active === "inventory",
     pricing: active === "pricing",
     fitment: active === "fitment",
@@ -45,6 +48,7 @@ export default function WorkspaceViews({ pathname }: { pathname: string }) {
   const [shown, setShown] = useState<WorkspaceKey>(active);
   const [Dashboard, setDashboard] = useState<ComponentType | null>(null);
   const [Catalog, setCatalog] = useState<ComponentType | null>(null);
+  const [QuickSku, setQuickSku] = useState<ComponentType | null>(null);
   const [Inventory, setInventory] = useState<ComponentType | null>(null);
   const [Pricing, setPricing] = useState<ComponentType | null>(null);
   const [Fitment, setFitment] = useState<ComponentType | null>(null);
@@ -79,6 +83,17 @@ export default function WorkspaceViews({ pathname }: { pathname: string }) {
       cancelled = true;
     };
   }, [Catalog, mounted.catalog]);
+
+  useEffect(() => {
+    if (!mounted.quickSku || QuickSku) return;
+    let cancelled = false;
+    void import("../(app)/quick-sku/QuickSkuWorkspace").then((mod) => {
+      if (!cancelled) setQuickSku(() => mod.default);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [QuickSku, mounted.quickSku]);
 
   useEffect(() => {
     if (!mounted.inventory || Inventory) return;
@@ -172,6 +187,7 @@ export default function WorkspaceViews({ pathname }: { pathname: string }) {
     const ready =
       (active === "dashboard" && Dashboard) ||
       (active === "catalog" && Catalog) ||
+      (active === "quickSku" && QuickSku) ||
       (active === "inventory" && Inventory) ||
       (active === "pricing" && Pricing) ||
       (active === "fitment" && Fitment) ||
@@ -181,12 +197,13 @@ export default function WorkspaceViews({ pathname }: { pathname: string }) {
       (active === "reports" && Reports) ||
       (active === "settings" && Settings);
     if (ready) setShown(active);
-  }, [Dashboard, Catalog, Inventory, Pricing, Fitment, Shipping, Pipeline, Orders, Reports, Settings, active]);
+  }, [Dashboard, Catalog, QuickSku, Inventory, Pricing, Fitment, Shipping, Pipeline, Orders, Reports, Settings, active]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void import("../(app)/dashboard/DashboardWorkspace");
       void import("../(app)/catalog/CatalogWorkspace");
+      void import("../(app)/quick-sku/QuickSkuWorkspace");
       void import("../(app)/inventory/InventoryWorkspace");
       void import("../(app)/pricing/PricingWorkspace");
       void import("../(app)/fitment/FitmentWorkspace");
@@ -209,6 +226,11 @@ export default function WorkspaceViews({ pathname }: { pathname: string }) {
       {mounted.catalog && Catalog ? (
         <div hidden={shown !== "catalog"}>
           <Catalog />
+        </div>
+      ) : null}
+      {mounted.quickSku && QuickSku ? (
+        <div hidden={shown !== "quickSku"}>
+          <QuickSku />
         </div>
       ) : null}
       {mounted.inventory && Inventory ? (

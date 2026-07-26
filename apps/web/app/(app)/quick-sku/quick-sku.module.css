@@ -1,0 +1,294 @@
+.page {
+  padding: 28px 32px 40px;
+  font-family: "Plus Jakarta Sans", "DM Sans", sans-serif;
+  color: #0f172a;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 18px;
+  height: auto;
+  border-bottom: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.topbar h1 {
+  margin: 0;
+  font: 800 34px/1.1 "Plus Jakarta Sans", sans-serif;
+  letter-spacing: -1.2px;
+  color: #0c274d;
+}
+
+.topbar p {
+  margin: 8px 0 0;
+  color: #64748b;
+  font-size: 14px;
+  max-width: 560px;
+  line-height: 1.5;
+}
+
+.primary,
+.ghostBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #0f172a;
+  font: 700 13px/1 "Plus Jakarta Sans", sans-serif;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.primary {
+  background: #0052ff;
+  border-color: #0052ff;
+  color: #fff;
+  box-shadow: 0 8px 18px #0052ff24;
+}
+
+.primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.error,
+.notice {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.error {
+  background: #feeceb;
+  border: 1px solid #fecaca;
+  color: #b42318;
+}
+
+.notice {
+  background: #eef4ff;
+  border: 1px solid #dbeafe;
+  color: #1d4ed8;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.formCard,
+.resultCard {
+  background: #fff;
+  border: 1px solid #e8eef5;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px #0b142605, 0 10px 28px #0b14260a;
+  overflow: hidden;
+}
+
+.formCard {
+  padding: 24px;
+  display: grid;
+  gap: 14px;
+}
+
+.eyebrow {
+  display: block;
+  color: #0052ff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+}
+
+.formCard h2,
+.resultHead h2 {
+  margin: 6px 0 0;
+  font: 800 22px/1.2 "Plus Jakarta Sans", sans-serif;
+  color: #0c274d;
+  letter-spacing: -0.5px;
+}
+
+.formLead {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.formCard label {
+  display: grid;
+  gap: 6px;
+}
+
+.formCard label > span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.formCard input,
+.formCard select {
+  height: 44px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0 12px;
+  background: #f8fafc;
+  outline: none;
+  font: 600 14px/1 "Plus Jakarta Sans", sans-serif;
+}
+
+.formCard input:focus,
+.formCard select:focus {
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 3px #0052ff22;
+  background: #fff;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.resultHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 22px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.resultHead p {
+  margin: 8px 0 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: #eef2f7;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.metrics article {
+  background: #fff;
+  padding: 18px;
+}
+
+.metrics span,
+.metrics small {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.metrics b {
+  display: block;
+  margin: 8px 0 4px;
+  font: 800 20px/1.15 "Plus Jakarta Sans", sans-serif;
+  color: #0c274d;
+}
+
+.specs {
+  padding: 18px 22px 22px;
+}
+
+.specs dl {
+  margin: 12px 0 0;
+  display: grid;
+  gap: 10px;
+}
+
+.specs dl > div {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.specs dt {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.specs dd {
+  margin: 0;
+  font-size: 13px;
+  color: #0f172a;
+}
+
+.empty {
+  padding: 64px 28px;
+  text-align: center;
+}
+
+.empty b,
+.empty span {
+  display: block;
+}
+
+.empty b {
+  margin-bottom: 8px;
+  font-size: 16px;
+  color: #0c274d;
+}
+
+.empty span {
+  max-width: 360px;
+  margin: 0 auto;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+@media (max-width: 980px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .page {
+    padding: 16px 14px 28px;
+  }
+
+  .topbar {
+    flex-direction: column;
+  }
+
+  .row,
+  .metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .resultHead {
+    flex-direction: column;
+  }
+
+  .specs dl > div {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}
