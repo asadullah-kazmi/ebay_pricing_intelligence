@@ -181,7 +181,8 @@ export function getConfig(): AppConfig {
   }
 
   const databaseUrl = process.env.DATABASE_URL?.trim() || undefined;
-  const webOrigin = process.env.WEB_ORIGIN?.trim() || undefined;
+  const webOriginRaw = process.env.WEB_ORIGIN?.trim() || process.env.PARTPULSE_WEB_ORIGIN?.trim() || undefined;
+  const webOrigin = webOriginRaw?.replace(/\/$/, "") || undefined;
   const smtpHost = process.env.SMTP_HOST?.trim() || undefined;
   const smtpUser = process.env.SMTP_USER?.trim() || undefined;
   const smtpPass = process.env.SMTP_PASS?.trim() || undefined;
@@ -231,7 +232,12 @@ export function getConfig(): AppConfig {
       !fromEmail && "FROM_EMAIL",
       !mfaEncryptionKey && "MFA_ENCRYPTION_KEY",
     ].filter(Boolean);
-    if (missing.length) throw new Error(`Production configuration is missing: ${missing.join(", ")}`);
+    if (missing.length) {
+      const hint = missing.includes("WEB_ORIGIN")
+        ? " Set WEB_ORIGIN on the Railway API service to your public web HTTPS origin (e.g. https://price-intelweb-production.up.railway.app), not the API URL."
+        : "";
+      throw new Error(`Production configuration is missing: ${missing.join(", ")}.${hint}`);
+    }
     if (environment !== "production") throw new Error("EBAY_ENVIRONMENT must be production when NODE_ENV=production");
     if (webOrigin && !webOrigin.startsWith("https://")) throw new Error("WEB_ORIGIN must use HTTPS in production");
   }
