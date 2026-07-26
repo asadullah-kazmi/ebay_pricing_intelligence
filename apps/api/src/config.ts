@@ -95,6 +95,11 @@ export function getConfig(): AppConfig {
   }
 
   const ebayRuName = process.env.EBAY_RUNAME?.trim() || undefined;
+  if (ebayRuName && /^https?:\/\//i.test(ebayRuName)) {
+    throw new Error(
+      "EBAY_RUNAME must be the eBay RuName identifier (for example Syed_Asadullah_-SyedAsad-pricin-acbltbag), not the OAuth callback URL",
+    );
+  }
   const ebayEncryptionKeyValue = process.env.EBAY_OAUTH_ENCRYPTION_KEY?.trim() || undefined;
   if (Boolean(ebayRuName) !== Boolean(ebayEncryptionKeyValue)) {
     throw new Error("EBAY_RUNAME and EBAY_OAUTH_ENCRYPTION_KEY must be provided together");
@@ -111,7 +116,8 @@ export function getConfig(): AppConfig {
     "https://api.ebay.com/oauth/api_scope/sell.account",
     "https://api.ebay.com/oauth/api_scope/commerce.identity.readonly",
   ];
-  const ebayOAuthScopes = (process.env.EBAY_OAUTH_SCOPES?.trim() || defaultEbayOAuthScopes.join(" ")).split(/\s+/).filter(Boolean);
+  const ebayOAuthScopes = (process.env.EBAY_OAUTH_SCOPES?.trim() || defaultEbayOAuthScopes.join(" ")).split(/\s+/).filter(Boolean)
+    .filter((scope) => scope !== "https://api.ebay.com/oauth/api_scope/commerce.catalog.readonly");
   if (!ebayOAuthScopes.length || ebayOAuthScopes.some((scope) => !/^https:\/\/api\.ebay\.com\/oauth\/api_scope\/[a-z0-9._-]+$/i.test(scope))) {
     throw new Error("EBAY_OAUTH_SCOPES must contain space-separated eBay OAuth scope URLs");
   }
@@ -224,6 +230,8 @@ export function getConfig(): AppConfig {
       !storageSecretAccessKey && "STORAGE_SECRET_ACCESS_KEY",
       !ebayClientId && "EBAY_CLIENT_ID",
       !ebayClientSecret && "EBAY_CLIENT_SECRET",
+      !ebayRuName && "EBAY_RUNAME",
+      !ebayEncryptionKey && "EBAY_OAUTH_ENCRYPTION_KEY",
       !notificationEndpoint && "EBAY_NOTIFICATION_ENDPOINT",
       !notificationVerificationToken && "EBAY_NOTIFICATION_VERIFICATION_TOKEN",
       !smtpHost && "SMTP_HOST",
@@ -235,7 +243,9 @@ export function getConfig(): AppConfig {
     if (missing.length) {
       const hint = missing.includes("WEB_ORIGIN")
         ? " Set WEB_ORIGIN on the Railway API service to your public web HTTPS origin (e.g. https://price-intelweb-production.up.railway.app), not the API URL."
-        : "";
+        : missing.includes("EBAY_RUNAME") || missing.includes("EBAY_OAUTH_ENCRYPTION_KEY")
+          ? " Set EBAY_RUNAME to your eBay RuName identifier (not the callback URL) and EBAY_OAUTH_ENCRYPTION_KEY to a Base64-encoded 32-byte key on the Railway API service."
+          : "";
       throw new Error(`Production configuration is missing: ${missing.join(", ")}.${hint}`);
     }
     if (environment !== "production") throw new Error("EBAY_ENVIRONMENT must be production when NODE_ENV=production");

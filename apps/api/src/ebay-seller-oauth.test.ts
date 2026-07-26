@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildEbayConsentUrl, decryptSellerToken, encryptSellerToken } from "./ebay-seller-oauth.js";
+import { buildEbayConsentUrl, decryptSellerToken, encryptSellerToken, ebayOAuthRedirectMessage, ebayOAuthRedirectReason, EbaySellerOAuthError } from "./ebay-seller-oauth.js";
 
 describe("eBay seller OAuth token encryption", () => {
   it("round-trips a token with a unique authenticated IV", () => {
@@ -33,5 +33,13 @@ describe("eBay seller consent URL", () => {
     expect(url.searchParams.get("redirect_uri")).toBe("example-runame");
     expect(url.searchParams.get("state")).toBe("opaque-state");
     expect(url.searchParams.get("scope")?.split(" ")).toHaveLength(2);
+  });
+});
+
+describe("eBay OAuth redirect diagnostics", () => {
+  it("maps token failures to the token reason", () => {
+    const error = new EbaySellerOAuthError("eBay token request failed (400): invalid_grant", 502);
+    expect(ebayOAuthRedirectReason(error)).toBe("token");
+    expect(ebayOAuthRedirectMessage(error)).toContain("invalid_grant");
   });
 });

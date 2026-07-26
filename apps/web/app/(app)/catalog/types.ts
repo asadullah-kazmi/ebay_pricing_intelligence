@@ -15,6 +15,15 @@ export interface EbayConnection {
   refreshTokenExpiresAt?: string | null;
   lastRefreshedAt?: string | null;
   lastError?: string | null;
+  setup?: {
+    configured: boolean;
+    missing?: string[];
+    message?: string;
+    environment?: string;
+    ruNamePreview?: string;
+    ruNameLooksValid?: boolean;
+    scopes?: string[];
+  };
 }
 
 export interface CatalogPartCard {

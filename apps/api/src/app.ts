@@ -22,7 +22,7 @@ import { getObjectStorage, ObjectStorageError } from "./object-storage.js";
 import { createRateLimitMiddleware, requestLogMiddleware, requestSecurityMiddleware } from "./http-hardening.js";
 import { createPricingJob, getPricingJob, listPricingJobs, PricingJobError, startPricingJob } from "./pricing-service.js";
 import { approveFitmentCandidate, createFitmentJob, FitmentJobError, getFitmentJob, listFitmentJobs, startFitmentJob } from "./fitment-service.js";
-import { completeEbayAuthorization, createEbayAuthorization, disconnectEbayConnection, EbaySellerOAuthError, getEbayConnection } from "./ebay-seller-oauth.js";
+import { completeEbayAuthorization, createEbayAuthorization, disconnectEbayConnection, EbaySellerOAuthError, ebayOAuthRedirectMessage, ebayOAuthRedirectReason, getEbayConnection } from "./ebay-seller-oauth.js";
 import { getTenantContext, requireOrganizationRoles, requireTenantContext } from "./tenant-context.js";
 import { organizationPermissionRoles } from "./authorization-policy.js";
 import { getWorkerHealth } from "./worker-operations.js";
@@ -392,10 +392,15 @@ app.get("/health", readinessHandler);
 app.get("/health/ready", readinessHandler);
 
 app.get("/api/ebay/oauth/callback", authRateLimit, async (req, res) => {
-  const redirect = (result: "connected" | "declined" | "error") => {
+  const redirect = (result: "connected" | "declined" | "error", reason?: string, message?: string) => {
     const target = getConfig().webOrigin;
-    if (target) return res.redirect(303, `${target}/catalog?ebay=${result}`);
-    return res.status(result === "connected" ? 200 : 400).json({ status: result });
+    if (target) {
+      const query = new URLSearchParams({ ebay: result });
+      if (reason) query.set("ebay_reason", reason);
+      if (message) query.set("ebay_message", message.slice(0, 240));
+      return res.redirect(303, `${target}/catalog?${query}`);
+    }
+    return res.status(result === "connected" ? 200 : 400).json({ status: result, reason: reason ?? null, message: message ?? null });
   };
   try {
     const input = ebayOAuthCallbackSchema.parse(req.query);
@@ -403,7 +408,9 @@ app.get("/api/ebay/oauth/callback", authRateLimit, async (req, res) => {
     return redirect("connected");
   } catch (error) {
     console.warn(JSON.stringify({ type: "ebay_oauth_callback_failed", error: error instanceof Error ? { name: error.name, message: error.message } : { name: "UnknownError" } }));
-    return redirect(error instanceof EbaySellerOAuthError && error.message.includes("declined") ? "declined" : "error");
+    const reason = ebayOAuthRedirectReason(error);
+    if (reason === "declined") return redirect("declined");
+    return redirect("error", reason, ebayOAuthRedirectMessage(error));
   }
 });
 

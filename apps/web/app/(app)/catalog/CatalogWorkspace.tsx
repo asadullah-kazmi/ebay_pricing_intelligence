@@ -43,6 +43,26 @@ function detailTitle(part: CatalogPartDetail) {
   return raw;
 }
 
+function ebayConnectNotice(result: string | null, reason: string | null, detail: string | null) {
+  if (result === "connected") return "eBay seller account connected successfully.";
+  if (result === "declined") return "eBay authorization was cancelled.";
+  if (detail) return detail;
+  switch (reason) {
+    case "state":
+      return "eBay authorization expired or was already used. Click Connect eBay and finish within 10 minutes.";
+    case "token":
+      return "eBay token exchange failed. On Railway API, set EBAY_RUNAME to your RuName (Syed_Asadullah_-SyedAsad-pricin-acbltbag), not the callback URL, and verify EBAY_CLIENT_ID/SECRET.";
+    case "identity":
+      return "eBay connected but identity lookup failed. Reconnect after confirming EBAY_OAUTH_SCOPES includes commerce.identity.readonly.";
+    case "config":
+      return "eBay seller OAuth is not configured on the API service (EBAY_RUNAME, EBAY_OAUTH_ENCRYPTION_KEY, client credentials).";
+    case "callback":
+      return "eBay returned an invalid authorization response. Try Connect eBay again.";
+    default:
+      return "eBay connection could not be completed. Check Railway API logs for ebay_oauth_callback_failed.";
+  }
+}
+
 function fitmentLabel(properties: Record<string, string>) {
   const map = new Map(Object.entries(properties).map(([key, value]) => [key.toLowerCase(), value]));
   const year = map.get("year");
@@ -167,8 +187,10 @@ export default function CatalogWorkspace() {
   useEffect(() => {
     if (authStatus !== "ready" || demo) return;
     const result = new URLSearchParams(window.location.search).get("ebay");
+    const reason = new URLSearchParams(window.location.search).get("ebay_reason");
+    const detail = new URLSearchParams(window.location.search).get("ebay_message");
     if (result) {
-      setNotice(result === "connected" ? "eBay seller account connected successfully." : result === "declined" ? "eBay authorization was cancelled." : "eBay connection could not be completed. Please try again.");
+      setNotice(ebayConnectNotice(result, reason, detail));
       window.history.replaceState({}, "", window.location.pathname);
     }
     request("/api/ebay/connection").then((value) => setEbayConnection(value as EbayConnection)).catch(() => undefined);
@@ -1027,6 +1049,12 @@ export default function CatalogWorkspace() {
           ? <button type="button" className={styles.linkBtn} disabled={connectionBusy} onClick={() => void disconnectEbay()}>Disconnect</button>
           : <button type="button" className={styles.linkBtn} disabled={connectionBusy || demo} onClick={() => void connectEbay()}>{connectionBusy ? "Opening..." : "Connect eBay"}</button>}
       </div>
+      {!ebayConnection.connected && ebayConnection.setup && !ebayConnection.setup.configured && !demo && (
+        <div className={styles.error}>{ebayConnection.setup.message ?? "eBay seller OAuth is not configured on the API service."}</div>
+      )}
+      {!ebayConnection.connected && ebayConnection.setup?.configured && ebayConnection.setup.ruNameLooksValid === false && !demo && (
+        <div className={styles.error}>EBAY_RUNAME on the API service must be your eBay RuName identifier, not the callback URL.</div>
+      )}
       {demo && <div className={styles.demoBanner}>Development preview - sample records are not saved.</div>}
       {notice && <div className={styles.notice}>{notice}</div>}
       {error && <div className={styles.error}>{error}</div>}

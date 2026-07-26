@@ -121,6 +121,51 @@ async function fetchEbayIdentity(environment: EbayEnvironment, accessToken: stri
   }>;
 }
 
+export function ebayOAuthRedirectReason(error: unknown): "declined" | "state" | "token" | "identity" | "config" | "callback" | "unknown" {
+  if (error instanceof EbaySellerOAuthError) {
+    const message = error.message.toLowerCase();
+    if (message.includes("declined") || message.includes("cancelled")) return "declined";
+    if (message.includes("state")) return "state";
+    if (message.includes("token")) return "token";
+    if (message.includes("identity")) return "identity";
+    if (message.includes("not configured")) return "config";
+  }
+  if (error && typeof error === "object" && "issues" in error) return "callback";
+  return "unknown";
+}
+
+export function ebayOAuthRedirectMessage(error: unknown): string | undefined {
+  if (!(error instanceof EbaySellerOAuthError)) return undefined;
+  const message = error.message.trim();
+  if (!message || message.length > 240) return message.slice(0, 240);
+  return message;
+}
+
+export function getEbayOAuthSetupStatus() {
+  const { ebay } = getConfig();
+  const missing = [
+    !ebay.clientId && "EBAY_CLIENT_ID",
+    !ebay.clientSecret && "EBAY_CLIENT_SECRET",
+    !ebay.oauth.ruName && "EBAY_RUNAME",
+    !ebay.oauth.encryptionKey && "EBAY_OAUTH_ENCRYPTION_KEY",
+  ].filter(Boolean) as string[];
+  if (missing.length) {
+    return {
+      configured: false as const,
+      missing,
+      message: `Set ${missing.join(", ")} on the API service, then redeploy.`,
+    };
+  }
+  const ruName = ebay.oauth.ruName!;
+  return {
+    configured: true as const,
+    environment: ebay.environment,
+    ruNamePreview: ruName.length > 10 ? `${ruName.slice(0, 6)}…${ruName.slice(-6)}` : ruName,
+    ruNameLooksValid: !/^https?:\/\//i.test(ruName),
+    scopes: ebay.oauth.scopes,
+  };
+}
+
 export async function createEbayAuthorization(organizationId: string, userId: string) {
   const config = oauthConfig();
   const state = randomBytes(32).toString("base64url");
@@ -153,7 +198,10 @@ export async function completeEbayAuthorization(input: { state: string; code?: s
   const token = await tokenRequest(config, new URLSearchParams({
     grant_type: "authorization_code", code: input.code, redirect_uri: config.ruName,
   }));
-  if (!token.refresh_token || !token.refresh_token_expires_in) throw new EbaySellerOAuthError("eBay did not return a refresh token", 502);
+  if (!token.refresh_token) throw new EbaySellerOAuthError("eBay did not return a refresh token", 502);
+  const refreshTokenExpiresIn = Number.isFinite(token.refresh_token_expires_in) && token.refresh_token_expires_in! > 0
+    ? token.refresh_token_expires_in!
+    : 47304000;
   const identity = await fetchEbayIdentity(config.environment, token.access_token);
   if (!identity.userId) throw new EbaySellerOAuthError("eBay identity response is missing the immutable user ID", 502);
   const access = encryptSellerToken(token.access_token, config.encryptionKey);
@@ -168,7 +216,7 @@ export async function completeEbayAuthorization(input: { state: string; code?: s
       accessTokenCiphertext: access.ciphertext, accessTokenIv: access.iv, accessTokenTag: access.tag,
       refreshTokenCiphertext: refresh.ciphertext, refreshTokenIv: refresh.iv, refreshTokenTag: refresh.tag,
       accessTokenExpiresAt: new Date(now.getTime() + token.expires_in * 1_000),
-      refreshTokenExpiresAt: new Date(now.getTime() + token.refresh_token_expires_in * 1_000), lastRefreshedAt: now,
+      refreshTokenExpiresAt: new Date(now.getTime() + refreshTokenExpiresIn * 1_000), lastRefreshedAt: now,
     },
     update: {
       connectedById: state.userId, environment: config.environment, status: "ACTIVE", ebayUserId: identity.userId,
@@ -176,7 +224,7 @@ export async function completeEbayAuthorization(input: { state: string; code?: s
       scopes: config.scopes, accessTokenCiphertext: access.ciphertext, accessTokenIv: access.iv, accessTokenTag: access.tag,
       refreshTokenCiphertext: refresh.ciphertext, refreshTokenIv: refresh.iv, refreshTokenTag: refresh.tag,
       accessTokenExpiresAt: new Date(now.getTime() + token.expires_in * 1_000),
-      refreshTokenExpiresAt: new Date(now.getTime() + token.refresh_token_expires_in * 1_000),
+      refreshTokenExpiresAt: new Date(now.getTime() + refreshTokenExpiresIn * 1_000),
       lastRefreshedAt: now, lastError: null, disconnectedAt: null,
     },
   });
@@ -201,7 +249,9 @@ const publicConnectionSelect = {
 
 export async function getEbayConnection(organizationId: string) {
   const connection = await prisma.ebaySellerConnection.findUnique({ where: { organizationId }, select: publicConnectionSelect });
-  return connection ? publicConnection(connection) : { connected: false, status: "NOT_CONNECTED" as const };
+  const setup = getEbayOAuthSetupStatus();
+  if (connection) return { ...publicConnection(connection), setup };
+  return { connected: false, status: "NOT_CONNECTED" as const, setup };
 }
 
 export async function disconnectEbayConnection(organizationId: string) {
