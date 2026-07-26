@@ -33,7 +33,14 @@ function detailTitle(part: CatalogPartDetail) {
   const donor = part.donorVehicle
     ? [part.donorVehicle.year, part.donorVehicle.make, part.donorVehicle.model].filter(Boolean).join(" ")
     : "";
-  return [donor, part.partName || "Automotive Part", part.primaryPartNumber].filter(Boolean).join(" ");
+  const raw = [donor, part.partName || "Automotive Part", part.primaryPartNumber].filter(Boolean).join(" ");
+  // Quick SKU / imports often store shouting ALL CAPS titles — soften for the modal.
+  if (raw === raw.toUpperCase() && /[A-Z]/.test(raw)) {
+    return raw
+      .toLowerCase()
+      .replace(/\b\w/g, (letter) => letter.toUpperCase());
+  }
+  return raw;
 }
 
 function fitmentLabel(properties: Record<string, string>) {
@@ -1328,10 +1335,13 @@ export default function CatalogWorkspace() {
     {detail && <div className={styles.modalBackdrop} role="presentation" onClick={(event) => { if (event.target === event.currentTarget) setDetail(null); }}>
       <section className={`${styles.drawer} ${styles.inventoryModal}`} role="dialog" aria-modal="true" aria-labelledby="edit-part-title">
         <header className={styles.inventoryHeader}>
-          <h2 id="edit-part-title">Inventory Details</h2>
+          <div>
+            <span className={styles.inventoryEyebrow}>Catalog part</span>
+            <h2 id="edit-part-title">Inventory Details</h2>
+          </div>
           <div className={styles.inventoryHeaderActions}>
             {detailMode === "view" ? (
-              <button type="button" className={styles.primary} onClick={() => setDetailMode("edit")}>Edit Details</button>
+              <button type="button" className={styles.editDetailsBtn} onClick={() => setDetailMode("edit")}>Edit details</button>
             ) : (
               <button type="button" className={styles.ghostBtn} onClick={() => setDetailMode("view")}>Cancel edit</button>
             )}
@@ -1341,144 +1351,158 @@ export default function CatalogWorkspace() {
 
         {detailMode === "view" ? (
           <div className={styles.inventoryBody}>
-            <div className={styles.inventoryTitleBlock}>
-              <h3>{detailTitle(detail)}</h3>
-              <button type="button" className={styles.skuCopy} onClick={() => void copySku(detail.sku)}>
-                SKU: {detail.sku}
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-              </button>
-            </div>
+            {(() => {
+              const stock = stockStatus(detail.inventoryItem?.quantity ?? 0);
+              const ebay = ebayStatusLabel(detail);
+              const priceLabel = detail.listingDrafts?.[0]?.price != null
+                ? money(detail.listingDrafts[0].price, detail.listingDrafts[0].currency)
+                : detail.inventoryItem
+                  ? money(detail.inventoryItem.cost, detail.inventoryItem.currency)
+                  : "—";
+              const storage = [detail.inventoryItem?.warehouse?.code, detail.inventoryItem?.binLocation?.code].filter(Boolean).join(" · ") || "Unassigned";
+              const categoryLabel = detail.listingDrafts?.[0]?.categoryId
+                ? `eBay category ${detail.listingDrafts[0].categoryId}`
+                : detail.donorVehicle
+                  ? [detail.donorVehicle.year, detail.donorVehicle.make, detail.donorVehicle.model].filter(Boolean).join(" ")
+                  : "Not assigned";
+              const title = detailTitle(detail);
+              const partNameDistinct = detail.partName
+                && detail.partName.trim().toLowerCase() !== title.trim().toLowerCase();
+              const fitmentItems = detail.fitmentApplications && detail.fitmentApplications.length > 0
+                ? detail.fitmentApplications
+                : detail.donorVehicle
+                  ? [{ id: "donor", properties: { Year: String(detail.donorVehicle.year ?? ""), Make: detail.donorVehicle.make ?? "", Model: detail.donorVehicle.model ?? "" } }]
+                  : [];
 
-            <div className={styles.inventoryMetaGrid}>
-              <div className={styles.inventoryMetaCol}>
-                <div className={styles.metaItem}>
-                  <span>Brand</span>
-                  <strong>{detail.brand || "—"}</strong>
-                </div>
-                <div className={styles.metaItem}>
-                  <span>Part Type</span>
-                  <strong>{detail.partName || "—"}</strong>
-                </div>
-                <div className={styles.metaItem}>
-                  <span>OEM / Part #</span>
-                  <strong>{detail.primaryPartNumber}</strong>
-                </div>
-                <div className={styles.metaItem}>
-                  <span>Shipping Policy</span>
-                  <strong>
-                    {detail.listingDrafts?.[0]?.shippingPolicyId || "Not assigned"}
-                    {detail.listingDrafts?.[0]?.shippingPolicyId && <em className={styles.customPill}>Custom</em>}
-                  </strong>
-                </div>
-                <div className={styles.metaItem}>
-                  <span>Placement</span>
-                  <strong>{detail.placement || "—"}</strong>
-                </div>
-                <div className={styles.metaItem}>
-                  <span>Storage Location</span>
-                  <strong>
-                    {[detail.inventoryItem?.warehouse?.code, detail.inventoryItem?.binLocation?.code].filter(Boolean).join(" / ") || "Unassigned"}
-                  </strong>
-                </div>
-              </div>
-              <div className={styles.inventoryMetaCol}>
-                <div className={styles.metaItem}>
-                  <span>Condition</span>
-                  <strong className={styles.conditionValue}>{humanStatus(detail.condition)}</strong>
-                </div>
-                <div className={styles.metaItem}>
-                  <span>Price</span>
-                  <strong>
-                    {detail.listingDrafts?.[0]?.price != null
-                      ? money(detail.listingDrafts[0].price, detail.listingDrafts[0].currency)
-                      : detail.inventoryItem
-                        ? money(detail.inventoryItem.cost, detail.inventoryItem.currency)
-                        : "—"}
-                  </strong>
-                </div>
-                <div className={styles.metaItem}>
-                  <span>Quantity</span>
-                  <strong>{detail.inventoryItem?.quantity ?? 0}</strong>
-                </div>
-                <div className={styles.metaItem}>
-                  <span>Stock Status</span>
-                  <strong className={styles[`stock_${stockStatus(detail.inventoryItem?.quantity ?? 0).tone}`]}>
-                    {stockStatus(detail.inventoryItem?.quantity ?? 0).label}
-                  </strong>
-                </div>
-                <div className={styles.metaItem}>
-                  <span>eBay Status</span>
-                  <strong className={styles[`stock_${ebayStatusLabel(detail).tone}`]}>
-                    {ebayStatusLabel(detail).label}
-                  </strong>
-                </div>
-                <div className={styles.metaItem}>
-                  <span>Date Added</span>
-                  <strong>{new Date(detail.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</strong>
-                </div>
-              </div>
-            </div>
-
-            <div className={styles.inventoryBlock}>
-              <span className={styles.blockLabel}>Category</span>
-              <p>
-                {detail.listingDrafts?.[0]?.categoryId
-                  ? `eBay Motors category ID ${detail.listingDrafts[0].categoryId}`
-                  : detail.donorVehicle
-                    ? `Donor vehicle context · ${[detail.donorVehicle.year, detail.donorVehicle.make, detail.donorVehicle.model].filter(Boolean).join(" ")}`
-                    : "Category not assigned yet"}
-              </p>
-            </div>
-
-            <div className={styles.inventoryBlock}>
-              <span className={styles.blockLabel}>Notes / Description</span>
-              <p>{detail.description || detail.notes || "No description provided."}</p>
-            </div>
-
-            <div className={styles.inventoryBlock}>
-              <div className={styles.blockHead}>
-                <span className={styles.blockLabel}>Product Images ({detail.media.length}/{detail.media.length || 0})</span>
-                <button type="button" className={styles.uploadGhost} onClick={() => setNotice("Image upload is available from the import pipeline for this part.")}>
-                  Upload Images
-                </button>
-              </div>
-              <div className={styles.detailImages}>
-                {(detail.media.length ? detail.media : [{ id: "placeholder", displayOrder: 0, mediaAsset: { id: "", originalFilename: "", mimeType: "" } }]).slice(0, 8).map((item, index) => (
-                  <div key={item.id} className={`${styles.detailImage} ${index === 0 ? styles.detailImageMain : ""}`}>
-                    <CatalogImage mediaId={item.mediaAsset.id || undefined} token={token} demo={demo} />
-                    <span className={styles.badge}>{index + 1}</span>
-                    {index === 0 && <span className={styles.mainTag}>Main</span>}
+              return (
+                <>
+                  <div className={styles.inventoryHero}>
+                    <div className={styles.inventoryHeroMedia}>
+                      <CatalogImage mediaId={detail.media[0]?.mediaAsset.id} token={token} demo={demo} />
+                      {detail.media.length > 1 && <span className={styles.mediaCount}>{detail.media.length} photos</span>}
+                    </div>
+                    <div className={styles.inventoryHeroCopy}>
+                      <div className={styles.inventoryBadges}>
+                        <span className={`${styles.statusBadge} ${styles[`tone_${stock.tone}`]}`}>{stock.label}</span>
+                        <span className={`${styles.statusBadge} ${styles[`tone_${ebay.tone}`]}`}>{ebay.label}</span>
+                        <span className={`${styles.statusBadge} ${styles.tone_muted}`}>{humanStatus(detail.condition)}</span>
+                      </div>
+                      <h3>{title}</h3>
+                      <button type="button" className={styles.skuCopy} onClick={() => void copySku(detail.sku)}>
+                        <span>SKU</span>
+                        <code>{detail.sku}</code>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                      </button>
+                      <div className={styles.statStrip}>
+                        <article>
+                          <span>Price</span>
+                          <b>{priceLabel}</b>
+                        </article>
+                        <article>
+                          <span>Quantity</span>
+                          <b>{detail.inventoryItem?.quantity ?? 0}</b>
+                        </article>
+                        <article>
+                          <span>OEM</span>
+                          <b>{detail.primaryPartNumber}</b>
+                        </article>
+                        <article>
+                          <span>Brand</span>
+                          <b>{detail.brand || "—"}</b>
+                        </article>
+                      </div>
+                    </div>
                   </div>
-                ))}
-              </div>
-            </div>
 
-            <div className={styles.inventoryBlock}>
-              <div className={styles.blockHead}>
-                <span className={styles.blockLabel}>
-                  Fitments / Compatibility
-                  <em className={styles.countPill}>{(detail.fitmentApplications?.length || (detail.donorVehicle ? 1 : 0))}</em>
-                </span>
-                <button type="button" className={styles.uploadGhost} onClick={() => void openManualFitment(detail.id)}>Manage</button>
-              </div>
-              <div className={styles.fitmentChips}>
-                {(detail.fitmentApplications && detail.fitmentApplications.length > 0
-                  ? detail.fitmentApplications
-                  : detail.donorVehicle
-                    ? [{ id: "donor", properties: { Year: String(detail.donorVehicle.year ?? ""), Make: detail.donorVehicle.make ?? "", Model: detail.donorVehicle.model ?? "" } }]
-                    : []
-                ).map((application) => (
-                  <span key={application.id} className={styles.fitmentChip}>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M3 13l2-5h14l2 5M5 13v5h2v-2h10v2h2v-5"/><circle cx="7.5" cy="16.5" r="1.5"/><circle cx="16.5" cy="16.5" r="1.5"/></svg>
-                    {fitmentLabel(application.properties)}
-                    <i>✓</i>
-                  </span>
-                ))}
-                {!(detail.fitmentApplications?.length || detail.donorVehicle) && (
-                  <span className={styles.emptyFitment}>No approved fitment yet. Use Manage to add compatibility.</span>
-                )}
-              </div>
-            </div>
+                  <div className={styles.inventorySections}>
+                    <section className={styles.inventoryPanel}>
+                      <header>
+                        <h4>Identity</h4>
+                        <p>Catalog identifiers and listing classification</p>
+                      </header>
+                      <dl className={styles.metaList}>
+                        <div><dt>Brand</dt><dd>{detail.brand || "—"}</dd></div>
+                        {partNameDistinct ? <div><dt>Part name</dt><dd>{detail.partName}</dd></div> : null}
+                        <div><dt>OEM / Part #</dt><dd><code>{detail.primaryPartNumber}</code></dd></div>
+                        <div><dt>Category</dt><dd>{categoryLabel}</dd></div>
+                        <div><dt>Date added</dt><dd>{new Date(detail.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</dd></div>
+                      </dl>
+                    </section>
+
+                    <section className={styles.inventoryPanel}>
+                      <header>
+                        <h4>Commerce & location</h4>
+                        <p>Pricing, stock, and warehouse placement</p>
+                      </header>
+                      <dl className={styles.metaList}>
+                        <div><dt>Condition</dt><dd>{humanStatus(detail.condition)}</dd></div>
+                        <div><dt>Price</dt><dd>{priceLabel}</dd></div>
+                        <div><dt>Quantity</dt><dd>{detail.inventoryItem?.quantity ?? 0}</dd></div>
+                        <div>
+                          <dt>Shipping policy</dt>
+                          <dd>
+                            {detail.listingDrafts?.[0]?.shippingPolicyId || "Not assigned"}
+                            {detail.listingDrafts?.[0]?.shippingPolicyId ? <em className={styles.infoPill}>Assigned</em> : null}
+                          </dd>
+                        </div>
+                        <div><dt>Placement</dt><dd>{detail.placement || "—"}</dd></div>
+                        <div><dt>Storage</dt><dd>{storage}</dd></div>
+                      </dl>
+                    </section>
+                  </div>
+
+                  <section className={styles.inventoryPanel}>
+                    <header>
+                      <h4>Description</h4>
+                    </header>
+                    <p className={styles.descriptionText}>{detail.description || detail.notes || "No description provided."}</p>
+                  </section>
+
+                  <section className={styles.inventoryPanel}>
+                    <header className={styles.panelHead}>
+                      <div>
+                        <h4>Product images</h4>
+                        <p>{detail.media.length ? `${detail.media.length} attached` : "No images yet"}</p>
+                      </div>
+                      <button type="button" className={styles.uploadGhost} onClick={() => setNotice("Image upload is available from the import pipeline for this part.")}>
+                        Upload images
+                      </button>
+                    </header>
+                    <div className={styles.detailImages}>
+                      {(detail.media.length ? detail.media : [{ id: "placeholder", displayOrder: 0, mediaAsset: { id: "", originalFilename: "", mimeType: "" } }]).slice(0, 8).map((item, index) => (
+                        <div key={item.id} className={`${styles.detailImage} ${index === 0 ? styles.detailImageMain : ""}`}>
+                          <CatalogImage mediaId={item.mediaAsset.id || undefined} token={token} demo={demo} />
+                          <span className={styles.badge}>{index + 1}</span>
+                          {index === 0 && <span className={styles.mainTag}>Main</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className={styles.inventoryPanel}>
+                    <header className={styles.panelHead}>
+                      <div>
+                        <h4>Fitment / compatibility</h4>
+                        <p>{fitmentItems.length ? `${fitmentItems.length} application${fitmentItems.length === 1 ? "" : "s"}` : "No approved fitment yet"}</p>
+                      </div>
+                      <button type="button" className={styles.uploadGhost} onClick={() => void openManualFitment(detail.id)}>Manage</button>
+                    </header>
+                    <div className={styles.fitmentChips}>
+                      {fitmentItems.map((application) => (
+                        <span key={application.id} className={styles.fitmentChip}>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M3 13l2-5h14l2 5M5 13v5h2v-2h10v2h2v-5"/><circle cx="7.5" cy="16.5" r="1.5"/><circle cx="16.5" cy="16.5" r="1.5"/></svg>
+                          {fitmentLabel(application.properties)}
+                          <i>✓</i>
+                        </span>
+                      ))}
+                      {!fitmentItems.length && (
+                        <span className={styles.emptyFitment}>Use Manage to add vehicle compatibility for this part.</span>
+                      )}
+                    </div>
+                  </section>
+                </>
+              );
+            })()}
           </div>
         ) : (
           <form onSubmit={savePart}>

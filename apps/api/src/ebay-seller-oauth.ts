@@ -26,15 +26,24 @@ const stateTtlMs = 10 * 60_000;
 
 function oauthConfig() {
   const { ebay } = getConfig();
-  if (!ebay.clientId || !ebay.clientSecret || !ebay.oauth.ruName || !ebay.oauth.encryptionKey) {
-    throw new EbaySellerOAuthError("eBay seller OAuth is not configured", 503);
+  const missing = [
+    !ebay.clientId && "EBAY_CLIENT_ID",
+    !ebay.clientSecret && "EBAY_CLIENT_SECRET",
+    !ebay.oauth.ruName && "EBAY_RUNAME",
+    !ebay.oauth.encryptionKey && "EBAY_OAUTH_ENCRYPTION_KEY",
+  ].filter(Boolean) as string[];
+  if (missing.length) {
+    throw new EbaySellerOAuthError(
+      `eBay seller OAuth is not configured. Set ${missing.join(", ")} in the API .env, then restart the API.`,
+      503,
+    );
   }
   return {
     environment: ebay.environment,
-    clientId: ebay.clientId,
-    clientSecret: ebay.clientSecret,
-    ruName: ebay.oauth.ruName,
-    encryptionKey: ebay.oauth.encryptionKey,
+    clientId: ebay.clientId!,
+    clientSecret: ebay.clientSecret!,
+    ruName: ebay.oauth.ruName!,
+    encryptionKey: ebay.oauth.encryptionKey!,
     scopes: ebay.oauth.scopes,
   };
 }
