@@ -3,7 +3,7 @@ import { recordAuditEvent } from "./audit-service.js";
 import { prisma } from "./db.js";
 import { normalizePartNumber } from "./domain/matching.js";
 import { normalizeFitmentApplications, scoreFitmentCandidate } from "./fitment-service.js";
-import { discoverEbayFitment, getEbayProductCompatibilities } from "./providers/ebay-fitment.js";
+import { discoverEbayFitment, getEbayProductCompatibilities, isBrowseDerivedEpid } from "./providers/ebay-fitment.js";
 import { queuePartMarketPricing } from "./pricing-service.js";
 import type { Marketplace } from "./types.js";
 
@@ -110,16 +110,35 @@ export async function createQuickSku(
   const ranked = discovery.candidates
     .map((candidate) => scoreFitmentCandidate(candidate, { partNumber, brand }))
     .filter((candidate) => candidate.score > 0)
-    .sort((left, right) => right.score - left.score);
+    .sort((left, right) => {
+      const leftBrowse = isBrowseDerivedEpid(left.epid) ? 1 : 0;
+      const rightBrowse = isBrowseDerivedEpid(right.epid) ? 1 : 0;
+      if (leftBrowse !== rightBrowse) return leftBrowse - rightBrowse;
+      return right.score - left.score;
+    });
   const best = ranked[0] ?? null;
 
   let applications: Array<{ fingerprint: string; properties: Record<string, string> }> = [];
-  if (best) {
+  let fitmentReason: string | null = null;
+  if (!best) {
+    fitmentReason = "no_matching_catalog_product";
+  } else if (isBrowseDerivedEpid(best.epid)) {
+    fitmentReason = "identified_from_browse_listing";
+  } else {
     try {
       const compatibility = await getEbayProductCompatibilities(best.epid, marketplace, { organizationId });
       applications = normalizeFitmentApplications(compatibility.applications);
-    } catch {
-      applications = [];
+      if (!applications.length) fitmentReason = "ebay_returned_no_vehicle_applications";
+    } catch (error) {
+      fitmentReason = error instanceof Error ? error.message : "compatibility_lookup_failed";
+      console.warn(JSON.stringify({
+        type: "quick_sku_fitment_failed",
+        organizationId,
+        partNumber,
+        marketplace,
+        epid: best.epid,
+        error: fitmentReason,
+      }));
     }
   }
 
@@ -254,6 +273,7 @@ export async function createQuickSku(
         matchedOn: best?.matchedOn ?? [],
         aspects: best?.aspects ?? {},
         fitmentCount: applications.length,
+        fitmentReason,
         marketplace,
       },
       pricing: "jobId" in pricing

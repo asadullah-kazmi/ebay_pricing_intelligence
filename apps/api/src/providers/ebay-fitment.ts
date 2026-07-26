@@ -176,6 +176,30 @@ function isPermissionError(error: unknown): boolean {
   return error instanceof EbayApiError && (error.status === 401 || error.status === 403);
 }
 
+async function searchCatalogByMpn(
+  part: FitmentPartInput,
+  marketplace: Marketplace,
+  category: { categoryId?: string; categoryName?: string } | undefined,
+  options?: EbayFitmentOptions,
+): Promise<EbayFitmentDiscovery | null> {
+  try {
+    const query = new URLSearchParams({ mpn: part.partNumber, limit: "20" });
+    if (category?.categoryId) query.set("category_ids", category.categoryId);
+    const products = await ebayRequest<{ productSummaries?: Array<Record<string, unknown>> }>(
+      `/commerce/catalog/v1_beta/product_summary/search?${query}`,
+      marketplace,
+      "eBay product catalog search",
+      undefined,
+      options,
+    );
+    const result = mapCatalogProducts(products.productSummaries ?? [], category);
+    return result.candidates.length ? result : null;
+  } catch (error) {
+    if (isPermissionError(error)) return null;
+    throw error;
+  }
+}
+
 export async function discoverEbayFitment(
   part: FitmentPartInput,
   marketplace: Marketplace,
@@ -203,27 +227,18 @@ export async function discoverEbayFitment(
     if (!isPermissionError(error)) throw error;
   }
 
-  try {
-    const query = new URLSearchParams({ mpn: part.partNumber, limit: "20" });
-    if (category?.categoryId) query.set("category_ids", category.categoryId);
-    const products = await ebayRequest<{ productSummaries?: Array<Record<string, unknown>> }>(
-      `/commerce/catalog/v1_beta/product_summary/search?${query}`,
-      marketplace,
-      "eBay product catalog search",
-      undefined,
-      options,
-    );
-    return mapCatalogProducts(products.productSummaries ?? [], category);
-  } catch (error) {
-    if (!isPermissionError(error)) throw error;
-    // Catalog requires a user token with catalog/inventory scopes. Fall back to Browse search.
-    const browse = await discoverFromBrowse(part, marketplace);
-    return {
-      ...browse,
-      categoryId: browse.categoryId ?? category?.categoryId ?? null,
-      categoryName: browse.categoryName ?? category?.categoryName ?? null,
-    };
-  }
+  const catalog =
+    (options?.organizationId ? await searchCatalogByMpn(part, marketplace, category, options) : null)
+    ?? await searchCatalogByMpn(part, marketplace, category, undefined)
+    ?? (category?.categoryId ? await searchCatalogByMpn(part, marketplace, undefined, undefined) : null);
+  if (catalog) return catalog;
+
+  const browse = await discoverFromBrowse(part, marketplace);
+  return {
+    ...browse,
+    categoryId: browse.categoryId ?? category?.categoryId ?? null,
+    categoryName: browse.categoryName ?? category?.categoryName ?? null,
+  };
 }
 
 function demoApplications(): EbayFitmentApplications {

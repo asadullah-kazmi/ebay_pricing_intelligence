@@ -31,6 +31,7 @@ type QuickSkuResult = {
     matchedOn: string[];
     aspects: Record<string, string[]>;
     fitmentCount: number;
+    fitmentReason?: string | null;
     marketplace: string;
   };
   pricing?: {
@@ -343,6 +344,18 @@ export default function QuickSkuWorkspace() {
               {!result.identification.matched && (
                 <div className={styles.notice}>
                   No confident eBay catalog match was found. The part was still added to Catalog with your brand and part number — refine title or fitment from Catalog or Fitment.
+                </div>
+              )}
+
+              {result.identification.fitmentCount === 0 && (
+                <div className={styles.notice}>
+                  {result.identification.fitmentReason === "identified_from_browse_listing"
+                    ? "Vehicle fitment could not be imported because eBay matched a listing instead of a catalog product. Reconnect eBay from Channels (to grant catalog access), then use Find fitment in Catalog — or add fitment manually."
+                    : result.identification.fitmentReason === "ebay_returned_no_vehicle_applications"
+                      ? "eBay identified this part but returned no vehicle compatibility. Use Find fitment in Catalog or add fitment manually."
+                      : result.identification.fitmentReason
+                        ? "Vehicle fitment was not attached automatically. Use Find fitment in Catalog or add fitment manually."
+                        : "No vehicle fitment was attached. Use Find fitment in Catalog or add fitment manually."}
                 </div>
               )}
             </>
