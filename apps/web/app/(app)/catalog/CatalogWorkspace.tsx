@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import styles from "./catalog.module.css";
 import { useAuth } from "../../components/AuthProvider";
 import { apiBase, apiRequest, refreshAccessSession, SessionExpiredError } from "../../lib/auth-session";
+import { dismissFitmentJob, dismissPricingJob, isDismissedFitmentJob, isDismissedPricingJob, shouldAutoShowJob } from "../../lib/dismissed-jobs";
 import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogSavedView, CatalogStatus, EbayAspectRequirement, EbayConditionOption, EbayConnection, EbayInventorySyncJob, EbayListingOperationJob, EbayOffer, EbayOfferJob, EbaySellerResources, FitmentJob, FitmentJobSummary, InventoryPreparation, InventoryPreparationJob, ListingDraft, LiveDraftValidation, ManualFitmentApplication, PartCondition, PartFitment, PricingConditionMode, PricingJob, PricingJobSummary } from "./types";
 
 const statuses: CatalogStatus[] = ["IMPORTED", "NEEDS_IMAGES", "IMPORT_ERROR", "READY_FOR_ENRICHMENT", "ARCHIVED"];
@@ -235,7 +236,8 @@ export default function CatalogWorkspace() {
     request("/api/pricing/jobs?limit=1")
       .then(async (jobs) => {
         const latest = (jobs as PricingJobSummary[])[0];
-        if (latest) setPricingJob(await request(`/api/pricing/jobs/${latest.id}`) as PricingJob);
+        if (!latest || isDismissedPricingJob(latest.id) || !shouldAutoShowJob(latest.status)) return;
+        setPricingJob(await request(`/api/pricing/jobs/${latest.id}`) as PricingJob);
       })
       .catch(() => undefined);
   }, [authStatus, demo, latestPricingLoaded, request]);
@@ -260,7 +262,9 @@ export default function CatalogWorkspace() {
     request("/api/fitment/jobs?limit=1")
       .then(async (jobs) => {
         const latest = (jobs as FitmentJobSummary[])[0];
-        if (latest) setFitmentJob(await request(`/api/fitment/jobs/${latest.id}`) as FitmentJob);
+        if (!latest || isDismissedFitmentJob(latest.id)) return;
+        if (["COMPLETED", "PARTIAL", "FAILED"].includes(latest.status)) return;
+        setFitmentJob(await request(`/api/fitment/jobs/${latest.id}`) as FitmentJob);
       })
       .catch(() => undefined);
   }, [authStatus, demo, latestFitmentLoaded, request]);
@@ -1003,7 +1007,7 @@ export default function CatalogWorkspace() {
       {error && <div className={styles.error}>{error}</div>}
       {pricingJob && <section className={styles.pricingPanel}>
 
-        <header><div><span className={styles.eyebrow}>BULK MARKET PRICING</span><h2>Job {pricingJob.id.slice(-8)}</h2></div><div><span className={`${styles.jobStatus} ${styles[`job_${pricingJob.status.toLowerCase()}`]}`}>{humanStatus(pricingJob.status)}</span><button onClick={() => setPricingJob(null)} aria-label="Hide pricing job">×</button></div></header>
+        <header><div><span className={styles.eyebrow}>BULK MARKET PRICING</span><h2>Job {pricingJob.id.slice(-8)}</h2></div><div><span className={`${styles.jobStatus} ${styles[`job_${pricingJob.status.toLowerCase()}`]}`}>{humanStatus(pricingJob.status)}</span><button onClick={() => { dismissPricingJob(pricingJob.id); setPricingJob(null); }} aria-label="Hide pricing job">×</button></div></header>
 
         <div className={styles.jobProgress}><div><i style={{ width: `${Math.round(((pricingJob.completedItems + pricingJob.noMatchItems + pricingJob.failedItems) / pricingJob.totalItems) * 100)}%` }}/></div><span>{pricingJob.completedItems + pricingJob.noMatchItems + pricingJob.failedItems} of {pricingJob.totalItems} processed · {pricingJob.marketplace} · {humanStatus(pricingJob.conditionMode)}</span></div>
 
@@ -1029,7 +1033,7 @@ export default function CatalogWorkspace() {
 
       {fitmentJob && <section id="fitment-workflow" className={`${styles.pricingPanel} ${styles.fitmentPanel}`}>
 
-        <header><div><span className={styles.eyebrow}>REVIEW-FIRST FITMENT</span><h2>Job {fitmentJob.id.slice(-8)}</h2></div><div><span className={`${styles.jobStatus} ${styles[`job_${fitmentJob.status.toLowerCase()}`]}`}>{humanStatus(fitmentJob.status)}</span><button onClick={() => setFitmentJob(null)} aria-label="Hide fitment job">×</button></div></header>
+        <header><div><span className={styles.eyebrow}>REVIEW-FIRST FITMENT</span><h2>Job {fitmentJob.id.slice(-8)}</h2></div><div><span className={`${styles.jobStatus} ${styles[`job_${fitmentJob.status.toLowerCase()}`]}`}>{humanStatus(fitmentJob.status)}</span><button onClick={() => { dismissFitmentJob(fitmentJob.id); setFitmentJob(null); }} aria-label="Hide fitment job">×</button></div></header>
 
         <div className={styles.jobProgress}><div><i style={{ width: `${Math.round(((fitmentJob.items.filter(({ status: itemStatus }) => !["QUEUED", "RUNNING"].includes(itemStatus)).length) / fitmentJob.totalItems) * 100)}%` }}/></div><span>{fitmentJob.reviewedItems} approved · {fitmentJob.noCandidateItems} without candidates · {fitmentJob.marketplace}</span></div>
 
