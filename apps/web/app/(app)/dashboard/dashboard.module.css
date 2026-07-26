@@ -2,8 +2,11 @@
   --dash-blue: #0052ff;
   --dash-ink: #0f172a;
   --dash-muted: #64748b;
-  --dash-line: #e2e8f0;
+  --dash-line: #e8eef5;
   --dash-surface: #ffffff;
+  --dash-radius: 16px;
+  --dash-shadow: 0 1px 2px #0b142605, 0 10px 28px #0b14260a;
+  --dash-pad: 22px;
   padding: 28px 32px 40px;
   color: var(--dash-ink);
   font-family: "Plus Jakarta Sans", "DM Sans", sans-serif;
@@ -25,6 +28,7 @@
   margin: 0;
   font: 800 34px/1.1 "Plus Jakarta Sans", sans-serif;
   letter-spacing: -1.2px;
+  color: #0c274d;
 }
 
 .topbar p {
@@ -48,10 +52,11 @@
   border: 1px solid var(--dash-line);
   background: #fff;
   color: var(--dash-ink);
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 10px 14px;
   font: 700 13px/1 "Plus Jakarta Sans", sans-serif;
   cursor: pointer;
+  box-shadow: 0 1px 2px #0b142605;
 }
 
 .ghostBtn:disabled {
@@ -73,7 +78,7 @@
 .error {
   margin-bottom: 14px;
   padding: 12px 14px;
-  border-radius: 10px;
+  border-radius: 12px;
   background: #feeceb;
   border: 1px solid #fecaca;
   color: #b42318;
@@ -83,55 +88,67 @@
 .metrics {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 14px;
+  gap: 16px;
   margin-bottom: 16px;
 }
 
 .metricCard {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
   background: var(--dash-surface);
   border: 1px solid var(--dash-line);
-  border-radius: 14px;
-  padding: 18px 18px 16px;
-  box-shadow: 0 8px 24px #0b142608;
+  border-radius: var(--dash-radius);
+  padding: var(--dash-pad);
+  box-shadow: var(--dash-shadow);
 }
 
-.metricTop {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 10px;
+.metricBody {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.metricBody > span {
   color: var(--dash-muted);
   font-size: 13px;
   font-weight: 600;
 }
 
-.metricCard b {
+.metricBody b {
   display: block;
-  margin-top: 14px;
   font: 800 30px/1 "Plus Jakarta Sans", sans-serif;
   letter-spacing: -0.8px;
+  color: #0c274d;
 }
 
 .delta {
   display: inline-flex;
-  margin-top: 10px;
   color: #64748b;
   font: 600 12px/1.2 "Plus Jakarta Sans", sans-serif;
   font-style: normal;
 }
 
+.deltaUp {
+  color: #0f7a45;
+}
+
+.deltaDown {
+  color: #b42318;
+}
+
 .metricIcon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
   display: grid;
   place-items: center;
   flex: 0 0 auto;
 }
 
 .metricIcon svg {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
 }
 
 .blue {
@@ -162,8 +179,8 @@
 .middleGrid {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(240px, 0.85fr) minmax(240px, 0.85fr);
-  gap: 14px;
-  margin-bottom: 14px;
+  gap: 16px;
+  margin-bottom: 16px;
 }
 
 .chartPanel,
@@ -173,16 +190,16 @@
 
 .bottomGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) 210px minmax(240px, 0.85fr);
-  gap: 14px;
+  grid-template-columns: minmax(0, 1.45fr) 220px minmax(240px, 0.85fr);
+  gap: 16px;
   align-items: start;
 }
 
 .panel {
   background: var(--dash-surface);
   border: 1px solid var(--dash-line);
-  border-radius: 14px;
-  box-shadow: 0 8px 24px #0b142608;
+  border-radius: var(--dash-radius);
+  box-shadow: var(--dash-shadow);
   overflow: hidden;
   min-width: 0;
 }
@@ -192,13 +209,14 @@
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  padding: 16px 18px 0;
+  padding: 20px 22px 0;
 }
 
 .panelHead h2 {
   margin: 0;
   font: 800 16px/1.2 "Plus Jakarta Sans", sans-serif;
   letter-spacing: -0.2px;
+  color: #0c274d;
 }
 
 .panelHead a {
@@ -238,7 +256,7 @@
 }
 
 .chartWrap {
-  padding: 8px 10px 16px;
+  padding: 12px 14px 20px;
 }
 
 .chart {
@@ -280,8 +298,9 @@
 
 .pipelineList,
 .teamList,
-.feed {
-  padding: 14px 18px 18px;
+.feed,
+.actionsList {
+  padding: 16px 22px 22px;
 }
 
 .pipelineHead,
@@ -300,7 +319,7 @@
 }
 
 .pipelineRow {
-  margin-top: 12px;
+  margin-top: 14px;
 }
 
 .pipelineRow b {
@@ -348,7 +367,7 @@
   grid-template-columns: 40px minmax(0, 1fr);
   gap: 10px;
   align-items: start;
-  padding: 12px 0;
+  padding: 14px 0;
   border-bottom: 1px solid #eef2f7;
 }
 
@@ -412,7 +431,7 @@
   gap: 10px;
   align-items: start;
   margin-top: 14px;
-  padding: 12px;
+  padding: 14px;
   border-radius: 12px;
   background: #f8fafc;
   border: 1px solid #eef2f7;
@@ -450,7 +469,7 @@
 }
 
 .tableWrap {
-  padding: 12px 8px 0;
+  padding: 12px 10px 0;
   overflow-x: auto;
 }
 
@@ -465,12 +484,13 @@
   color: #94a3b8;
   font-size: 11px;
   font-weight: 700;
-  padding: 8px 12px;
+  padding: 10px 14px;
   border-bottom: 1px solid #eef2f7;
+  background: #f8fafc;
 }
 
 .tableWrap td {
-  padding: 14px 12px;
+  padding: 14px;
   border-bottom: 1px solid #eef2f7;
   color: #334155;
   white-space: nowrap;
@@ -483,7 +503,7 @@
 }
 
 .tableFoot {
-  padding: 12px 18px 16px;
+  padding: 14px 22px 18px;
   color: #94a3b8;
   font-size: 12px;
 }
@@ -529,15 +549,12 @@
 }
 
 .actionsPanel {
-  background: transparent;
-  display: grid;
-  gap: 10px;
-  align-content: start;
+  align-self: stretch;
 }
 
-.actionsPanel h2 {
-  margin: 0 0 4px;
-  font: 800 16px/1.2 "Plus Jakarta Sans", sans-serif;
+.actionsList {
+  display: grid;
+  gap: 10px;
 }
 
 .primaryAction,
@@ -549,9 +566,9 @@
   border-radius: 12px;
   text-decoration: none;
   font: 700 14px/1 "Plus Jakarta Sans", sans-serif;
-  border: 1px solid var(--dash-line);
+  border: 1px solid #c7d7ff;
   background: #fff;
-  color: var(--dash-ink);
+  color: var(--dash-blue);
   transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 
@@ -568,7 +585,7 @@
 }
 
 .secondaryAction:hover {
-  border-color: #c7d7ff;
+  border-color: #a8c0ff;
   background: #f8fbff;
 }
 
@@ -603,7 +620,7 @@
 .feedIcon {
   width: 36px;
   height: 36px;
-  border-radius: 10px;
+  border-radius: 50%;
   display: grid;
   place-items: center;
 }
@@ -661,7 +678,7 @@
   }
 
   .bottomGrid {
-    grid-template-columns: minmax(0, 1fr) 200px;
+    grid-template-columns: minmax(0, 1fr) 210px;
   }
 
   .uploadsPanel {
@@ -735,17 +752,16 @@
 
   .metrics {
     grid-template-columns: 1fr;
-    gap: 10px;
+    gap: 12px;
     margin-bottom: 12px;
   }
 
   .metricCard {
-    padding: 16px;
+    padding: 18px;
   }
 
-  .metricCard b {
+  .metricBody b {
     font-size: 26px;
-    margin-top: 10px;
   }
 
   .middleGrid,
@@ -770,8 +786,9 @@
 
   .pipelineList,
   .teamList,
-  .feed {
-    padding: 12px 14px 16px;
+  .feed,
+  .actionsList {
+    padding: 12px 16px 16px;
   }
 
   .pipelineHead {
@@ -824,13 +841,8 @@
     padding: 10px 14px 14px;
   }
 
-  .actionsPanel {
+  .actionsList {
     grid-template-columns: 1fr 1fr;
-    gap: 8px;
-  }
-
-  .actionsPanel h2 {
-    grid-column: 1 / -1;
   }
 
   .primaryAction {
@@ -847,7 +859,7 @@
     width: 100%;
   }
 
-  .actionsPanel {
+  .actionsList {
     grid-template-columns: 1fr;
   }
 

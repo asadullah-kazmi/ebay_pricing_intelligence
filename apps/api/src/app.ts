@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import express from "express";
 import { z } from "zod";
 import { AuthenticationError, AuthorizationError } from "./auth.js";
-import { assertTrustedAuthOrigin, clearRefreshCookie, getJwtConfiguration, readRefreshCookie, revokeRefreshToken, rotateTokenPair, setRefreshCookie } from "./auth-sessions.js";
+import { assertTrustedAuthOrigin, clearRefreshCookie, getJwtConfiguration, isTrustedWebOrigin, readRefreshCookie, revokeRefreshToken, rotateTokenPair, setRefreshCookie } from "./auth-sessions.js";
 import { getConfig } from "./config.js";
 import { bulkUpdateCatalogParts, CatalogError, exportCatalogCsv, getCatalogPart, listCatalogParts, updateCatalogPart } from "./catalog-service.js";
 import { databaseIsReachable } from "./db.js";
@@ -350,14 +350,11 @@ const writeRateLimit = createRateLimitMiddleware({ scope: "write", limit: 240, w
 export const app = express();
 app.disable("x-powered-by");
 if (process.env.NODE_ENV === "production") app.set("trust proxy", 1);
-const webOrigin = getConfig().webOrigin;
-const localDevOrigins = ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000", "http://127.0.0.1:3001"];
 app.use(requestSecurityMiddleware);
 app.use(cors({
   origin(origin, callback) {
     if (!origin) return callback(null, true);
-    if (webOrigin && origin === webOrigin) return callback(null, true);
-    if (process.env.NODE_ENV !== "production" && localDevOrigins.includes(origin)) return callback(null, true);
+    if (isTrustedWebOrigin(origin)) return callback(null, true);
     return callback(null, false);
   },
   credentials: true,

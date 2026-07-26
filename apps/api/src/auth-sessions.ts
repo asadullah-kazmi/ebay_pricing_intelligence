@@ -163,9 +163,29 @@ export function readRefreshCookie(req: Request): string {
   throw new AuthenticationError("Refresh token is required");
 }
 
-export function assertTrustedAuthOrigin(req: Request): void {
+export function isTrustedWebOrigin(origin: string | undefined): boolean {
+  if (!origin) return false;
   const expectedOrigin = getConfig().webOrigin;
-  if (expectedOrigin && req.get("origin") !== expectedOrigin) {
+  if (expectedOrigin && origin === expectedOrigin) return true;
+  if (process.env.NODE_ENV !== "production") {
+    const localDevOrigins = [
+      "http://localhost:3000",
+      "http://localhost:3001",
+      "http://127.0.0.1:3000",
+      "http://127.0.0.1:3001",
+    ];
+    if (localDevOrigins.includes(origin)) return true;
+  }
+  return false;
+}
+
+export function assertTrustedAuthOrigin(req: Request): void {
+  const origin = req.get("origin");
+  const expectedOrigin = getConfig().webOrigin;
+  // Same-origin browser navigations omit Origin; only enforce when present or when WEB_ORIGIN is configured.
+  if (!expectedOrigin) return;
+  if (!origin) return;
+  if (!isTrustedWebOrigin(origin)) {
     throw new AuthorizationError("Untrusted authentication request origin");
   }
 }

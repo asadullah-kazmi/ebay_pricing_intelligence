@@ -318,19 +318,19 @@ export default function DashboardWorkspace() {
 
       <section className={styles.metrics}>
         {[
-          { label: "Catalog SKUs", value: totalParts, delta: "Yard inventory", tone: "blue", icon: <IconBox /> },
+          { label: "Catalog SKUs", value: totalParts, delta: "↑ Yard inventory", tone: "blue", icon: <IconBox /> },
           { label: "Open Orders", value: openOrders, delta: "Live from stores", tone: "indigo", icon: <IconCart /> },
-          { label: "Live Listings", value: Math.max(publishedLive, readyDrafts), delta: "Marketplace ready", tone: "green", icon: <IconCheck /> },
+          { label: "Live Listings", value: Math.max(publishedLive, readyDrafts), delta: "↑ Marketplace ready", tone: "green", icon: <IconCheck /> },
           { label: "Stores Synced", value: connectedStores, delta: ebay?.connected ? "Real-time on" : "Connect a store", tone: "amber", icon: <IconSync /> },
           { label: "Low Stock", value: lowStockTotal, delta: "Needs reorder", tone: "rose", icon: <IconAlert /> },
         ].map((metric) => (
           <article key={metric.label} className={styles.metricCard}>
-            <div className={styles.metricTop}>
+            <MetricIcon tone={metric.tone}>{metric.icon}</MetricIcon>
+            <div className={styles.metricBody}>
               <span>{metric.label}</span>
-              <MetricIcon tone={metric.tone}>{metric.icon}</MetricIcon>
+              <b>{formatNumber(metric.value)}</b>
+              <em className={`${styles.delta} ${metric.tone === "rose" ? styles.deltaDown : styles.deltaUp}`}>{metric.delta}</em>
             </div>
-            <b>{formatNumber(metric.value)}</b>
-            <em className={styles.delta}>{metric.delta}</em>
           </article>
         ))}
       </section>
@@ -469,12 +469,16 @@ export default function DashboardWorkspace() {
           </div>
         </article>
 
-        <aside className={styles.actionsPanel}>
-          <h2>Quick Actions</h2>
-          <Link className={styles.primaryAction} href="/orders">Open Orders</Link>
-          <Link className={styles.secondaryAction} href="/pipeline">Start Upload</Link>
-          <Link className={styles.secondaryAction} href="/catalog">Sync Catalog</Link>
-          <Link className={styles.secondaryAction} href="/catalog#listing-drafts">Manage Listings</Link>
+        <aside className={`${styles.panel} ${styles.actionsPanel}`}>
+          <div className={styles.panelHead}>
+            <h2>Quick Actions</h2>
+          </div>
+          <div className={styles.actionsList}>
+            <Link className={styles.primaryAction} href="/orders">+ Open Orders</Link>
+            <Link className={styles.secondaryAction} href="/pipeline">Start Upload</Link>
+            <Link className={styles.secondaryAction} href="/catalog">Sync Catalog</Link>
+            <Link className={styles.secondaryAction} href="/shipping">Manage Listings</Link>
+          </div>
         </aside>
 
         <article className={styles.panel}>
