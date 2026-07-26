@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import Link from "next/link";
 import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import styles from "./catalog.module.css";
@@ -41,26 +42,6 @@ function detailTitle(part: CatalogPartDetail) {
       .replace(/\b\w/g, (letter) => letter.toUpperCase());
   }
   return raw;
-}
-
-function ebayConnectNotice(result: string | null, reason: string | null, detail: string | null) {
-  if (result === "connected") return "eBay seller account connected successfully.";
-  if (result === "declined") return "eBay authorization was cancelled.";
-  if (detail) return detail;
-  switch (reason) {
-    case "state":
-      return "eBay authorization expired or was already used. Click Connect eBay and finish within 10 minutes.";
-    case "token":
-      return "eBay token exchange failed. On Railway API, set EBAY_RUNAME to your RuName (Syed_Asadullah_-SyedAsad-pricin-acbltbag), not the callback URL, and verify EBAY_CLIENT_ID/SECRET.";
-    case "identity":
-      return "eBay connected but identity lookup failed. Reconnect after confirming EBAY_OAUTH_SCOPES includes commerce.identity.readonly.";
-    case "config":
-      return "eBay seller OAuth is not configured on the API service (EBAY_RUNAME, EBAY_OAUTH_ENCRYPTION_KEY, client credentials).";
-    case "callback":
-      return "eBay returned an invalid authorization response. Try Connect eBay again.";
-    default:
-      return "eBay connection could not be completed. Check Railway API logs for ebay_oauth_callback_failed.";
-  }
 }
 
 function fitmentLabel(properties: Record<string, string>) {
@@ -157,7 +138,6 @@ export default function CatalogWorkspace() {
   const [fitmentEditor, setFitmentEditor] = useState<PartFitment | null>(null);
   const [manualFitmentBusy, setManualFitmentBusy] = useState(false);
   const [ebayConnection, setEbayConnection] = useState<EbayConnection>({ connected: false, status: "NOT_CONNECTED" });
-  const [connectionBusy, setConnectionBusy] = useState(false);
   const [drafts, setDrafts] = useState<ListingDraft[]>([]);
   const [draftDetail, setDraftDetail] = useState<ListingDraft | null>(null);
   const [draftBusy, setDraftBusy] = useState(false);
@@ -186,13 +166,6 @@ export default function CatalogWorkspace() {
 
   useEffect(() => {
     if (authStatus !== "ready" || demo) return;
-    const result = new URLSearchParams(window.location.search).get("ebay");
-    const reason = new URLSearchParams(window.location.search).get("ebay_reason");
-    const detail = new URLSearchParams(window.location.search).get("ebay_message");
-    if (result) {
-      setNotice(ebayConnectNotice(result, reason, detail));
-      window.history.replaceState({}, "", window.location.pathname);
-    }
     request("/api/ebay/connection").then((value) => setEbayConnection(value as EbayConnection)).catch(() => undefined);
   }, [authStatus, demo, request]);
 
@@ -969,28 +942,6 @@ export default function CatalogWorkspace() {
     return () => window.clearTimeout(timer);
   }, [demo, listingOperationJob, request]);
 
-  async function connectEbay() {
-    if (demo || connectionBusy) return;
-    setConnectionBusy(true); setError("");
-    try {
-      const response = await request("/api/ebay/connection/authorize", { method: "POST" }) as { authorizationUrl: string };
-      window.location.assign(response.authorizationUrl);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to start eBay authorization");
-      setConnectionBusy(false);
-    }
-  }
-
-  async function disconnectEbay() {
-    if (demo || connectionBusy || !window.confirm("Disconnect this eBay seller account? Publishing access will stop until it is reconnected.")) return;
-    setConnectionBusy(true); setError(""); setNotice("");
-    try {
-      setEbayConnection(await request("/api/ebay/connection", { method: "DELETE" }) as EbayConnection);
-      setNotice("eBay seller account disconnected and stored tokens removed.");
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to disconnect eBay"); }
-    finally { setConnectionBusy(false); }
-  }
-
   async function downloadCsv() {
     if (demo) return;
     try {
@@ -1045,16 +996,8 @@ export default function CatalogWorkspace() {
       <div className={styles.connectionRow}>
         <i className={ebayConnection.connected ? styles.connectedDot : styles.disconnectedDot}/>
         <span>{ebayConnection.connected ? (ebayConnection.username || ebayConnection.ebayUserId || "eBay connected") : "Seller not connected"}</span>
-        {ebayConnection.connected
-          ? <button type="button" className={styles.linkBtn} disabled={connectionBusy} onClick={() => void disconnectEbay()}>Disconnect</button>
-          : <button type="button" className={styles.linkBtn} disabled={connectionBusy || demo} onClick={() => void connectEbay()}>{connectionBusy ? "Opening..." : "Connect eBay"}</button>}
+        <Link href="/channels" className={styles.linkBtn}>Channels</Link>
       </div>
-      {!ebayConnection.connected && ebayConnection.setup && !ebayConnection.setup.configured && !demo && (
-        <div className={styles.error}>{ebayConnection.setup.message ?? "eBay seller OAuth is not configured on the API service."}</div>
-      )}
-      {!ebayConnection.connected && ebayConnection.setup?.configured && ebayConnection.setup.ruNameLooksValid === false && !demo && (
-        <div className={styles.error}>EBAY_RUNAME on the API service must be your eBay RuName identifier, not the callback URL.</div>
-      )}
       {demo && <div className={styles.demoBanner}>Development preview - sample records are not saved.</div>}
       {notice && <div className={styles.notice}>{notice}</div>}
       {error && <div className={styles.error}>{error}</div>}

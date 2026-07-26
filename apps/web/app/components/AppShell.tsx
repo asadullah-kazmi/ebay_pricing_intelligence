@@ -11,6 +11,7 @@ export type NavKey =
   | "quickSku"
   | "inventory"
   | "orders"
+  | "channels"
   | "listings"
   | "pricing"
   | "fitment"
@@ -27,6 +28,7 @@ const navItems: Array<{ key: NavKey; href: string; label: string; icon: string }
   { key: "quickSku", href: "/quick-sku", label: "Quick SKU", icon: "M12 4v16m8-8H4" },
   { key: "inventory", href: "/inventory", label: "Inventory", icon: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" },
   { key: "orders", href: "/orders", label: "Orders", icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" },
+  { key: "channels", href: "/channels", label: "Channels", icon: "M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" },
   { key: "pricing", href: "/pricing", label: "Pricing", icon: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
   { key: "fitment", href: "/fitment", label: "Fitment", icon: "M13 10V3L4 14h7v7l9-11h-7z" },
   { key: "shipping", href: "/shipping", label: "Shipping", icon: "M8 17l4 4 4-4m-4-5v9M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2.59 13.59a2 2 0 010-2.83L9.76 3.59a2 2 0 012.83 0l7.17 7.17a2 2 0 010 2.83z" },

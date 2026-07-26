@@ -398,7 +398,7 @@ app.get("/api/ebay/oauth/callback", authRateLimit, async (req, res) => {
       const query = new URLSearchParams({ ebay: result });
       if (reason) query.set("ebay_reason", reason);
       if (message) query.set("ebay_message", message.slice(0, 240));
-      return res.redirect(303, `${target}/catalog?${query}`);
+      return res.redirect(303, `${target}/channels?${query}`);
     }
     return res.status(result === "connected" ? 200 : 400).json({ status: result, reason: reason ?? null, message: message ?? null });
   };

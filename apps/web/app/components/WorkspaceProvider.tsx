@@ -34,6 +34,7 @@ function resolveActive(pathname: string): NavKey {
   const path = pathname.split("#")[0] ?? pathname;
   if (path.startsWith("/pipeline")) return "pipeline";
   if (path.startsWith("/orders")) return "orders";
+  if (path.startsWith("/channels")) return "channels";
   if (path.startsWith("/inventory")) return "inventory";
   if (path.startsWith("/pricing")) return "pricing";
   if (path.startsWith("/fitment")) return "fitment";
@@ -61,6 +62,7 @@ function isShellWorkspace(pathname: string) {
     path.startsWith("/shipping") ||
     path.startsWith("/pipeline") ||
     path.startsWith("/orders") ||
+    path.startsWith("/channels") ||
     path.startsWith("/reports") ||
     path.startsWith("/settings")
   );

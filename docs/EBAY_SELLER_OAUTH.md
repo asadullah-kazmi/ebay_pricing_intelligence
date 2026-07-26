@@ -64,5 +64,5 @@ Disconnecting deletes the local token material but does not promise remote revoc
 - **Token request failed:** verify production credentials are paired with `EBAY_ENVIRONMENT=production` and that `EBAY_RUNAME` exactly matches the production RuName.
 - **Identity lookup failed (404):** the Commerce Identity API uses `apiz.ebay.com`, not `api.ebay.com`. Redeploy the API if you are on an older build that called the wrong host.
 - **Authorization expired:** reconnect the seller. eBay can revoke a grant before its displayed refresh-token expiry.
-- **Callback opens the wrong service:** the accepted URL must use the API Railway domain, while `WEB_ORIGIN` must use the web Railway domain.
+- **Callback opens the wrong service:** the accepted URL must use the API Railway domain, while `WEB_ORIGIN` must use the web Railway domain. After approval, eBay redirects to `/channels` in the web app.
 

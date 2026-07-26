@@ -12,6 +12,7 @@ type WorkspaceKey =
   | "shipping"
   | "pipeline"
   | "orders"
+  | "channels"
   | "reports"
   | "settings";
 
@@ -19,6 +20,7 @@ function resolveWorkspace(pathname: string): WorkspaceKey {
   const path = pathname.split("#")[0] ?? pathname;
   if (path.startsWith("/pipeline")) return "pipeline";
   if (path.startsWith("/orders")) return "orders";
+  if (path.startsWith("/channels")) return "channels";
   if (path.startsWith("/inventory")) return "inventory";
   if (path.startsWith("/pricing")) return "pricing";
   if (path.startsWith("/fitment")) return "fitment";
@@ -42,6 +44,7 @@ export default function WorkspaceViews({ pathname }: { pathname: string }) {
     shipping: active === "shipping",
     pipeline: active === "pipeline",
     orders: active === "orders",
+    channels: active === "channels",
     reports: active === "reports",
     settings: active === "settings",
   });
@@ -55,6 +58,7 @@ export default function WorkspaceViews({ pathname }: { pathname: string }) {
   const [Shipping, setShipping] = useState<ComponentType | null>(null);
   const [Pipeline, setPipeline] = useState<ComponentType | null>(null);
   const [Orders, setOrders] = useState<ComponentType | null>(null);
+  const [Channels, setChannels] = useState<ComponentType | null>(null);
   const [Reports, setReports] = useState<ComponentType | null>(null);
   const [Settings, setSettings] = useState<ComponentType | null>(null);
 
@@ -162,6 +166,17 @@ export default function WorkspaceViews({ pathname }: { pathname: string }) {
   }, [Orders, mounted.orders]);
 
   useEffect(() => {
+    if (!mounted.channels || Channels) return;
+    let cancelled = false;
+    void import("../(app)/channels/ChannelsWorkspace").then((mod) => {
+      if (!cancelled) setChannels(() => mod.default);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [Channels, mounted.channels]);
+
+  useEffect(() => {
     if (!mounted.reports || Reports) return;
     let cancelled = false;
     void import("../(app)/reports/ReportsWorkspace").then((mod) => {
@@ -194,10 +209,11 @@ export default function WorkspaceViews({ pathname }: { pathname: string }) {
       (active === "shipping" && Shipping) ||
       (active === "pipeline" && Pipeline) ||
       (active === "orders" && Orders) ||
+      (active === "channels" && Channels) ||
       (active === "reports" && Reports) ||
       (active === "settings" && Settings);
     if (ready) setShown(active);
-  }, [Dashboard, Catalog, QuickSku, Inventory, Pricing, Fitment, Shipping, Pipeline, Orders, Reports, Settings, active]);
+  }, [Dashboard, Catalog, QuickSku, Inventory, Pricing, Fitment, Shipping, Pipeline, Orders, Channels, Reports, Settings, active]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -210,6 +226,7 @@ export default function WorkspaceViews({ pathname }: { pathname: string }) {
       void import("../(app)/shipping/ShippingWorkspace");
       void import("../(app)/pipeline/PipelineWorkspace");
       void import("../(app)/orders/OrdersWorkspace");
+      void import("../(app)/channels/ChannelsWorkspace");
       void import("../(app)/reports/ReportsWorkspace");
       void import("../(app)/settings/SettingsWorkspace");
     }, 400);
@@ -261,6 +278,11 @@ export default function WorkspaceViews({ pathname }: { pathname: string }) {
       {mounted.orders && Orders ? (
         <div hidden={shown !== "orders"}>
           <Orders />
+        </div>
+      ) : null}
+      {mounted.channels && Channels ? (
+        <div hidden={shown !== "channels"}>
+          <Channels />
         </div>
       ) : null}
       {mounted.reports && Reports ? (
