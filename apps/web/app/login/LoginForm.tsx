@@ -21,9 +21,24 @@ export default function LoginForm() {
   const [notice, setNotice] = useState("");
 
   async function post(path: string, body: unknown) {
-    const response = await fetch(`${apiBase}${path}`, {
-      method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${apiBase}${path}`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    } catch {
+      const lookingAtLocalhost = /localhost|127\.0\.0\.1/i.test(apiBase);
+      const onDeployedHost = typeof window !== "undefined" && !/localhost|127\.0\.0\.1/i.test(window.location.hostname);
+      if (lookingAtLocalhost && onDeployedHost) {
+        throw new Error(
+          "API URL is not configured for production. Set NEXT_PUBLIC_API_URL on the Railway web service to your API HTTPS URL, then redeploy web.",
+        );
+      }
+      throw new Error(`Unable to reach the API at ${apiBase}. Check NEXT_PUBLIC_API_URL and that the API is online.`);
+    }
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
       const failure = new Error(result.error || "Unable to sign in") as Error & { details?: { verificationRequired?: boolean } };
