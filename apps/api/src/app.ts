@@ -21,6 +21,16 @@ import { confirmImportBatch, correctImportMediaMatch, discardImportMediaMatch, g
 import { getObjectStorage, ObjectStorageError } from "./object-storage.js";
 import { createRateLimitMiddleware, requestLogMiddleware, requestSecurityMiddleware } from "./http-hardening.js";
 import { createPricingJob, getPricingJob, listPricingJobs, PricingJobError, startPricingJob } from "./pricing-service.js";
+import {
+  BulkPricingError,
+  bulkPricingTemplateFilename,
+  createBulkPricingJob,
+  createBulkPricingTemplateCsv,
+  exportBulkPricingCsv,
+  getBulkPricingJob,
+  parseBulkPricingCsv,
+  startBulkPricingJob,
+} from "./bulk-pricing-service.js";
 import { approveFitmentCandidate, createFitmentJob, FitmentJobError, getFitmentJob, listFitmentJobs, startFitmentJob } from "./fitment-service.js";
 import { completeEbayAuthorization, createEbayAuthorization, disconnectEbayConnection, EbaySellerOAuthError, ebayOAuthRedirectMessage, ebayOAuthRedirectReason, getEbayConnection } from "./ebay-seller-oauth.js";
 import { getTenantContext, requireOrganizationRoles, requireTenantContext } from "./tenant-context.js";
@@ -166,6 +176,11 @@ const createPricingJobSchema = z.object({
   conditionMode: z.enum(["MATCH_PART", "ANY", "NEW", "USED"]).default("MATCH_PART"),
 }).strict();
 const pricingJobListSchema = z.object({ limit: z.coerce.number().int().min(1).max(50).default(10) });
+const bulkPricingUploadQuerySchema = z.object({
+  marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).default("EBAY_US"),
+  condition: z.enum(["ANY", "NEW", "USED"]).default("ANY"),
+});
+const bulkPricingFilenameSchema = z.string().trim().min(1).max(255).regex(/\.csv$/i, "Only .csv files are supported for bulk pricing");
 const pricingRoles = requireOrganizationRoles(...organizationPermissionRoles.pricing);
 const pricingRuleRoles = requireOrganizationRoles(...organizationPermissionRoles.pricingRule);
 const pricingRuleSchema = z.object({
@@ -1076,6 +1091,62 @@ app.get("/api/pricing/jobs/:id", requireTenantContext, async (req, res, next) =>
   } catch (error) { next(error); }
 });
 
+app.get("/api/pricing/bulk/template", requireTenantContext, pricingRoles, (_req, res) => {
+  res.set({
+    "Content-Type": "text/csv; charset=utf-8",
+    "Content-Disposition": `attachment; filename="${bulkPricingTemplateFilename}"`,
+    "Cache-Control": "private, max-age=3600",
+  });
+  res.send(createBulkPricingTemplateCsv());
+});
+
+app.post("/api/pricing/bulk", searchRateLimit, requireTenantContext, pricingRoles, importBody, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const query = bulkPricingUploadQuerySchema.parse(req.query);
+    if (!Buffer.isBuffer(req.body) || !req.body.length) {
+      return res.status(400).json({ error: "CSV file body is required" });
+    }
+    const filename = bulkPricingFilenameSchema.parse(req.get("x-file-name") ?? "bulk-pricing.csv");
+    const rows = parseBulkPricingCsv(req.body.toString("utf8"), {
+      marketplace: query.marketplace,
+      condition: query.condition,
+    });
+    const job = await createBulkPricingJob({
+      organizationId: tenant.organization.id,
+      userId: tenant.user.id,
+      marketplace: query.marketplace,
+      condition: query.condition,
+      rows,
+      sourceFilename: filename,
+    });
+    if (getConfig().jobs.executionMode !== "inline") startBulkPricingJob(job.id);
+    res.status(202).json(job);
+  } catch (error) { next(error); }
+});
+
+app.get("/api/pricing/bulk/:id", requireTenantContext, pricingRoles, async (req, res, next) => {
+  try {
+    const jobId = req.params.id;
+    if (typeof jobId !== "string") return res.status(400).json({ error: "Invalid bulk pricing job ID" });
+    res.json(await getBulkPricingJob(getTenantContext(res).organization.id, jobId));
+  } catch (error) { next(error); }
+});
+
+app.get("/api/pricing/bulk/:id/export", requireTenantContext, pricingRoles, async (req, res, next) => {
+  try {
+    const jobId = req.params.id;
+    if (typeof jobId !== "string") return res.status(400).json({ error: "Invalid bulk pricing job ID" });
+    const csv = await exportBulkPricingCsv(getTenantContext(res).organization.id, jobId);
+    res.set({
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="partpulse-bulk-pricing-${jobId}.csv"`,
+      "Cache-Control": "no-store",
+    });
+    res.send(csv);
+  } catch (error) { next(error); }
+});
+
 app.get("/api/pricing/rule", requireTenantContext, async (_req, res, next) => {
   try {
     res.json(await getOrganizationPricingRule(getTenantContext(res).organization.id));
@@ -1878,6 +1949,7 @@ app.use((error: unknown, req: express.Request, res: express.Response, _next: exp
   if (error instanceof NotificationError) return response(error.statusCode, { error: error.message });
   if (error instanceof RetentionError) return response(error.statusCode, { error: error.message });
   if (error instanceof PricingJobError) return response(error.statusCode, { error: error.message });
+  if (error instanceof BulkPricingError) return response(error.statusCode, { error: error.message });
   if (error instanceof PricingGovernanceError) return response(error.statusCode, { error: error.message });
   if (error instanceof FitmentJobError) return response(error.statusCode, { error: error.message });
   if (error instanceof ManualFitmentError) return response(error.statusCode, { error: error.message });

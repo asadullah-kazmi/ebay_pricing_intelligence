@@ -16,6 +16,90 @@
   padding: 0;
 }
 
+.modeToggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: #eef2f7;
+  border: 1px solid #e2e8f0;
+}
+
+.modeToggle button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #64748b;
+  font: 700 12px/1 "Plus Jakarta Sans", sans-serif;
+  cursor: pointer;
+}
+
+.modeActive {
+  background: #fff !important;
+  color: #0c274d !important;
+  box-shadow: 0 4px 12px #0b142612;
+}
+
+.bulkHero {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(320px, 1.05fr);
+  gap: 20px;
+  align-items: stretch;
+  margin-bottom: 18px;
+}
+
+.ghostBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 18px;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid #c7d7ff;
+  background: #eff6ff;
+  color: #0052ff;
+  font: 700 12px/1 "Plus Jakarta Sans", sans-serif;
+  cursor: pointer;
+}
+
+.bulkHint {
+  margin: 0;
+  color: #93c5fd;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.searchForm input[type="file"] {
+  padding: 10px 12px;
+  height: auto;
+  font-weight: 500;
+}
+
+.bulkProgressTrack {
+  margin-top: 12px;
+  height: 8px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.bulkProgressTrack > span {
+  display: block;
+  height: 100%;
+  background: #0052ff;
+  border-radius: inherit;
+  transition: width 200ms ease;
+}
+
+.bulkActions {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
 .topbar h1 {
   margin: 0;
   font: 800 34px/1.1 "Plus Jakarta Sans", sans-serif;
@@ -461,6 +545,7 @@
 
 @media (max-width: 1100px) {
   .hero,
+  .bulkHero,
   .guide {
     grid-template-columns: 1fr;
   }
@@ -477,6 +562,10 @@
 @media (max-width: 720px) {
   .page {
     padding: 16px 14px 28px;
+  }
+
+  .topbar {
+    flex-direction: column;
   }
 
   .heroCopy h2 {

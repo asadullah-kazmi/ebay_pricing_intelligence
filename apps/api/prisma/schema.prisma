@@ -328,6 +328,8 @@ model Organization {
   importMediaMatches   ImportMediaMatch[]
   pricingJobs          PricingJob[]
   pricingJobItems      PricingJobItem[]
+  bulkPricingJobs      BulkPricingJob[]
+  bulkPricingJobItems  BulkPricingJobItem[]
   pricingRule          PricingRule?
   pricingProposals     PricingProposal[]
   competitorListings   CompetitorListingSnapshot[]
@@ -372,6 +374,7 @@ model User {
   createdImports      ImportBatch[]            @relation("ImportCreator")
   createdParts        Part[]                   @relation("PartCreator")
   createdPricingJobs  PricingJob[]             @relation("PricingJobCreator")
+  createdBulkPricingJobs BulkPricingJob[]      @relation("BulkPricingJobCreator")
   updatedPricingRules PricingRule[]             @relation("PricingRuleUpdater")
   decidedPricingProposals PricingProposal[]     @relation("PricingProposalDecider")
   createdFitmentApplications FitmentApplication[] @relation("FitmentApplicationCreator")
@@ -898,6 +901,69 @@ model PricingJob {
   @@index([organizationId, status])
   @@index([status, leaseExpiresAt])
   @@index([createdById])
+}
+
+model BulkPricingJob {
+  id               String           @id @default(cuid())
+  organizationId   String
+  createdById      String
+  marketplace      String
+  defaultCondition String           @default("ANY")
+  status           PricingJobStatus @default(QUEUED)
+  totalItems       Int
+  completedItems   Int              @default(0)
+  noMatchItems     Int              @default(0)
+  failedItems      Int              @default(0)
+  sourceFilename   String?
+  lastError        String?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy        User             @relation("BulkPricingJobCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  items            BulkPricingJobItem[]
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, status])
+  @@index([createdById])
+}
+
+model BulkPricingJobItem {
+  id                 String               @id @default(cuid())
+  organizationId     String
+  bulkPricingJobId   String
+  rowNumber          Int
+  sku                String
+  partNumber         String
+  brand              String
+  costPrice          Decimal              @db.Decimal(12, 2)
+  currency           String
+  condition          String
+  notes              String?
+  catalogMatch       Boolean              @default(false)
+  catalogPartId      String?
+  status             PricingJobItemStatus @default(QUEUED)
+  competitorCount    Int                  @default(0)
+  lowest             Decimal?             @db.Decimal(12, 2)
+  average            Decimal?             @db.Decimal(12, 2)
+  median             Decimal?             @db.Decimal(12, 2)
+  highest            Decimal?             @db.Decimal(12, 2)
+  marketRecommended  Decimal?             @db.Decimal(12, 2)
+  sellingPrice       Decimal?             @db.Decimal(12, 2)
+  floorPrice         Decimal?             @db.Decimal(12, 2)
+  marginPercent      Decimal?             @db.Decimal(8, 2)
+  error              String?
+  startedAt          DateTime?
+  completedAt        DateTime?
+  organization       Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  bulkPricingJob     BulkPricingJob       @relation(fields: [bulkPricingJobId], references: [id], onDelete: Cascade)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  @@unique([bulkPricingJobId, rowNumber])
+  @@index([organizationId, status])
+  @@index([bulkPricingJobId, status])
 }
 
 model PricingJobItem {
