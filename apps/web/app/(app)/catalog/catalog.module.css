@@ -1623,13 +1623,16 @@
 }
 
 .editDetailsBtn {
-  min-height: 38px;
-  padding: 0 14px;
-  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0 11px;
+  border-radius: 8px;
   border: 1px solid #c7d7ff;
   background: #eff6ff;
   color: #0052ff;
-  font: 700 13px/1 "Plus Jakarta Sans", sans-serif;
+  font: 600 12px/1 "Plus Jakarta Sans", sans-serif;
   cursor: pointer;
   transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
@@ -1641,19 +1644,24 @@
 }
 
 .iconClose {
-  width: 36px;
-  height: 36px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
   color: #64748b;
-  font-size: 26px;
+  font-size: 18px;
   line-height: 1;
   cursor: pointer;
 }
 
 .iconClose:hover {
   background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #0f172a;
 }
 
 .inventoryBody {
@@ -2075,16 +2083,25 @@
 .uploadGhost {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  min-height: 34px;
-  padding: 0 12px;
-  border-radius: 8px;
-  border: 1px solid #c7d7ff;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 7px;
+  border: 1px solid #d7e0ef;
   background: #fff;
-  color: #0052ff;
-  font: 700 12px/1 "Plus Jakarta Sans", sans-serif;
+  color: #0c274d;
+  font: 600 11px/1 "Plus Jakarta Sans", sans-serif;
   cursor: pointer;
   flex: none;
+  box-shadow: 0 1px 2px #0b142608;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.uploadGhost:hover {
+  border-color: #0052ff;
+  color: #0052ff;
+  background: #f5f8ff;
 }
 
 .countPill {
@@ -2210,7 +2227,7 @@
   font: 800 22px/1.2 "Plus Jakarta Sans", sans-serif;
 }
 
-.drawer header button {
+.drawer > header > button {
   border: 0;
   background: transparent;
   font-size: 28px;

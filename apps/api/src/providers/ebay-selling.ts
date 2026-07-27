@@ -179,7 +179,7 @@ export async function fetchSellerResources(organizationId: string, marketplace: 
 
   const read = <T>(index: number, label: string, fallback: T): T => {
     const result = tasks[index];
-    if (result?.status === "fulfilled") return result.value;
+    if (result?.status === "fulfilled") return result.value as T;
     const reason = result?.status === "rejected" ? result.reason : undefined;
     const message = reason instanceof EbayApiError ? reason.message : reason instanceof Error ? reason.message : `${label} failed`;
     warnings.push(message);

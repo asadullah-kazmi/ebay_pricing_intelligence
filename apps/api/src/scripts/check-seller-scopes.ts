@@ -16,7 +16,7 @@ async function main() {
     scopes: conn.scopes,
     hasCatalogScope: conn.scopes.some((scope) => scope.includes("commerce.catalog")),
     updatedAt: conn.updatedAt,
-    connectedAt: conn.connectedAt,
+    createdAt: conn.createdAt,
   }, null, 2));
 }
 
