@@ -12,7 +12,7 @@ import { matchListing, normalizePartNumber } from "./domain/matching.js";
 import { accountDeletionNotificationSchema, generateChallengeResponse, verifyEbayNotificationSignature } from "./ebay-notifications.js";
 import { EbayApiError, searchEbay } from "./providers/ebay.js";
 import { deleteListingsForClosedEbayAccount, findLatestAnalytics, findListing, findSearchHistory, saveSearchResult } from "./repository.js";
-import { findMediaStorageKey, saveConfirmedMediaAsset } from "./media-repository.js";
+import { findMediaStorageKey, findMediaStorageKeys, saveConfirmedMediaAsset } from "./media-repository.js";
 import { catalogImportTemplate, catalogImportTemplateFilename, catalogImportTemplateVersion, createCatalogImportCsv } from "./import-template.js";
 import { findExistingNormalizedSkus, findImportByChecksum, stageParsedImport } from "./import-repository.js";
 import { applyExistingSkuConflicts, parseAndValidateImport } from "./import-parser.js";
@@ -52,6 +52,9 @@ const searchSchema = z.object({
   condition: z.enum(["ANY", "NEW", "USED"]).default("ANY"),
 });
 const confirmMediaUploadSchema = z.object({ storageKey: z.string().min(1).max(1024) });
+const mediaDownloadUrlsSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(50),
+});
 const mediaUploadRoles = requireOrganizationRoles(...organizationPermissionRoles.catalogWrite);
 const importFilenameSchema = z.string().trim().min(1).max(255).regex(/\.(?:csv|xlsx)$/i, "Only .csv and .xlsx files are supported");
 const importBody = express.raw({ type: () => true, limit: getConfig().storage?.maxImportBytes ?? 10_485_760 });
@@ -1749,6 +1752,23 @@ app.get("/api/media/:id/download-url", requireTenantContext, async (req, res, ne
     const storageKey = await findMediaStorageKey(tenant.organization.id, mediaAssetId);
     if (!storageKey) return res.status(404).json({ error: "Media asset not found" });
     res.json({ downloadUrl: await storage.createDownloadUrl(tenant.organization.id, storageKey), expiresIn: 300 });
+  } catch (error) { next(error); }
+});
+
+app.post("/api/media/download-urls", requireTenantContext, async (req, res, next) => {
+  try {
+    const storage = getObjectStorage();
+    if (!storage) return res.status(503).json({ error: "Object storage is not configured" });
+    const tenant = getTenantContext(res);
+    const { ids } = mediaDownloadUrlsSchema.parse(req.body);
+    const keys = await findMediaStorageKeys(tenant.organization.id, ids);
+    const urls = await Promise.all(
+      [...keys.entries()].map(async ([id, storageKey]) => ({
+        id,
+        downloadUrl: await storage.createDownloadUrl(tenant.organization.id, storageKey),
+      })),
+    );
+    res.json({ urls, expiresIn: 300 });
   } catch (error) { next(error); }
 });
 

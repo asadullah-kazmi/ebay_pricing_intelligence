@@ -36,15 +36,15 @@ export interface CatalogPartCard {
   status: CatalogStatus;
   createdAt: string;
   updatedAt: string;
-  donorVehicle: { vin: string; year: number | null; make: string | null; model: string | null } | null;
+  donorVehicle?: { vin: string; year: number | null; make: string | null; model: string | null } | null;
   inventoryItem: {
     quantity: number;
     cost: string | number;
     currency: string;
-    warehouse: { id: string; code: string; name: string } | null;
-    binLocation: { id: string; code: string } | null;
+    warehouse?: { id: string; code: string; name: string } | null;
+    binLocation?: { id: string; code: string } | null;
   } | null;
-  media: Array<{ mediaAsset: { id: string; mimeType: string; width: number | null; height: number | null } }>;
+  media: Array<{ mediaAsset: { id: string; mimeType?: string; width?: number | null; height?: number | null } }>;
   pricingJobItems: Array<{
     id: string;
     status: "COMPLETED" | "NO_MATCHES";
@@ -54,7 +54,7 @@ export interface CatalogPartCard {
     completedAt: string | null;
     pricingJob: { marketplace: string };
   }>;
-  fitmentJobItems: Array<{
+  fitmentJobItems?: Array<{
     id: string;
     status: "APPROVED" | "NO_CANDIDATE";
     applicationCount: number;

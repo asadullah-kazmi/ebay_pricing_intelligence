@@ -8,7 +8,19 @@ describe("catalog query construction", () => {
     expect(where.OR).toEqual(expect.arrayContaining([
       { sku: { contains: "84178783", mode: "insensitive" } },
       { primaryPartNumber: { contains: "84178783", mode: "insensitive" } },
+      { partNumbers: { some: { value: { contains: "84178783", mode: "insensitive" } } } },
+    ]));
+    expect(where.OR).not.toEqual(expect.arrayContaining([
       { donorVehicle: { vin: { contains: "84178783", mode: "insensitive" } } },
+    ]));
+  });
+
+  it("uses broader text search when the query is not identifier-like", () => {
+    const where = buildCatalogWhere("org-1", { q: "blower motor" });
+    expect(where.OR).toEqual(expect.arrayContaining([
+      { brand: { contains: "blower motor", mode: "insensitive" } },
+      { partName: { contains: "blower motor", mode: "insensitive" } },
+      { donorVehicle: { vin: { contains: "blower motor", mode: "insensitive" } } },
     ]));
   });
 

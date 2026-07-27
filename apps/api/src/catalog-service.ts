@@ -73,14 +73,27 @@ export function buildCatalogWhere(organizationId: string, query: Omit<CatalogQue
       createdAt: { ...(query.createdFrom ? { gte: query.createdFrom } : {}), ...(query.createdTo ? { lte: query.createdTo } : {}) },
     } : {}),
     ...(q ? {
-      OR: [
-        { sku: { contains: q, mode: "insensitive" } },
-        { primaryPartNumber: { contains: q, mode: "insensitive" } },
-        { brand: { contains: q, mode: "insensitive" } },
-        { partName: { contains: q, mode: "insensitive" } },
-        { partNumbers: { some: { value: { contains: q, mode: "insensitive" } } } },
-        { donorVehicle: { vin: { contains: q, mode: "insensitive" } } },
-      ],
+      OR: (() => {
+        // Identifier-like queries skip brand/title/VIN ILIKE scans — those dominate list latency.
+        const looksLikeIdentifier = /^[A-Za-z0-9][A-Za-z0-9._/-]{2,64}$/.test(q) && !/\s/.test(q);
+        if (looksLikeIdentifier) {
+          return [
+            { sku: { contains: q, mode: "insensitive" as const } },
+            { primaryPartNumber: { contains: q, mode: "insensitive" as const } },
+            { normalizedSku: { contains: q.toUpperCase() } },
+            { normalizedPartNumber: { contains: normalizePartNumber(q) || q.toUpperCase() } },
+            { partNumbers: { some: { value: { contains: q, mode: "insensitive" as const } } } },
+          ];
+        }
+        return [
+          { sku: { contains: q, mode: "insensitive" as const } },
+          { primaryPartNumber: { contains: q, mode: "insensitive" as const } },
+          { brand: { contains: q, mode: "insensitive" as const } },
+          { partName: { contains: q, mode: "insensitive" as const } },
+          { partNumbers: { some: { value: { contains: q, mode: "insensitive" as const } } } },
+          { donorVehicle: { vin: { contains: q, mode: "insensitive" as const } } },
+        ];
+      })(),
     } : {}),
   };
 }
@@ -102,40 +115,37 @@ const catalogCardSelect = {
   status: true,
   createdAt: true,
   updatedAt: true,
-  donorVehicle: { select: { vin: true, year: true, make: true, model: true } },
   inventoryItem: {
     select: {
-      quantity: true, cost: true, currency: true,
-      warehouse: { select: { id: true, code: true, name: true } },
-      binLocation: { select: { id: true, code: true } },
+      quantity: true,
+      cost: true,
+      currency: true,
     },
   },
   media: {
     orderBy: { displayOrder: "asc" as const },
     take: 1,
-    select: { mediaAsset: { select: { id: true, mimeType: true, width: true, height: true } } },
-  },
-  pricingJobItems: {
-    where: { status: { in: ["COMPLETED" as const, "NO_MATCHES" as const] } },
-    orderBy: { completedAt: "desc" as const },
-    take: 1,
-    select: {
-      id: true, status: true, competitorCount: true, recommendedPrice: true, currency: true, completedAt: true,
-      pricingJob: { select: { marketplace: true } },
-    },
-  },
-  fitmentJobItems: {
-    where: { status: { in: ["APPROVED" as const, "NO_CANDIDATE" as const] } },
-    orderBy: { completedAt: "desc" as const },
-    take: 1,
-    select: { id: true, status: true, applicationCount: true, completedAt: true, fitmentJob: { select: { marketplace: true } } },
+    select: { mediaAsset: { select: { id: true } } },
   },
   _count: { select: { media: true } },
 } satisfies Prisma.PartSelect;
 
+type CatalogMetaCache = {
+  expiresAt: number;
+  warehouses: Array<{ id: string; code: string; name: string }>;
+  summary: { total: number; byStatus: Record<string, number> };
+};
+
+const catalogMetaCache = new Map<string, CatalogMetaCache>();
+const CATALOG_META_TTL_MS = 60_000;
+
 export async function listCatalogParts(organizationId: string, query: CatalogQuery) {
   const where = buildCatalogWhere(organizationId, query);
-  const [parts, total, statusCounts, warehouses] = await prisma.$transaction([
+  const cachedMeta = catalogMetaCache.get(organizationId);
+  const metaFresh = cachedMeta && cachedMeta.expiresAt > Date.now();
+
+  // Read-only fan-out: avoid serial $transaction round-trips (painful on remote Neon).
+  const [parts, total, statusCounts, warehouses] = await Promise.all([
     prisma.part.findMany({
       where,
       orderBy: catalogOrderBy(query.sort),
@@ -144,18 +154,83 @@ export async function listCatalogParts(organizationId: string, query: CatalogQue
       select: catalogCardSelect,
     }),
     prisma.part.count({ where }),
-    prisma.part.groupBy({ by: ["status"], where: { organizationId }, orderBy: { status: "asc" }, _count: { _all: true } }),
-    prisma.warehouse.findMany({ where: { organizationId }, orderBy: { code: "asc" }, select: { id: true, code: true, name: true } }),
+    metaFresh
+      ? Promise.resolve(null)
+      : prisma.part.groupBy({ by: ["status"], where: { organizationId }, orderBy: { status: "asc" }, _count: { _all: true } }),
+    metaFresh
+      ? Promise.resolve(cachedMeta.warehouses)
+      : prisma.warehouse.findMany({ where: { organizationId }, orderBy: { code: "asc" }, select: { id: true, code: true, name: true } }),
   ]);
-  const statusEntries = statusCounts.map((group) => [group.status, typeof group._count === "object" ? group._count._all ?? 0 : 0] as const);
-  return {
-    parts,
-    pagination: { page: query.page, pageSize: query.pageSize, total, totalPages: Math.ceil(total / query.pageSize) },
-    summary: {
+
+  const partIds = parts.map((part) => part.id);
+  const latestPricing = partIds.length
+    ? await prisma.pricingJobItem.findMany({
+        where: {
+          organizationId,
+          partId: { in: partIds },
+          status: { in: ["COMPLETED", "NO_MATCHES"] },
+        },
+        orderBy: [{ partId: "asc" }, { completedAt: "desc" }],
+        distinct: ["partId"],
+        select: {
+          id: true,
+          partId: true,
+          status: true,
+          competitorCount: true,
+          recommendedPrice: true,
+          currency: true,
+          completedAt: true,
+          pricingJob: { select: { marketplace: true } },
+        },
+      })
+    : [];
+  const pricingByPartId = new Map(latestPricing.map((item) => [item.partId, item]));
+
+  let summary: CatalogMetaCache["summary"];
+  let resolvedWarehouses: CatalogMetaCache["warehouses"];
+  if (metaFresh && cachedMeta) {
+    summary = cachedMeta.summary;
+    resolvedWarehouses = cachedMeta.warehouses;
+  } else {
+    const statusEntries = (statusCounts ?? []).map((group) => [group.status, typeof group._count === "object" ? group._count._all ?? 0 : 0] as const);
+    summary = {
       total: statusEntries.reduce((sum, [, count]) => sum + count, 0),
       byStatus: Object.fromEntries(statusEntries),
-    },
-    warehouses,
+    };
+    resolvedWarehouses = warehouses ?? [];
+    catalogMetaCache.set(organizationId, {
+      expiresAt: Date.now() + CATALOG_META_TTL_MS,
+      warehouses: resolvedWarehouses,
+      summary,
+    });
+  }
+
+  return {
+    parts: parts.map((part) => {
+      const pricing = pricingByPartId.get(part.id);
+      return {
+        ...part,
+        inventoryItem: part.inventoryItem
+          ? { ...part.inventoryItem, warehouse: null, binLocation: null }
+          : null,
+        donorVehicle: null,
+        fitmentJobItems: [],
+        pricingJobItems: pricing
+          ? [{
+              id: pricing.id,
+              status: pricing.status,
+              competitorCount: pricing.competitorCount,
+              recommendedPrice: pricing.recommendedPrice,
+              currency: pricing.currency,
+              completedAt: pricing.completedAt,
+              pricingJob: pricing.pricingJob,
+            }]
+          : [],
+      };
+    }),
+    pagination: { page: query.page, pageSize: query.pageSize, total, totalPages: Math.ceil(total / query.pageSize) || 0 },
+    summary,
+    warehouses: resolvedWarehouses,
   };
 }
 

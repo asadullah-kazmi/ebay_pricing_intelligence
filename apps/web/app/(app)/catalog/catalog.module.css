@@ -1576,9 +1576,13 @@
 }
 
 .inventoryModal {
-  width: min(960px, 96vw);
+  width: min(900px, 96vw);
   max-height: 92vh;
-  background: #f7f9fc;
+  background:
+    radial-gradient(ellipse 60% 40% at 0% 0%, #dbeafe55, transparent 55%),
+    linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 28px 80px #0b142633;
 }
 
 .inventoryHeader {
@@ -1586,27 +1590,29 @@
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  padding: 16px 22px;
-  border-bottom: 1px solid #e2e8f0;
+  padding: 18px 24px;
+  border-bottom: 1px solid #e2e8f080;
   position: sticky;
   top: 0;
   z-index: 2;
-  background: #fff;
+  background: #fffffff5;
+  backdrop-filter: blur(10px);
 }
 
 .inventoryEyebrow {
   display: block;
   margin-bottom: 4px;
-  color: #64748b;
+  color: #0052ff;
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.4px;
+  font-weight: 800;
+  letter-spacing: 0.7px;
   text-transform: uppercase;
 }
 
 .inventoryHeader h2 {
-  margin: 0;
-  font: 800 18px/1.2 "Plus Jakarta Sans", sans-serif;
+  margin: 0 !important;
+  font: 800 20px/1.25 "Plus Jakarta Sans", sans-serif !important;
+  letter-spacing: -0.3px !important;
   color: #0c274d;
 }
 
@@ -1620,9 +1626,9 @@
   min-height: 38px;
   padding: 0 14px;
   border-radius: 10px;
-  border: 1px solid #d7e0ef;
-  background: #fff;
-  color: #0c274d;
+  border: 1px solid #c7d7ff;
+  background: #eff6ff;
+  color: #0052ff;
   font: 700 13px/1 "Plus Jakarta Sans", sans-serif;
   cursor: pointer;
   transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
@@ -1630,8 +1636,8 @@
 
 .editDetailsBtn:hover {
   border-color: #0052ff;
-  color: #0052ff;
-  background: #f5f8ff;
+  color: #0046db;
+  background: #dbeafe;
 }
 
 .iconClose {
@@ -1651,25 +1657,26 @@
 }
 
 .inventoryBody {
-  padding: 18px 20px 28px;
+  padding: 20px 22px 30px;
   display: grid;
-  gap: 14px;
+  gap: 16px;
 }
 
 .inventoryHero {
   display: grid;
-  grid-template-columns: 168px minmax(0, 1fr);
-  gap: 18px;
-  padding: 16px;
+  grid-template-columns: 152px minmax(0, 1fr);
+  gap: 20px;
+  padding: 18px;
   border: 1px solid #e2e8f0;
-  border-radius: 16px;
-  background: #fff;
+  border-radius: 18px;
+  background: #ffffffeb;
+  box-shadow: 0 10px 28px #0b142608;
 }
 
 .inventoryHeroMedia {
   position: relative;
-  width: 168px;
-  height: 168px;
+  width: 152px;
+  height: 152px;
   border-radius: 14px;
   overflow: hidden;
   background: linear-gradient(145deg, #e8eef8, #f8fafc);
@@ -1699,7 +1706,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .inventoryBadges {
@@ -1741,10 +1748,45 @@
 
 .inventoryHeroCopy h3 {
   margin: 0;
-  font: 800 22px/1.25 "Plus Jakarta Sans", sans-serif;
-  letter-spacing: -0.35px;
+  font: 800 21px/1.3 "Plus Jakarta Sans", sans-serif;
+  letter-spacing: -0.25px;
   color: #0c274d;
   text-transform: none;
+}
+
+.heroMetaRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+}
+
+.heroMetaItem {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.heroMetaItem > span {
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.45px;
+  text-transform: uppercase;
+}
+
+.heroMetaItem b {
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.heroDivider {
+  width: 1px;
+  height: 14px;
+  background: #e2e8f0;
 }
 
 .skuCopy {
@@ -1754,11 +1796,13 @@
   width: fit-content;
   margin: 0;
   border: 0;
-  background: transparent;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
   color: #64748b;
   font: 600 12px/1 "Plus Jakarta Sans", sans-serif;
   cursor: pointer;
-  padding: 0;
+  padding: 7px 10px;
 }
 
 .skuCopy span {
@@ -1781,6 +1825,8 @@
 
 .skuCopy:hover {
   color: #0052ff;
+  border-color: #c7d7ff;
+  background: #f5f8ff;
 }
 
 .skuCopy:hover code {
@@ -1790,14 +1836,14 @@
 .statStrip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 4px;
+  gap: 8px;
+  margin-top: 2px;
 }
 
 .statStrip article {
   padding: 12px 12px 11px;
   border-radius: 12px;
-  background: #f7f9fc;
+  background: linear-gradient(180deg, #f8fafc, #f1f5f9);
   border: 1px solid #e8eef6;
 }
 
@@ -1829,30 +1875,37 @@
 }
 
 .inventoryPanel {
-  padding: 16px 16px 14px;
+  padding: 18px 18px 16px;
   border: 1px solid #e2e8f0;
   border-radius: 16px;
-  background: #fff;
+  background: #ffffffeb;
+  box-shadow: 0 8px 22px #0b142606;
 }
 
 .inventoryPanel > header {
-  margin-bottom: 12px;
-  padding: 0;
+  margin-bottom: 4px;
+  padding: 0 0 12px;
   border: 0;
+  border-bottom: 1px solid #eef2f7;
   background: transparent;
   display: block;
 }
 
 .inventoryPanel > header h4 {
   margin: 0;
-  font: 800 14px/1.2 "Plus Jakarta Sans", sans-serif;
+  font: 800 13px/1.2 "Plus Jakarta Sans", sans-serif;
+  letter-spacing: 0.2px;
+  text-transform: uppercase;
   color: #0c274d;
 }
 
 .inventoryPanel > header p {
-  margin: 4px 0 0;
+  margin: 5px 0 0;
   color: #64748b;
   font-size: 12px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .panelHead {
@@ -1870,11 +1923,11 @@
 
 .metaList > div {
   display: grid;
-  grid-template-columns: 120px minmax(0, 1fr);
+  grid-template-columns: 100px minmax(0, 1fr);
   gap: 12px;
   align-items: start;
-  padding: 11px 0;
-  border-bottom: 1px solid #eef2f7;
+  padding: 12px 0;
+  border-bottom: 1px solid #f1f5f9;
 }
 
 .metaList > div:last-child {
@@ -1887,8 +1940,9 @@
   color: #94a3b8;
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.35px;
   text-transform: uppercase;
+  padding-top: 1px;
 }
 
 .metaList dd {
@@ -1900,6 +1954,8 @@
   color: #0f172a;
   font-size: 13px;
   font-weight: 600;
+  line-height: 1.4;
+  word-break: break-word;
 }
 
 .metaList code {
@@ -1907,24 +1963,59 @@
   color: #0c274d;
 }
 
-.infoPill {
+.infoPill,
+.mutedPill {
   display: inline-flex;
   align-items: center;
   padding: 3px 8px;
   border-radius: 999px;
-  background: #eef4ff;
-  color: #1d4ed8;
   font-size: 10px;
   font-weight: 800;
   font-style: normal;
   text-transform: uppercase;
 }
 
+.infoPill {
+  background: #eef4ff;
+  color: #1d4ed8;
+}
+
+.mutedPill {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
 .descriptionText {
-  margin: 0;
+  margin: 12px 0 0;
   color: #334155;
   font-size: 14px;
   line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.notesBlock {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px dashed #e2e8f0;
+}
+
+.notesBlock > span {
+  display: block;
+  margin-bottom: 6px;
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.45px;
+  text-transform: uppercase;
+}
+
+.notesBlock p {
+  margin: 0;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.55;
   white-space: pre-wrap;
 }
 
@@ -2313,9 +2404,17 @@
     grid-template-columns: 1fr 1fr;
   }
 
+  .heroMetaRow {
+    gap: 8px 10px;
+  }
+
+  .heroDivider {
+    display: none;
+  }
+
   .metaList > div {
-    grid-template-columns: 1fr;
-    gap: 4px;
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 10px;
   }
 
   .modalBackdrop {

@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import Link from "next/link";
-import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import styles from "./catalog.module.css";
 import { useAuth } from "../../components/AuthProvider";
@@ -11,6 +11,58 @@ import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogSavedV
 
 const statuses: CatalogStatus[] = ["IMPORTED", "NEEDS_IMAGES", "IMPORT_ERROR", "READY_FOR_ENRICHMENT", "ARCHIVED"];
 const emptyCatalog: CatalogResponse = { parts: [], pagination: { page: 1, pageSize: 25, total: 0, totalPages: 0 }, summary: { total: 0, byStatus: {} }, warehouses: [] };
+
+const mediaUrlCache = new Map<string, string>();
+const mediaUrlWaiters = new Map<string, Array<(url: string | null) => void>>();
+let mediaUrlFlushTimer: ReturnType<typeof setTimeout> | null = null;
+const mediaUrlPending = new Set<string>();
+
+function flushMediaUrlBatch() {
+  mediaUrlFlushTimer = null;
+  const ids = [...mediaUrlPending];
+  mediaUrlPending.clear();
+  if (!ids.length) return;
+  void apiRequest("/api/media/download-urls", {
+    method: "POST",
+    body: JSON.stringify({ ids }),
+  })
+    .then((data) => {
+      const urls = (data as { urls?: Array<{ id: string; downloadUrl: string }> }).urls ?? [];
+      const found = new Set<string>();
+      for (const item of urls) {
+        found.add(item.id);
+        mediaUrlCache.set(item.id, item.downloadUrl);
+        const waiters = mediaUrlWaiters.get(item.id) ?? [];
+        mediaUrlWaiters.delete(item.id);
+        for (const resolve of waiters) resolve(item.downloadUrl);
+      }
+      for (const id of ids) {
+        if (found.has(id)) continue;
+        const waiters = mediaUrlWaiters.get(id) ?? [];
+        mediaUrlWaiters.delete(id);
+        for (const resolve of waiters) resolve(null);
+      }
+    })
+    .catch(() => {
+      for (const id of ids) {
+        const waiters = mediaUrlWaiters.get(id) ?? [];
+        mediaUrlWaiters.delete(id);
+        for (const resolve of waiters) resolve(null);
+      }
+    });
+}
+
+function requestMediaDownloadUrl(mediaId: string): Promise<string | null> {
+  const cached = mediaUrlCache.get(mediaId);
+  if (cached) return Promise.resolve(cached);
+  return new Promise((resolve) => {
+    const waiters = mediaUrlWaiters.get(mediaId) ?? [];
+    waiters.push(resolve);
+    mediaUrlWaiters.set(mediaId, waiters);
+    mediaUrlPending.add(mediaId);
+    if (!mediaUrlFlushTimer) mediaUrlFlushTimer = setTimeout(flushMediaUrlBatch, 24);
+  });
+}
 
 const demoParts: CatalogPartCard[] = [
   { id: "demo-1", sku: "GM-84178783-A", primaryPartNumber: "84178783", brand: "ACDelco", partName: "HVAC Blower Motor Control Module", condition: "USED", status: "READY_FOR_ENRICHMENT", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), donorVehicle: { vin: "1GNEK13Z43R000001", year: 2021, make: "Chevrolet", model: "Traverse" }, inventoryItem: { quantity: 1, cost: 28, currency: "USD", warehouse: { id: "w1", code: "MAIN", name: "Main" }, binLocation: { id: "b1", code: "A-14" } }, media: [], pricingJobItems: [], fitmentJobItems: [], _count: { media: 4 } },
@@ -72,26 +124,49 @@ function ebayStatusLabel(part: CatalogPartDetail) {
 }
 
 function CatalogImage({ mediaId, demo }: { mediaId?: string; token?: string; demo: boolean }) {
-  const [url, setUrl] = useState("");
+  const [url, setUrl] = useState(() => (mediaId ? mediaUrlCache.get(mediaId) ?? "" : ""));
+  const [visible, setVisible] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
   useEffect(() => {
-    if (!mediaId || demo) return;
+    const node = rootRef.current;
+    if (!node || !mediaId || demo) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "120px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [demo, mediaId]);
+
+  useEffect(() => {
+    if (!mediaId || demo || !visible) return;
     let active = true;
-    void apiRequest(`/api/media/${mediaId}/download-url`)
-      .then((data) => {
-        const downloadUrl = (data as { downloadUrl?: string }).downloadUrl;
+    void requestMediaDownloadUrl(mediaId)
+      .then((downloadUrl) => {
         if (active && downloadUrl) setUrl(downloadUrl);
       })
       .catch(() => undefined);
     return () => { active = false; };
-  }, [demo, mediaId]);
-  return <div className={styles.thumb}>{url ? <img src={url} alt="Catalog part" /> : <span>{demo || mediaId ? "PART" : "NO IMAGE"}</span>}</div>;
+  }, [demo, mediaId, visible]);
+
+  return (
+    <div ref={rootRef} className={styles.thumb}>
+      {url ? <img src={url} alt="Catalog part" loading="lazy" /> : <span>{demo || mediaId ? "PART" : "NO IMAGE"}</span>}
+    </div>
+  );
 }
 
 export default function CatalogWorkspace() {
   const { status: authStatus, token, demo, apiFetch } = useAuth();
   const searchParams = useSearchParams();
   const [catalog, setCatalog] = useState<CatalogResponse>(emptyCatalog);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const highlightFromUrl = searchParams.get("highlight");
@@ -179,7 +254,10 @@ export default function CatalogWorkspace() {
 
   useEffect(() => {
     if (authStatus !== "ready") return;
-    if (demo) setCatalog(demoCatalog());
+    if (demo) {
+      setCatalog(demoCatalog());
+      setLoading(false);
+    }
   }, [authStatus, demo]);
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => apiFetch(path, init), [apiFetch]);
@@ -194,6 +272,10 @@ export default function CatalogWorkspace() {
     request("/api/listing-drafts?limit=25")
       .then((value) => setDrafts(value as ListingDraft[]))
       .catch(() => undefined);
+  }, [authStatus, demo, request]);
+
+  useEffect(() => {
+    if (authStatus !== "ready" || demo) return;
     request("/api/catalog/saved-views")
       .then((value) => {
         const views = value as CatalogSavedView[];
@@ -201,7 +283,10 @@ export default function CatalogWorkspace() {
         // Coming from Quick SKU with highlight: show full newest-first list, not a saved filter.
         if (searchParams.get("highlight")) return;
         const defaultView = views.find(({ isDefault }) => isDefault);
-        if (defaultView) { setActiveSavedViewId(defaultView.id); applySavedFilters(defaultView.filters); }
+        if (defaultView) {
+          setActiveSavedViewId(defaultView.id);
+          applySavedFilters(defaultView.filters);
+        }
       })
       .catch(() => undefined);
   }, [authStatus, demo, request, searchParams]);
@@ -229,16 +314,24 @@ export default function CatalogWorkspace() {
     return query.toString();
   }, [brand, condition, createdFrom, createdTo, deferredSearch, hasFitment, hasImages, hasPricing, hasShippingPolicy, listingState, marketplaceFilter, maxCost, maxQuantity, minCost, minQuantity, page, sort, status, warehouseId]);
 
+  const catalogRequestId = useRef(0);
+
   const loadCatalog = useCallback(async () => {
     if (authStatus !== "ready" || demo) return;
+    const requestId = ++catalogRequestId.current;
     setLoading(true);
     setError("");
-    try { setCatalog(await request(`/api/parts?${queryString}`) as CatalogResponse); }
-    catch (caught) {
+    try {
+      const next = await request(`/api/parts?${queryString}`) as CatalogResponse;
+      if (requestId !== catalogRequestId.current) return;
+      setCatalog(next);
+    } catch (caught) {
+      if (requestId !== catalogRequestId.current) return;
       if (caught instanceof SessionExpiredError) return;
       setError(caught instanceof Error ? caught.message : "Unable to load catalog");
+    } finally {
+      if (requestId === catalogRequestId.current) setLoading(false);
     }
-    finally { setLoading(false); }
   }, [authStatus, demo, queryString, request]);
 
   useEffect(() => { void loadCatalog(); }, [loadCatalog]);
@@ -1349,7 +1442,7 @@ export default function CatalogWorkspace() {
         <header className={styles.inventoryHeader}>
           <div>
             <span className={styles.inventoryEyebrow}>Catalog part</span>
-            <h2 id="edit-part-title">Inventory Details</h2>
+            <h2 id="edit-part-title">Inventory details</h2>
           </div>
           <div className={styles.inventoryHeaderActions}>
             {detailMode === "view" ? (
@@ -1371,7 +1464,6 @@ export default function CatalogWorkspace() {
                 : detail.inventoryItem
                   ? money(detail.inventoryItem.cost, detail.inventoryItem.currency)
                   : "—";
-              const storage = [detail.inventoryItem?.warehouse?.code, detail.inventoryItem?.binLocation?.code].filter(Boolean).join(" · ") || "Unassigned";
               const categoryLabel = detail.listingDrafts?.[0]?.categoryId
                 ? `eBay category ${detail.listingDrafts[0].categoryId}`
                 : detail.donorVehicle
@@ -1385,6 +1477,8 @@ export default function CatalogWorkspace() {
                 : detail.donorVehicle
                   ? [{ id: "donor", properties: { Year: String(detail.donorVehicle.year ?? ""), Make: detail.donorVehicle.make ?? "", Model: detail.donorVehicle.model ?? "" } }]
                   : [];
+              const addedOn = new Date(detail.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+              const shippingPolicy = detail.listingDrafts?.[0]?.shippingPolicyId;
 
               return (
                 <>
@@ -1400,11 +1494,23 @@ export default function CatalogWorkspace() {
                         <span className={`${styles.statusBadge} ${styles.tone_muted}`}>{humanStatus(detail.condition)}</span>
                       </div>
                       <h3>{title}</h3>
-                      <button type="button" className={styles.skuCopy} onClick={() => void copySku(detail.sku)}>
-                        <span>SKU</span>
-                        <code>{detail.sku}</code>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-                      </button>
+                      <div className={styles.heroMetaRow}>
+                        <button type="button" className={styles.skuCopy} onClick={() => void copySku(detail.sku)}>
+                          <span>SKU</span>
+                          <code>{detail.sku}</code>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                        </button>
+                        <span className={styles.heroDivider} aria-hidden="true" />
+                        <span className={styles.heroMetaItem}>
+                          <span>Added</span>
+                          <b>{addedOn}</b>
+                        </span>
+                        <span className={styles.heroDivider} aria-hidden="true" />
+                        <span className={styles.heroMetaItem}>
+                          <span>Status</span>
+                          <b>{humanStatus(detail.status)}</b>
+                        </span>
+                      </div>
                       <div className={styles.statStrip}>
                         <article>
                           <span>Price</span>
@@ -1412,7 +1518,7 @@ export default function CatalogWorkspace() {
                         </article>
                         <article>
                           <span>Quantity</span>
-                          <b>{detail.inventoryItem?.quantity ?? 0}</b>
+                          <b className={styles[`stock_${stock.tone}`]}>{detail.inventoryItem?.quantity ?? 0}</b>
                         </article>
                         <article>
                           <span>OEM</span>
@@ -1429,36 +1535,32 @@ export default function CatalogWorkspace() {
                   <div className={styles.inventorySections}>
                     <section className={styles.inventoryPanel}>
                       <header>
-                        <h4>Identity</h4>
-                        <p>Catalog identifiers and listing classification</p>
+                        <h4>Listing details</h4>
+                        <p>Classification shown on drafts and catalogs</p>
                       </header>
                       <dl className={styles.metaList}>
-                        <div><dt>Brand</dt><dd>{detail.brand || "—"}</dd></div>
                         {partNameDistinct ? <div><dt>Part name</dt><dd>{detail.partName}</dd></div> : null}
-                        <div><dt>OEM / Part #</dt><dd><code>{detail.primaryPartNumber}</code></dd></div>
                         <div><dt>Category</dt><dd>{categoryLabel}</dd></div>
-                        <div><dt>Date added</dt><dd>{new Date(detail.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</dd></div>
+                        <div><dt>Condition</dt><dd>{humanStatus(detail.condition)}</dd></div>
+                        <div><dt>Placement</dt><dd>{detail.placement || "—"}</dd></div>
                       </dl>
                     </section>
 
                     <section className={styles.inventoryPanel}>
                       <header>
-                        <h4>Commerce & location</h4>
-                        <p>Pricing, stock, and warehouse placement</p>
+                        <h4>Warehouse & policies</h4>
+                        <p>Where it sits and how it ships</p>
                       </header>
                       <dl className={styles.metaList}>
-                        <div><dt>Condition</dt><dd>{humanStatus(detail.condition)}</dd></div>
-                        <div><dt>Price</dt><dd>{priceLabel}</dd></div>
-                        <div><dt>Quantity</dt><dd>{detail.inventoryItem?.quantity ?? 0}</dd></div>
+                        <div><dt>Warehouse</dt><dd>{detail.inventoryItem?.warehouse?.name || detail.inventoryItem?.warehouse?.code || "Unassigned"}</dd></div>
+                        <div><dt>Bin</dt><dd>{detail.inventoryItem?.binLocation?.code || "—"}</dd></div>
                         <div>
-                          <dt>Shipping policy</dt>
+                          <dt>Shipping</dt>
                           <dd>
-                            {detail.listingDrafts?.[0]?.shippingPolicyId || "Not assigned"}
-                            {detail.listingDrafts?.[0]?.shippingPolicyId ? <em className={styles.infoPill}>Assigned</em> : null}
+                            {shippingPolicy || "Not assigned"}
+                            {shippingPolicy ? <em className={styles.infoPill}>Assigned</em> : <em className={styles.mutedPill}>Needed</em>}
                           </dd>
                         </div>
-                        <div><dt>Placement</dt><dd>{detail.placement || "—"}</dd></div>
-                        <div><dt>Storage</dt><dd>{storage}</dd></div>
                       </dl>
                     </section>
                   </div>
@@ -1466,8 +1568,15 @@ export default function CatalogWorkspace() {
                   <section className={styles.inventoryPanel}>
                     <header>
                       <h4>Description</h4>
+                      <p>Buyer-facing copy and internal notes</p>
                     </header>
-                    <p className={styles.descriptionText}>{detail.description || detail.notes || "No description provided."}</p>
+                    <p className={styles.descriptionText}>{detail.description || "No description provided."}</p>
+                    {detail.notes ? (
+                      <div className={styles.notesBlock}>
+                        <span>Internal notes</span>
+                        <p>{detail.notes}</p>
+                      </div>
+                    ) : null}
                   </section>
 
                   <section className={styles.inventoryPanel}>
@@ -1494,8 +1603,8 @@ export default function CatalogWorkspace() {
                   <section className={styles.inventoryPanel}>
                     <header className={styles.panelHead}>
                       <div>
-                        <h4>Fitment / compatibility</h4>
-                        <p>{fitmentItems.length ? `${fitmentItems.length} application${fitmentItems.length === 1 ? "" : "s"}` : "No approved fitment yet"}</p>
+                        <h4>Fitment</h4>
+                        <p>{fitmentItems.length ? `${fitmentItems.length} vehicle application${fitmentItems.length === 1 ? "" : "s"}` : "No approved fitment yet"}</p>
                       </div>
                       <button type="button" className={styles.uploadGhost} onClick={() => void openManualFitment(detail.id)}>Manage</button>
                     </header>
@@ -1508,7 +1617,7 @@ export default function CatalogWorkspace() {
                         </span>
                       ))}
                       {!fitmentItems.length && (
-                        <span className={styles.emptyFitment}>Use Manage to add vehicle compatibility for this part.</span>
+                        <span className={styles.emptyFitment}>Add vehicle compatibility so this part can publish cleanly.</span>
                       )}
                     </div>
                   </section>

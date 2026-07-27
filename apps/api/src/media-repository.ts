@@ -30,3 +30,16 @@ export async function findMediaStorageKey(organizationId: string, mediaAssetId: 
   });
   return asset?.storageKey ?? null;
 }
+
+export async function findMediaStorageKeys(
+  organizationId: string,
+  mediaAssetIds: string[],
+): Promise<Map<string, string>> {
+  const uniqueIds = [...new Set(mediaAssetIds.filter(Boolean))];
+  if (!uniqueIds.length) return new Map();
+  const assets = await prisma.mediaAsset.findMany({
+    where: { organizationId, id: { in: uniqueIds } },
+    select: { id: true, storageKey: true },
+  });
+  return new Map(assets.map((asset) => [asset.id, asset.storageKey]));
+}
