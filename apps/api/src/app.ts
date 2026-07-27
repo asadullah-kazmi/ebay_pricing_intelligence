@@ -5,7 +5,7 @@ import { z } from "zod";
 import { AuthenticationError, AuthorizationError } from "./auth.js";
 import { assertTrustedAuthOrigin, clearRefreshCookie, getJwtConfiguration, isTrustedWebOrigin, readRefreshCookie, revokeRefreshToken, rotateTokenPair, setRefreshCookie } from "./auth-sessions.js";
 import { getConfig } from "./config.js";
-import { bulkUpdateCatalogParts, CatalogError, exportCatalogCsv, getCatalogPart, listCatalogParts, updateCatalogPart } from "./catalog-service.js";
+import { bulkUpdateCatalogParts, CatalogError, deleteCatalogParts, exportCatalogCsv, getCatalogPart, listCatalogParts, updateCatalogPart } from "./catalog-service.js";
 import { databaseIsReachable } from "./db.js";
 import { calculateAnalytics } from "./domain/analytics.js";
 import { matchListing, normalizePartNumber } from "./domain/matching.js";
@@ -121,6 +121,7 @@ const catalogPartUpdateSchema = z.object({
 }).strict().refine((value) => Object.keys(value).length > 0, "At least one field is required");
 const catalogBulkStatusSchema = z.object({ partIds: z.array(z.string().min(1)).min(1).max(500).transform((ids) => [...new Set(ids)]), status: catalogStatusSchema });
 const catalogPartIdsSchema = z.array(z.string().min(1)).min(1).max(500).transform((ids) => [...new Set(ids)]);
+const catalogBulkDeleteSchema = z.object({ partIds: catalogPartIdsSchema }).strict();
 const catalogBulkUpdateSchema = z.object({
   partIds: catalogPartIdsSchema,
   changes: z.object({
@@ -1009,11 +1010,28 @@ app.patch("/api/parts/bulk-edit", writeRateLimit, requireTenantContext, mediaUpl
   } catch (error) { next(error); }
 });
 
+app.post("/api/parts/bulk-delete", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const input = catalogBulkDeleteSchema.parse(req.body);
+    res.json(await deleteCatalogParts(tenant.organization.id, tenant.user.id, input.partIds));
+  } catch (error) { next(error); }
+});
+
 app.get("/api/parts/:id", requireTenantContext, async (req, res, next) => {
   try {
     const partId = req.params.id;
     if (typeof partId !== "string") return res.status(400).json({ error: "Invalid catalog part ID" });
     res.json(await getCatalogPart(getTenantContext(res).organization.id, partId));
+  } catch (error) { next(error); }
+});
+
+app.delete("/api/parts/:id", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+  try {
+    const partId = req.params.id;
+    if (typeof partId !== "string") return res.status(400).json({ error: "Invalid catalog part ID" });
+    const tenant = getTenantContext(res);
+    res.json(await deleteCatalogParts(tenant.organization.id, tenant.user.id, [partId]));
   } catch (error) { next(error); }
 });
 

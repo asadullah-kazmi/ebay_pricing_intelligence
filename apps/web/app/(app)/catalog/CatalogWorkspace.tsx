@@ -557,6 +557,42 @@ export default function CatalogWorkspace() {
     finally { setLoading(false); }
   }
 
+  async function deleteParts(partIds: string[]) {
+    if (!partIds.length || demo) return;
+    const label = partIds.length === 1 ? "this listing" : `${partIds.length} listings`;
+    if (!window.confirm(`Delete ${label}?\n\nThis permanently removes the part from your catalog and cannot be undone.`)) return;
+    setLoading(true);
+    setError("");
+    try {
+      if (partIds.length === 1) {
+        await request(`/api/parts/${partIds[0]}`, { method: "DELETE" });
+      } else {
+        await request("/api/parts/bulk-delete", {
+          method: "POST",
+          body: JSON.stringify({ partIds }),
+        });
+      }
+      for (const id of partIds) detailCache.delete(id);
+      if (detail && partIds.includes(detail.id)) setDetail(null);
+      setSelected((current) => {
+        const next = new Set(current);
+        for (const id of partIds) next.delete(id);
+        return next;
+      });
+      setNotice(partIds.length === 1 ? "Listing deleted." : `${partIds.length} listings deleted.`);
+      await loadCatalog();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to delete listing");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function deleteSelected() {
+    await deleteParts([...selected]);
+    setBulkMoreOpen(false);
+  }
+
   function currentSavedFilters(): Record<string, string> {
     return Object.fromEntries(Object.entries({
       q: search.trim(), brand, status, condition, hasImages, hasPricing, hasFitment,
@@ -1347,6 +1383,7 @@ export default function CatalogWorkspace() {
               </button>
               <button type="button" disabled={draftBusy} onClick={() => void openBulkPolicies()}>Shipping</button>
               <button type="button" onClick={() => setBulkEditorOpen(true)}>Edit</button>
+              <button type="button" className={styles.bulkDanger} disabled={loading} onClick={() => void deleteSelected()}>Delete</button>
               <div className={styles.bulkMore}>
                 <button type="button" className={styles.moreBtn} onClick={() => setBulkMoreOpen((value) => !value)} aria-expanded={bulkMoreOpen}>... More</button>
                 {bulkMoreOpen && (
@@ -1372,9 +1409,8 @@ export default function CatalogWorkspace() {
               <thead>
                 <tr>
                   <th className={styles.colCheck}><input aria-label="Select current page" type="checkbox" checked={allPageSelected} onChange={togglePage}/></th>
-                  <th className={styles.colProduct}>Product</th>
                   <th className={styles.colSku}>SKU</th>
-                  <th className={styles.colOem}>OEM #</th>
+                  <th className={styles.colProduct}>Product</th>
                   <th>Condition</th>
                   <th>Stock</th>
                   <th>Price</th>
@@ -1399,6 +1435,9 @@ export default function CatalogWorkspace() {
                       <td className={styles.colCheck}>
                         <input aria-label={`Select ${part.sku}`} type="checkbox" checked={selected.has(part.id)} onChange={() => togglePart(part.id)}/>
                       </td>
+                      <td className={styles.colSku}>
+                        <button type="button" className={styles.skuLink} onClick={() => void openPart(part.id)}>{part.sku}</button>
+                      </td>
                       <td className={styles.colProduct}>
                         <div className={styles.productCell}>
                           <CatalogImage mediaId={part.media[0]?.mediaAsset.id} token={token} demo={demo}/>
@@ -1409,12 +1448,6 @@ export default function CatalogWorkspace() {
                             <span className={styles.productMeta}>{part.brand || "Brand not set"}</span>
                           </div>
                         </div>
-                      </td>
-                      <td className={styles.colSku}>
-                        <button type="button" className={styles.skuLink} onClick={() => void openPart(part.id)}>{part.sku}</button>
-                      </td>
-                      <td className={styles.colOem}>
-                        <code className={styles.oemCode}>{part.primaryPartNumber}</code>
                       </td>
                       <td className={styles.conditionText}>{part.condition === "NEW" ? "New" : "Used"}</td>
                       <td className={styles.stockCell}>
@@ -1536,162 +1569,88 @@ export default function CatalogWorkspace() {
                 : detail.inventoryItem
                   ? money(detail.inventoryItem.cost, detail.inventoryItem.currency)
                   : "—";
-              const categoryLabel = detail.listingDrafts?.[0]?.categoryId
-                ? `eBay category ${detail.listingDrafts[0].categoryId}`
-                : detail.donorVehicle
-                  ? [detail.donorVehicle.year, detail.donorVehicle.make, detail.donorVehicle.model].filter(Boolean).join(" ")
-                  : "Not assigned";
               const title = detailTitle(detail);
-              const partNameDistinct = detail.partName
-                && detail.partName.trim().toLowerCase() !== title.trim().toLowerCase();
               const fitmentItems = detail.fitmentApplications && detail.fitmentApplications.length > 0
                 ? detail.fitmentApplications
                 : detail.donorVehicle
                   ? [{ id: "donor", properties: { Year: String(detail.donorVehicle.year ?? ""), Make: detail.donorVehicle.make ?? "", Model: detail.donorVehicle.model ?? "" } }]
                   : [];
-              const addedOn = new Date(detail.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-              const shippingPolicy = detail.listingDrafts?.[0]?.shippingPolicyId;
+              const location = [
+                detail.inventoryItem?.warehouse?.code,
+                detail.inventoryItem?.binLocation?.code,
+              ].filter(Boolean).join(" · ") || "Unassigned";
 
               return (
                 <>
                   <div className={styles.inventoryHero}>
                     <div className={styles.inventoryHeroMedia}>
                       <CatalogImage mediaId={detail.media[0]?.mediaAsset.id} token={token} demo={demo} />
-                      {detail.media.length > 1 && <span className={styles.mediaCount}>{detail.media.length} photos</span>}
+                      {detail.media.length > 1 && <span className={styles.mediaCount}>{detail.media.length}</span>}
                     </div>
                     <div className={styles.inventoryHeroCopy}>
                       <div className={styles.inventoryBadges}>
                         <span className={`${styles.statusBadge} ${styles[`tone_${stock.tone}`]}`}>{stock.label}</span>
                         <span className={`${styles.statusBadge} ${styles[`tone_${ebay.tone}`]}`}>{ebay.label}</span>
-                        <span className={`${styles.statusBadge} ${styles.tone_muted}`}>{humanStatus(detail.condition)}</span>
                       </div>
                       <h3>{title}</h3>
-                      <div className={styles.heroMetaRow}>
-                        <button type="button" className={styles.skuCopy} onClick={() => void copySku(detail.sku)}>
-                          <span>SKU</span>
-                          <code>{detail.sku}</code>
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-                        </button>
-                        <span className={styles.heroDivider} aria-hidden="true" />
-                        <span className={styles.heroMetaItem}>
-                          <span>Added</span>
-                          <b>{addedOn}</b>
-                        </span>
-                        <span className={styles.heroDivider} aria-hidden="true" />
-                        <span className={styles.heroMetaItem}>
-                          <span>Status</span>
-                          <b>{humanStatus(detail.status)}</b>
-                        </span>
-                      </div>
-                      <div className={styles.statStrip}>
-                        <article>
-                          <span>Price</span>
-                          <b>{priceLabel}</b>
-                        </article>
-                        <article>
-                          <span>Quantity</span>
-                          <b className={styles[`stock_${stock.tone}`]}>{detail.inventoryItem?.quantity ?? 0}</b>
-                        </article>
-                        <article>
-                          <span>OEM</span>
-                          <b>{detail.primaryPartNumber}</b>
-                        </article>
-                        <article>
-                          <span>Brand</span>
-                          <b>{detail.brand || "—"}</b>
-                        </article>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className={styles.inventorySections}>
-                    <section className={styles.inventoryPanel}>
-                      <header>
-                        <h4>Listing details</h4>
-                        <p>Classification shown on drafts and catalogs</p>
-                      </header>
-                      <dl className={styles.metaList}>
-                        {partNameDistinct ? <div><dt>Part name</dt><dd>{detail.partName}</dd></div> : null}
-                        <div><dt>Category</dt><dd>{categoryLabel}</dd></div>
-                        <div><dt>Condition</dt><dd>{humanStatus(detail.condition)}</dd></div>
-                        <div><dt>Placement</dt><dd>{detail.placement || "—"}</dd></div>
-                      </dl>
-                    </section>
-
-                    <section className={styles.inventoryPanel}>
-                      <header>
-                        <h4>Warehouse & policies</h4>
-                        <p>Where it sits and how it ships</p>
-                      </header>
-                      <dl className={styles.metaList}>
-                        <div><dt>Warehouse</dt><dd>{detail.inventoryItem?.warehouse?.name || detail.inventoryItem?.warehouse?.code || "Unassigned"}</dd></div>
-                        <div><dt>Bin</dt><dd>{detail.inventoryItem?.binLocation?.code || "—"}</dd></div>
-                        <div>
-                          <dt>Shipping</dt>
-                          <dd>
-                            {shippingPolicy || "Not assigned"}
-                            {shippingPolicy ? <em className={styles.infoPill}>Assigned</em> : <em className={styles.mutedPill}>Needed</em>}
-                          </dd>
-                        </div>
-                      </dl>
-                    </section>
-                  </div>
-
-                  <section className={styles.inventoryPanel}>
-                    <header>
-                      <h4>Description</h4>
-                      <p>Buyer-facing copy and internal notes</p>
-                    </header>
-                    <p className={styles.descriptionText}>{detail.description || "No description provided."}</p>
-                    {detail.notes ? (
-                      <div className={styles.notesBlock}>
-                        <span>Internal notes</span>
-                        <p>{detail.notes}</p>
-                      </div>
-                    ) : null}
-                  </section>
-
-                  <section className={styles.inventoryPanel}>
-                    <header className={styles.panelHead}>
-                      <div>
-                        <h4>Product images</h4>
-                        <p>{detail.media.length ? `${detail.media.length} attached` : "No images yet"}</p>
-                      </div>
-                      <button type="button" className={styles.uploadGhost} onClick={() => setNotice("Image upload is available from the import pipeline for this part.")}>
-                        Upload images
+                      <p className={styles.heroSubline}>
+                        {[detail.brand || "No brand", humanStatus(detail.condition), detail.primaryPartNumber].filter(Boolean).join(" · ")}
+                      </p>
+                      <button type="button" className={styles.skuCopy} onClick={() => void copySku(detail.sku)}>
+                        <span>SKU</span>
+                        <code>{detail.sku}</code>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
                       </button>
-                    </header>
-                    <div className={styles.detailImages}>
-                      {(detail.media.length ? detail.media : [{ id: "placeholder", displayOrder: 0, mediaAsset: { id: "", originalFilename: "", mimeType: "" } }]).slice(0, 8).map((item, index) => (
-                        <div key={item.id} className={`${styles.detailImage} ${index === 0 ? styles.detailImageMain : ""}`}>
-                          <CatalogImage mediaId={item.mediaAsset.id || undefined} token={token} demo={demo} />
-                          <span className={styles.badge}>{index + 1}</span>
-                          {index === 0 && <span className={styles.mainTag}>Main</span>}
-                        </div>
-                      ))}
                     </div>
-                  </section>
+                  </div>
+
+                  <div className={styles.statStrip}>
+                    <article>
+                      <span>Price</span>
+                      <b>{priceLabel}</b>
+                    </article>
+                    <article>
+                      <span>Qty</span>
+                      <b className={styles[`stock_${stock.tone}`]}>{detail.inventoryItem?.quantity ?? 0}</b>
+                    </article>
+                    <article>
+                      <span>Location</span>
+                      <b>{location}</b>
+                    </article>
+                    <article>
+                      <span>Fitment</span>
+                      <b>{fitmentItems.length || "—"}</b>
+                    </article>
+                  </div>
+
+                  {detail.description ? (
+                    <section className={styles.inventoryPanel}>
+                      <p className={styles.descriptionText}>{detail.description}</p>
+                    </section>
+                  ) : null}
 
                   <section className={styles.inventoryPanel}>
                     <header className={styles.panelHead}>
                       <div>
                         <h4>Fitment</h4>
-                        <p>{fitmentItems.length ? `${fitmentItems.length} vehicle application${fitmentItems.length === 1 ? "" : "s"}` : "No approved fitment yet"}</p>
+                        <p>{fitmentItems.length ? `${fitmentItems.length} vehicle${fitmentItems.length === 1 ? "" : "s"}` : "None yet"}</p>
                       </div>
                       <button type="button" className={styles.uploadGhost} onClick={() => void openManualFitment(detail.id)}>Manage</button>
                     </header>
-                    <div className={styles.fitmentChips}>
-                      {fitmentItems.map((application) => (
-                        <span key={application.id} className={styles.fitmentChip}>
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M3 13l2-5h14l2 5M5 13v5h2v-2h10v2h2v-5"/><circle cx="7.5" cy="16.5" r="1.5"/><circle cx="16.5" cy="16.5" r="1.5"/></svg>
-                          {fitmentLabel(application.properties)}
-                          <i>✓</i>
-                        </span>
-                      ))}
-                      {!fitmentItems.length && (
-                        <span className={styles.emptyFitment}>Add vehicle compatibility so this part can publish cleanly.</span>
-                      )}
-                    </div>
+                    {fitmentItems.length > 0 ? (
+                      <div className={styles.fitmentChips}>
+                        {fitmentItems.slice(0, 6).map((application) => (
+                          <span key={application.id} className={styles.fitmentChip}>
+                            {fitmentLabel(application.properties)}
+                          </span>
+                        ))}
+                        {fitmentItems.length > 6 ? (
+                          <span className={styles.emptyFitment}>+{fitmentItems.length - 6} more</span>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <span className={styles.emptyFitment}>No vehicle compatibility yet.</span>
+                    )}
                   </section>
                 </>
               );

@@ -370,8 +370,10 @@
   display: block;
   margin-bottom: 6px;
   color: #64748b;
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  text-transform: none;
 }
 
 .savedViews select,
@@ -389,6 +391,8 @@
   border-radius: 8px;
   padding: 10px 12px;
   outline: none;
+  font: 400 13px/1.4 "Plus Jakarta Sans", sans-serif;
+  letter-spacing: 0;
 }
 
 .savedViews select:focus,
@@ -625,6 +629,72 @@
   background: #0046d9 !important;
 }
 
+.bulkBar .bulkDanger {
+  background: #fff !important;
+  border: 1px solid #fecaca !important;
+  color: #b42318 !important;
+}
+
+.bulkBar .bulkDanger:hover {
+  background: #fef2f2 !important;
+  border-color: #f87171 !important;
+  color: #b42318 !important;
+}
+
+.colActions {
+  width: 72px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.rowDeleteBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  background: #fff;
+  color: #b42318;
+  font: 600 10px/1 "Plus Jakarta Sans", sans-serif;
+  cursor: pointer;
+}
+
+.rowDeleteBtn:hover {
+  background: #fef2f2;
+  border-color: #f87171;
+}
+
+.rowDeleteBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.deleteDetailsBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0 11px;
+  border-radius: 8px;
+  border: 1px solid #fecaca;
+  background: #fff;
+  color: #b42318;
+  font: 600 12px/1 "Plus Jakarta Sans", sans-serif;
+  cursor: pointer;
+}
+
+.deleteDetailsBtn:hover {
+  background: #fef2f2;
+  border-color: #f87171;
+}
+
+.deleteDetailsBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .bulkMore {
   position: relative;
 }
@@ -705,24 +775,25 @@
 .tableWrap table,
 .listingsTable {
   width: 100%;
-  min-width: 1080px;
+  min-width: 0;
+  table-layout: fixed;
   border-collapse: collapse;
 }
 
 .listingsTable th,
 .listingsTable td {
-  padding: 12px 14px;
+  padding: 8px 8px;
   border-bottom: 1px solid #eef2f7;
   text-align: left;
-  font-size: 13px;
+  font-size: 11px;
   vertical-align: middle;
 }
 
 .listingsTable th {
   background: #f8fafc;
   color: #64748b;
-  font-size: 11px;
-  letter-spacing: 0.45px;
+  font-size: 10px;
+  letter-spacing: 0.35px;
   text-transform: uppercase;
   font-weight: 700;
   white-space: nowrap;
@@ -733,35 +804,34 @@
 }
 
 .colCheck {
-  width: 42px;
-  padding-left: 16px !important;
-  padding-right: 8px !important;
+  width: 34px;
+  padding-left: 10px !important;
+  padding-right: 4px !important;
 }
 
 .colProduct {
-  min-width: 260px;
-  width: 34%;
+  width: 28%;
 }
 
 .colSku {
-  min-width: 140px;
+  width: 16%;
 }
 
 .colOem {
-  min-width: 110px;
+  width: 10%;
 }
 
 .productCell {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   min-width: 0;
 }
 
 .productCopy {
   min-width: 0;
   display: grid;
-  gap: 3px;
+  gap: 1px;
 }
 
 .productTitle {
@@ -772,7 +842,7 @@
   border: 0;
   background: transparent;
   color: #0f172a;
-  font: 500 13px/1.35 "Plus Jakarta Sans", sans-serif;
+  font: 500 11px/1.3 "Plus Jakarta Sans", sans-serif;
   text-align: left;
   cursor: pointer;
   overflow: hidden;
@@ -787,9 +857,9 @@
 .productMeta {
   display: block;
   color: #94a3b8;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 500;
-  line-height: 1.3;
+  line-height: 1.25;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -850,19 +920,20 @@
 
 .emptyValue {
   color: #94a3b8;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 500;
 }
 
 .skuLink {
-  display: inline-block;
-  max-width: 180px;
+  display: block;
+  width: 100%;
+  max-width: 100%;
   margin: 0;
   border: 0;
   background: transparent;
   padding: 0;
   color: #475569;
-  font: 500 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font: 500 10px/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   cursor: pointer;
   text-align: left;
   overflow: hidden;
@@ -877,12 +948,12 @@
 
 .oemCode {
   display: inline-block;
-  max-width: 140px;
+  max-width: 100%;
   padding: 0;
   border: 0;
   background: transparent;
   color: #64748b;
-  font: 500 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font: 500 10px/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -890,9 +961,9 @@
 
 .titleCell {
   display: block;
-  font: 600 13px/1.35 "Plus Jakarta Sans", sans-serif;
+  font: 500 11px/1.3 "Plus Jakarta Sans", sans-serif;
   color: #0f172a;
-  max-width: 280px;
+  max-width: 100%;
 }
 
 .stockCell {
@@ -901,14 +972,14 @@
 
 .stockQty {
   display: block;
-  font: 600 13px/1.2 "Plus Jakarta Sans", sans-serif;
+  font: 600 11px/1.2 "Plus Jakarta Sans", sans-serif;
   color: #0f172a;
 }
 
 .stockCell span:last-child {
   display: block;
-  margin-top: 2px;
-  font-size: 11px;
+  margin-top: 1px;
+  font-size: 10px;
   font-weight: 600;
 }
 
@@ -930,7 +1001,7 @@
 
 .priceValue,
 .marketValue {
-  font: 600 13px/1.2 "Plus Jakarta Sans", sans-serif;
+  font: 600 11px/1.2 "Plus Jakarta Sans", sans-serif;
   color: #0f172a;
 }
 
@@ -940,7 +1011,7 @@
 
 .dateCell {
   color: #94a3b8;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 500;
   white-space: nowrap;
 }
@@ -949,19 +1020,34 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 28px;
-  padding: 0 10px;
+  min-height: 24px;
+  padding: 0 8px;
   border: 0;
-  border-radius: 7px;
+  border-radius: 6px;
   background: #0052ff;
   color: #fff;
-  font: 600 11px/1 "Plus Jakarta Sans", sans-serif;
+  font: 600 10px/1 "Plus Jakarta Sans", sans-serif;
   cursor: pointer;
-  box-shadow: 0 4px 10px #0052ff1f;
+  box-shadow: 0 3px 8px #0052ff1f;
 }
 
 .publishBtn:hover {
   background: #0046d9;
+}
+
+.listingsTable .thumb {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 6px;
+  overflow: hidden;
+  background: linear-gradient(145deg, #e8eef6, #f8fafc);
+  border: 1px solid #e2e8f0;
+  display: grid;
+  place-items: center;
+  color: #94a3b8;
+  font: 600 7px/1 "Plus Jakarta Sans", sans-serif;
+  letter-spacing: 0.1px;
 }
 
 .thumb {
@@ -998,11 +1084,11 @@
 .jobStatus {
   display: inline-flex;
   align-items: center;
-  padding: 4px 9px;
+  padding: 3px 7px;
   border-radius: 999px;
   background: #eef2f7;
   color: #475569;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -1013,7 +1099,7 @@
 
 .conditionText {
   color: #64748b;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
 }
 
@@ -1668,13 +1754,11 @@
 }
 
 .inventoryModal {
-  width: min(900px, 96vw);
-  max-height: 92vh;
-  background:
-    radial-gradient(ellipse 60% 40% at 0% 0%, #dbeafe55, transparent 55%),
-    linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  width: min(640px, 96vw);
+  max-height: 88vh;
+  background: #f8fafc;
   border: 1px solid #e2e8f0;
-  box-shadow: 0 28px 80px #0b142633;
+  box-shadow: 0 24px 60px #0b142628;
 }
 
 .inventoryHeader {
@@ -1682,7 +1766,7 @@
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  padding: 18px 24px;
+  padding: 14px 18px;
   border-bottom: 1px solid #e2e8f080;
   position: sticky;
   top: 0;
@@ -1711,8 +1795,8 @@
 
 .inventoryHeader h2 {
   margin: 0 !important;
-  font: 800 20px/1.25 "Plus Jakarta Sans", sans-serif !important;
-  letter-spacing: -0.3px !important;
+  font: 700 17px/1.25 "Plus Jakarta Sans", sans-serif !important;
+  letter-spacing: -0.2px !important;
   color: #0c274d;
 }
 
@@ -1770,27 +1854,26 @@
 }
 
 .inventoryBody {
-  padding: 20px 22px 30px;
+  padding: 16px 18px 22px;
   display: grid;
-  gap: 16px;
+  gap: 12px;
 }
 
 .inventoryHero {
   display: grid;
-  grid-template-columns: 152px minmax(0, 1fr);
-  gap: 20px;
-  padding: 18px;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px;
   border: 1px solid #e2e8f0;
-  border-radius: 18px;
-  background: #ffffffeb;
-  box-shadow: 0 10px 28px #0b142608;
+  border-radius: 14px;
+  background: #fff;
 }
 
 .inventoryHeroMedia {
   position: relative;
-  width: 152px;
-  height: 152px;
-  border-radius: 14px;
+  width: 96px;
+  height: 96px;
+  border-radius: 10px;
   overflow: hidden;
   background: linear-gradient(145deg, #e8eef8, #f8fafc);
   border: 1px solid #e2e8f0;
@@ -1805,38 +1888,41 @@
 
 .mediaCount {
   position: absolute;
-  right: 8px;
-  bottom: 8px;
-  padding: 4px 8px;
+  right: 6px;
+  bottom: 6px;
+  min-width: 20px;
+  padding: 2px 6px;
   border-radius: 999px;
   background: rgba(12, 39, 77, 0.82);
   color: #fff;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
+  text-align: center;
 }
 
 .inventoryHeroCopy {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+  justify-content: center;
 }
 
 .inventoryBadges {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .statusBadge {
   display: inline-flex;
   align-items: center;
-  min-height: 26px;
-  padding: 0 10px;
+  min-height: 22px;
+  padding: 0 8px;
   border-radius: 999px;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.2px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.15px;
 }
 
 .tone_good {
@@ -1861,45 +1947,18 @@
 
 .inventoryHeroCopy h3 {
   margin: 0;
-  font: 800 21px/1.3 "Plus Jakarta Sans", sans-serif;
-  letter-spacing: -0.25px;
+  font: 600 16px/1.3 "Plus Jakarta Sans", sans-serif;
+  letter-spacing: -0.2px;
   color: #0c274d;
   text-transform: none;
 }
 
-.heroMetaRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px 12px;
-}
-
-.heroMetaItem {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
+.heroSubline {
+  margin: 0;
   color: #64748b;
   font-size: 12px;
-}
-
-.heroMetaItem > span {
-  color: #94a3b8;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.45px;
-  text-transform: uppercase;
-}
-
-.heroMetaItem b {
-  color: #0f172a;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.heroDivider {
-  width: 1px;
-  height: 14px;
-  background: #e2e8f0;
+  font-weight: 500;
+  line-height: 1.35;
 }
 
 .skuCopy {
@@ -1908,14 +1967,13 @@
   gap: 8px;
   width: fit-content;
   margin: 0;
-  border: 0;
   border-radius: 8px;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   color: #64748b;
   font: 600 12px/1 "Plus Jakarta Sans", sans-serif;
   cursor: pointer;
-  padding: 7px 10px;
+  padding: 6px 9px;
 }
 
 .skuCopy span {
@@ -1928,12 +1986,12 @@
 
 .skuCopy code {
   color: #0f172a;
-  font: 700 12px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 .skuCopy svg {
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
 }
 
 .skuCopy:hover {
@@ -1950,13 +2008,13 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
-  margin-top: 2px;
+  margin-top: 0;
 }
 
 .statStrip article {
-  padding: 12px 12px 11px;
-  border-radius: 12px;
-  background: linear-gradient(180deg, #f8fafc, #f1f5f9);
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8fafc;
   border: 1px solid #e8eef6;
 }
 
@@ -1964,18 +2022,18 @@
   display: block;
   color: #94a3b8;
   font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.45px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
   text-transform: uppercase;
 }
 
 .statStrip b {
   display: block;
-  margin-top: 6px;
+  margin-top: 4px;
   color: #0c274d;
-  font-size: 15px;
-  font-weight: 800;
-  letter-spacing: -0.2px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.15px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1988,34 +2046,33 @@
 }
 
 .inventoryPanel {
-  padding: 18px 18px 16px;
+  padding: 12px 14px;
   border: 1px solid #e2e8f0;
-  border-radius: 16px;
-  background: #ffffffeb;
-  box-shadow: 0 8px 22px #0b142606;
+  border-radius: 12px;
+  background: #fff;
 }
 
 .inventoryPanel > header {
-  margin-bottom: 4px;
-  padding: 0 0 12px;
+  margin-bottom: 0;
+  padding: 0 0 8px;
   border: 0;
-  border-bottom: 1px solid #eef2f7;
+  border-bottom: 1px solid #f1f5f9;
   background: transparent;
   display: block;
 }
 
 .inventoryPanel > header h4 {
   margin: 0;
-  font: 800 13px/1.2 "Plus Jakarta Sans", sans-serif;
-  letter-spacing: 0.2px;
+  font: 700 11px/1.2 "Plus Jakarta Sans", sans-serif;
+  letter-spacing: 0.3px;
   text-transform: uppercase;
   color: #0c274d;
 }
 
 .inventoryPanel > header p {
-  margin: 5px 0 0;
+  margin: 3px 0 0;
   color: #64748b;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   text-transform: none;
   letter-spacing: 0;
@@ -2099,10 +2156,10 @@
 }
 
 .descriptionText {
-  margin: 12px 0 0;
-  color: #334155;
-  font-size: 14px;
-  line-height: 1.65;
+  margin: 0;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.55;
   white-space: pre-wrap;
 }
 
@@ -2285,46 +2342,39 @@
 .fitmentChips {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
+  margin-top: 10px;
 }
 
 .fitmentChip {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  border-radius: 10px;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   color: #0f172a;
 }
 
 .fitmentChip svg {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   color: #64748b;
   flex: none;
 }
 
 .fitmentChip i {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: #e8f8ef;
-  color: #0f7a45;
-  display: grid;
-  place-items: center;
-  font-style: normal;
-  font-size: 10px;
-  font-weight: 800;
-  margin-left: 4px;
+  display: none;
 }
 
 .emptyFitment {
-  color: #64748b;
-  font-size: 13px;
+  display: block;
+  margin-top: 8px;
+  color: #94a3b8;
+  font-size: 12px;
 }
 
 .drawer header h2 {
@@ -2343,11 +2393,12 @@
 
 .drawer form {
   margin: 0;
-  padding: 22px 24px;
+  padding: 18px 20px 22px;
   background: transparent;
   color: #0f172a;
   box-shadow: none;
   border-radius: 0;
+  font-weight: 400;
 }
 
 .formGrid {
@@ -2358,7 +2409,9 @@
 
 .drawer label {
   font-size: inherit;
+  font-weight: 400;
   letter-spacing: 0;
+  text-transform: none;
 }
 
 .drawer textarea {
@@ -2375,11 +2428,19 @@
   bottom: 0;
   background: #fff;
   border-top: 1px solid #e2e8f0;
-  padding: 16px 0 0;
-  margin-top: 22px;
+  padding: 14px 0 0;
+  margin-top: 18px;
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.formActions button {
+  font: 500 13px/1 "Plus Jakarta Sans", sans-serif;
+}
+
+.formActions .primary {
+  font-weight: 600;
 }
 
 .fitmentManager > form {
@@ -2514,24 +2575,17 @@
   }
 
   .inventoryHero {
-    grid-template-columns: 1fr;
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 12px;
   }
 
   .inventoryHeroMedia {
-    width: 100%;
-    height: 200px;
+    width: 72px;
+    height: 72px;
   }
 
   .statStrip {
     grid-template-columns: 1fr 1fr;
-  }
-
-  .heroMetaRow {
-    gap: 8px 10px;
-  }
-
-  .heroDivider {
-    display: none;
   }
 
   .metaList > div {

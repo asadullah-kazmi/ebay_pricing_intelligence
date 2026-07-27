@@ -559,6 +559,36 @@ export async function bulkUpdateCatalogParts(
   });
 }
 
+export async function deleteCatalogParts(organizationId: string, userId: string, partIds: string[]) {
+  const uniqueIds = [...new Set(partIds)];
+  return prisma.$transaction(async (tx) => {
+    const parts = await tx.part.findMany({
+      where: { organizationId, id: { in: uniqueIds } },
+      select: { id: true, sku: true },
+    });
+    if (parts.length !== uniqueIds.length) {
+      throw new CatalogError("One or more selected parts were not found", 404);
+    }
+    const result = await tx.part.deleteMany({
+      where: { organizationId, id: { in: uniqueIds } },
+    });
+    await recordAuditEvent(tx, {
+      organizationId,
+      actorUserId: userId,
+      action: "catalog.parts.deleted",
+      resourceType: "Part",
+      severity: "WARNING",
+      summary: `Deleted ${result.count} catalog part${result.count === 1 ? "" : "s"}`,
+      metadata: {
+        partIds: parts.map(({ id }) => id),
+        skus: parts.map(({ sku }) => sku),
+        deleted: result.count,
+      } as Prisma.InputJsonObject,
+    });
+    return { deleted: result.count };
+  });
+}
+
 export function formatCatalogCsvCell(value: unknown): string {
   const text = value === null || value === undefined ? "" : String(value);
   return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
