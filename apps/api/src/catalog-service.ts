@@ -237,19 +237,57 @@ export async function listCatalogParts(organizationId: string, query: CatalogQue
 export async function getCatalogPart(organizationId: string, partId: string) {
   const part = await prisma.part.findFirst({
     where: { id: partId, organizationId },
-    include: {
-      donorVehicle: true,
-      partNumbers: { orderBy: [{ type: "asc" }, { value: "asc" }] },
-      inventoryItem: { include: { warehouse: true, binLocation: true } },
+    select: {
+      id: true,
+      sku: true,
+      primaryPartNumber: true,
+      brand: true,
+      partName: true,
+      description: true,
+      condition: true,
+      status: true,
+      placement: true,
+      notes: true,
+      donorMileage: true,
+      donorColor: true,
+      createdAt: true,
+      updatedAt: true,
+      donorVehicle: {
+        select: { vin: true, year: true, make: true, model: true, trim: true, engine: true },
+      },
+      partNumbers: {
+        orderBy: [{ type: "asc" }, { value: "asc" }],
+        take: 20,
+        select: { id: true, type: true, value: true },
+      },
+      inventoryItem: {
+        select: {
+          quantity: true,
+          cost: true,
+          currency: true,
+          weight: true,
+          weightUnit: true,
+          length: true,
+          width: true,
+          height: true,
+          dimensionUnit: true,
+          warehouse: { select: { id: true, code: true, name: true } },
+          binLocation: { select: { id: true, code: true } },
+        },
+      },
       media: {
         orderBy: { displayOrder: "asc" },
-        include: { mediaAsset: { select: { id: true, originalFilename: true, mimeType: true, byteSize: true, width: true, height: true, status: true } } },
+        take: 12,
+        select: {
+          id: true,
+          displayOrder: true,
+          mediaAsset: { select: { id: true, originalFilename: true, mimeType: true } },
+        },
       },
-      sourceImportRow: { select: { importBatchId: true, rowNumber: true } },
       fitmentApplications: {
         where: { status: "APPROVED" },
         orderBy: { approvedAt: "desc" },
-        take: 24,
+        take: 12,
         select: {
           id: true,
           marketplace: true,
@@ -260,7 +298,7 @@ export async function getCatalogPart(organizationId: string, partId: string) {
       },
       listingDrafts: {
         orderBy: { updatedAt: "desc" },
-        take: 5,
+        take: 1,
         select: {
           id: true,
           marketplace: true,
@@ -273,10 +311,15 @@ export async function getCatalogPart(organizationId: string, partId: string) {
           updatedAt: true,
         },
       },
+      _count: { select: { media: true } },
     },
   });
   if (!part) throw new CatalogError("Catalog part not found", 404);
-  return part;
+  return {
+    ...part,
+    pricingJobItems: [],
+    fitmentJobItems: [],
+  };
 }
 
 export interface CatalogPartUpdate {

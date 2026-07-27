@@ -702,32 +702,97 @@
   overflow: auto;
 }
 
-.tableWrap table {
+.tableWrap table,
+.listingsTable {
   width: 100%;
-  min-width: 980px;
+  min-width: 1080px;
   border-collapse: collapse;
 }
 
-.tableWrap th,
-.tableWrap td {
-  padding: 14px 16px;
+.listingsTable th,
+.listingsTable td {
+  padding: 12px 14px;
   border-bottom: 1px solid #eef2f7;
   text-align: left;
   font-size: 13px;
   vertical-align: middle;
 }
 
-.tableWrap th {
+.listingsTable th {
   background: #f8fafc;
   color: #64748b;
   font-size: 11px;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.45px;
   text-transform: uppercase;
   font-weight: 700;
+  white-space: nowrap;
 }
 
-.tableWrap tbody tr:hover {
+.listingsTable tbody tr:hover {
   background: #f8fafc;
+}
+
+.colCheck {
+  width: 42px;
+  padding-left: 16px !important;
+  padding-right: 8px !important;
+}
+
+.colProduct {
+  min-width: 260px;
+  width: 34%;
+}
+
+.colSku {
+  min-width: 140px;
+}
+
+.colOem {
+  min-width: 110px;
+}
+
+.productCell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.productCopy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.productTitle {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #0f172a;
+  font: 500 13px/1.35 "Plus Jakarta Sans", sans-serif;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.productTitle:hover {
+  color: #0052ff;
+}
+
+.productMeta {
+  display: block;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tableRefreshing {
@@ -783,96 +848,116 @@
   margin-top: 3px;
 }
 
+.emptyValue {
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 500;
+}
+
 .skuLink {
-  display: block;
+  display: inline-block;
+  max-width: 180px;
+  margin: 0;
   border: 0;
   background: transparent;
   padding: 0;
-  color: #0052ff;
-  font: 700 13px/1.3 "Plus Jakarta Sans", sans-serif;
+  color: #475569;
+  font: 500 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   cursor: pointer;
   text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .skuLink:hover {
+  color: #0052ff;
   text-decoration: underline;
+}
+
+.oemCode {
+  display: inline-block;
+  max-width: 140px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  font: 500 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .titleCell {
   display: block;
-  font: 700 13px/1.35 "Plus Jakarta Sans", sans-serif;
+  font: 600 13px/1.35 "Plus Jakarta Sans", sans-serif;
   color: #0f172a;
   max-width: 280px;
 }
 
-.stockCell b {
-  display: block;
-  font: 700 13px/1.2 "Plus Jakarta Sans", sans-serif;
-  color: #0f172a;
-}
-
-.stockCell span {
-  display: block;
-  margin-top: 3px;
-  font-size: 12px;
-}
-
-.stockIn {
-  color: #0f7a45;
-  font-weight: 700;
-}
-
-.stockLow {
-  color: #b45309;
-  font-weight: 700;
-}
-
-.stockOut {
-  color: #b42318;
-  font-weight: 700;
-}
-
-.priceCell {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
+.stockCell {
   white-space: nowrap;
 }
 
-.priceCell b {
-  font: 800 13px/1 "Plus Jakarta Sans", sans-serif;
+.stockQty {
+  display: block;
+  font: 600 13px/1.2 "Plus Jakarta Sans", sans-serif;
   color: #0f172a;
 }
 
-.priceCell small {
-  color: #64748b;
+.stockCell span:last-child {
+  display: block;
+  margin-top: 2px;
   font-size: 11px;
   font-weight: 600;
 }
 
+.stockIn {
+  color: #0f7a45;
+}
+
+.stockLow {
+  color: #b45309;
+}
+
+.stockOut {
+  color: #b42318;
+}
+
+.priceCell {
+  white-space: nowrap;
+}
+
+.priceValue,
+.marketValue {
+  font: 600 13px/1.2 "Plus Jakarta Sans", sans-serif;
+  color: #0f172a;
+}
+
+.marketValue {
+  color: #334155;
+}
+
 .dateCell {
-  color: #64748b;
-  font-size: 13px;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 500;
   white-space: nowrap;
 }
 
 .publishBtn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 10px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 7px;
   background: #0052ff;
   color: #fff;
-  padding: 8px 12px;
-  font: 700 12px/1 "Plus Jakarta Sans", sans-serif;
+  font: 600 11px/1 "Plus Jakarta Sans", sans-serif;
   cursor: pointer;
-  box-shadow: 0 6px 14px #0052ff24;
-}
-
-.publishBtn svg {
-  width: 14px;
-  height: 14px;
+  box-shadow: 0 4px 10px #0052ff1f;
 }
 
 .publishBtn:hover {
@@ -880,16 +965,18 @@
 }
 
 .thumb {
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   flex: none;
-  border-radius: 10px;
+  border-radius: 9px;
   overflow: hidden;
-  background: linear-gradient(145deg, #e2e8f0, #f8fafc);
+  background: linear-gradient(145deg, #e8eef6, #f8fafc);
+  border: 1px solid #e2e8f0;
   display: grid;
   place-items: center;
   color: #94a3b8;
-  font: 700 9px/1 "Plus Jakarta Sans", sans-serif;
+  font: 600 8px/1 "Plus Jakarta Sans", sans-serif;
+  letter-spacing: 0.2px;
 }
 
 .thumb img {
@@ -906,23 +993,28 @@
 }
 
 .statusPill,
+.statusChip,
 .condition,
 .jobStatus {
   display: inline-flex;
   align-items: center;
-  padding: 5px 10px;
+  padding: 4px 9px;
   border-radius: 999px;
   background: #eef2f7;
-  color: #334155;
+  color: #475569;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   white-space: nowrap;
 }
 
+.statusChip {
+  border: 1px solid transparent;
+}
+
 .conditionText {
-  color: #334155;
-  font-size: 13px;
-  font-weight: 600;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .ready_for_enrichment,
@@ -1609,6 +1701,14 @@
   text-transform: uppercase;
 }
 
+.detailHydrating {
+  display: inline-block;
+  margin-top: 6px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .inventoryHeader h2 {
   margin: 0 !important;
   font: 800 20px/1.25 "Plus Jakarta Sans", sans-serif !important;
@@ -1641,6 +1741,11 @@
   border-color: #0052ff;
   color: #0046db;
   background: #dbeafe;
+}
+
+.editDetailsBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .iconClose {

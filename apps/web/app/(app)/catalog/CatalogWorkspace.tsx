@@ -123,6 +123,46 @@ function ebayStatusLabel(part: CatalogPartDetail) {
   return { label: humanStatus(part.status), tone: "muted" as const };
 }
 
+function cardToDetailPreview(card: CatalogPartCard): CatalogPartDetail {
+  return {
+    ...card,
+    description: null,
+    donorMileage: null,
+    donorColor: null,
+    placement: null,
+    notes: null,
+    partNumbers: [{ id: "primary", type: "PRIMARY", value: card.primaryPartNumber }],
+    inventoryItem: card.inventoryItem
+      ? {
+          quantity: card.inventoryItem.quantity,
+          cost: card.inventoryItem.cost,
+          currency: card.inventoryItem.currency,
+          warehouse: card.inventoryItem.warehouse ?? null,
+          binLocation: card.inventoryItem.binLocation ?? null,
+          weight: null,
+          weightUnit: null,
+          length: null,
+          width: null,
+          height: null,
+          dimensionUnit: null,
+        }
+      : null,
+    media: (card.media.length ? card.media : []).map((item, index) => ({
+      id: `preview-${item.mediaAsset.id || index}`,
+      displayOrder: index,
+      mediaAsset: {
+        id: item.mediaAsset.id,
+        originalFilename: "",
+        mimeType: item.mediaAsset.mimeType ?? "image/jpeg",
+      },
+    })),
+    fitmentApplications: [],
+    listingDrafts: [],
+  };
+}
+
+const detailCache = new Map<string, CatalogPartDetail>();
+
 function CatalogImage({ mediaId, demo }: { mediaId?: string; token?: string; demo: boolean }) {
   const [url, setUrl] = useState(() => (mediaId ? mediaUrlCache.get(mediaId) ?? "" : ""));
   const [visible, setVisible] = useState(false);
@@ -198,6 +238,8 @@ export default function CatalogWorkspace() {
   const [view, setView] = useState<"table" | "gallery">("table");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detail, setDetail] = useState<CatalogPartDetail | null>(null);
+  const [detailHydrating, setDetailHydrating] = useState(false);
+  const detailRequestId = useRef(0);
   const [saving, setSaving] = useState(false);
   const [highlightedPartId, setHighlightedPartId] = useState<string | null>(() => highlightFromUrl);
 
@@ -415,28 +457,11 @@ export default function CatalogWorkspace() {
       const card = demoParts.find((part) => part.id === id)!;
       setDetailMode("view");
       setDetail({
-        ...card,
+        ...cardToDetailPreview(card),
         description: "This used OEM seat track cover was carefully removed from a donor vehicle. Surface wear is consistent with age. Compatible with listed Audi A6 applications. Part number 4F088134701C verified.",
         donorMileage: 48600,
         donorColor: "Black",
         placement: "Rear",
-        notes: null,
-        partNumbers: [{ id: "pn", type: "PRIMARY", value: card.primaryPartNumber }],
-        inventoryItem: card.inventoryItem
-          ? {
-              quantity: card.inventoryItem.quantity,
-              cost: card.inventoryItem.cost,
-              currency: card.inventoryItem.currency,
-              warehouse: card.inventoryItem.warehouse ?? null,
-              binLocation: card.inventoryItem.binLocation ?? null,
-              weight: null,
-              weightUnit: null,
-              length: null,
-              width: null,
-              height: null,
-              dimensionUnit: null,
-            }
-          : null,
         media: [
           { id: "m1", displayOrder: 0, mediaAsset: { id: "", originalFilename: "main.jpg", mimeType: "image/jpeg" } },
           { id: "m2", displayOrder: 1, mediaAsset: { id: "", originalFilename: "side.jpg", mimeType: "image/jpeg" } },
@@ -461,12 +486,37 @@ export default function CatalogWorkspace() {
       });
       return;
     }
+
     setError("");
+    setDetailMode("view");
+    const cached = detailCache.get(id);
+    const card = catalog.parts.find((part) => part.id === id);
+    if (cached) {
+      setDetail(cached);
+      setDetailHydrating(false);
+    } else if (card) {
+      setDetail(cardToDetailPreview(card));
+      setDetailHydrating(true);
+    } else {
+      setDetailHydrating(true);
+    }
+
+    const requestId = ++detailRequestId.current;
     try {
-      setDetailMode("view");
-      setDetail(await request(`/api/parts/${id}`) as CatalogPartDetail);
+      const full = await request(`/api/parts/${id}`) as CatalogPartDetail;
+      if (requestId !== detailRequestId.current) return;
+      detailCache.set(id, full);
+      setDetail(full);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to open part");
+      if (requestId !== detailRequestId.current) return;
+      if (!detailCache.has(id) && !card) {
+        setError(caught instanceof Error ? caught.message : "Unable to open part");
+        setDetail(null);
+      } else {
+        setNotice(caught instanceof Error ? caught.message : "Unable to refresh part details");
+      }
+    } finally {
+      if (requestId === detailRequestId.current) setDetailHydrating(false);
     }
   }
 
@@ -494,7 +544,7 @@ export default function CatalogWorkspace() {
     };
     setSaving(true);
     setError("");
-    try { await request(`/api/parts/${detail.id}`, { method: "PATCH", body: JSON.stringify(body) }); setDetail(null); await loadCatalog(); }
+    try { await request(`/api/parts/${detail.id}`, { method: "PATCH", body: JSON.stringify(body) }); detailCache.delete(detail.id); setDetail(null); await loadCatalog(); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to save part"); }
     finally { setSaving(false); }
   }
@@ -1318,18 +1368,18 @@ export default function CatalogWorkspace() {
         {loading && catalog.parts.length === 0 ? <div className={styles.loadingRows}>Loading catalog...</div> : catalog.parts.length === 0 ? <div className={styles.empty}><b>No parts found</b><span>Adjust your filters or confirm a catalog import.</span></div> : view === "table" ? (
           <div className={`${styles.tableWrap}${loading ? ` ${styles.tableRefreshing}` : ""}`}>
             {loading && <div className={styles.refreshBanner}>Updating catalog…</div>}
-            <table>
+            <table className={styles.listingsTable}>
               <thead>
                 <tr>
-                  <th><input aria-label="Select current page" type="checkbox" checked={allPageSelected} onChange={togglePage}/></th>
-                  <th>SKU</th>
-                  <th>Image</th>
-                  <th>Title</th>
+                  <th className={styles.colCheck}><input aria-label="Select current page" type="checkbox" checked={allPageSelected} onChange={togglePage}/></th>
+                  <th className={styles.colProduct}>Product</th>
+                  <th className={styles.colSku}>SKU</th>
+                  <th className={styles.colOem}>OEM #</th>
                   <th>Condition</th>
                   <th>Stock</th>
                   <th>Price</th>
-                  <th>Market price</th>
-                  <th>Date Added</th>
+                  <th>Market</th>
+                  <th>Added</th>
                   <th>Status</th>
                 </tr>
               </thead>
@@ -1339,49 +1389,58 @@ export default function CatalogWorkspace() {
                   const yourPrice = part.inventoryItem?.cost != null ? Number(part.inventoryItem.cost) : null;
                   const priceCurrency = latestPrice?.currency ?? part.inventoryItem?.currency ?? "USD";
                   const qty = part.inventoryItem?.quantity ?? 0;
-                  const stockLabel = qty === 0 ? "Out of Stock" : qty <= 5 ? "Low Stock" : "In Stock";
+                  const stockLabel = qty === 0 ? "Out of stock" : qty <= 5 ? "Low stock" : "In stock";
                   const stockTone = qty === 0 ? styles.stockOut : qty <= 5 ? styles.stockLow : styles.stockIn;
                   const needsImages = part.status === "NEEDS_IMAGES" || part._count.media === 0;
                   const published = part.status === "IMPORTED";
                   const isHighlighted = highlightedPartId === part.id;
                   return (
                     <tr key={part.id} data-part-id={part.id} className={isHighlighted ? styles.highlightedRow : undefined}>
-                      <td><input aria-label={`Select ${part.sku}`} type="checkbox" checked={selected.has(part.id)} onChange={() => togglePart(part.id)}/></td>
-                      <td>
-                        <button type="button" className={styles.skuLink} onClick={() => void openPart(part.id)}>{part.sku}</button>
-                        <span className={styles.subtle}>{part.primaryPartNumber}</span>
+                      <td className={styles.colCheck}>
+                        <input aria-label={`Select ${part.sku}`} type="checkbox" checked={selected.has(part.id)} onChange={() => togglePart(part.id)}/>
                       </td>
-                      <td><CatalogImage mediaId={part.media[0]?.mediaAsset.id} token={token} demo={demo}/></td>
-                      <td>
-                        <b className={styles.titleCell}>{part.partName || "Unnamed automotive part"}</b>
-                        <span className={styles.subtle}>{part.brand || "Brand not set"}</span>
+                      <td className={styles.colProduct}>
+                        <div className={styles.productCell}>
+                          <CatalogImage mediaId={part.media[0]?.mediaAsset.id} token={token} demo={demo}/>
+                          <div className={styles.productCopy}>
+                            <button type="button" className={styles.productTitle} onClick={() => void openPart(part.id)}>
+                              {part.partName || "Unnamed automotive part"}
+                            </button>
+                            <span className={styles.productMeta}>{part.brand || "Brand not set"}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className={styles.colSku}>
+                        <button type="button" className={styles.skuLink} onClick={() => void openPart(part.id)}>{part.sku}</button>
+                      </td>
+                      <td className={styles.colOem}>
+                        <code className={styles.oemCode}>{part.primaryPartNumber}</code>
                       </td>
                       <td className={styles.conditionText}>{part.condition === "NEW" ? "New" : "Used"}</td>
                       <td className={styles.stockCell}>
-                        <b>{qty}</b>
+                        <span className={styles.stockQty}>{qty}</span>
                         <span className={stockTone}>{stockLabel}</span>
                       </td>
-                      <td>
+                      <td className={styles.priceCell}>
                         {yourPrice != null && yourPrice > 0
-                          ? <span className={styles.priceCell}><b>{money(yourPrice, priceCurrency)}</b></span>
-                          : <span className={styles.subtle}>—</span>}
+                          ? <span className={styles.priceValue}>{money(yourPrice, priceCurrency)}</span>
+                          : <span className={styles.emptyValue}>—</span>}
                       </td>
-                      <td>
+                      <td className={styles.priceCell}>
                         {latestPrice?.recommendedPrice != null
-                          ? <span className={styles.priceCell}><b>{money(latestPrice.recommendedPrice, latestPrice.currency!)}</b></span>
+                          ? <span className={styles.marketValue}>{money(latestPrice.recommendedPrice, latestPrice.currency!)}</span>
                           : latestPrice?.status === "NO_MATCHES"
-                            ? <span className={styles.subtle}>No matches</span>
-                            : <span className={styles.subtle}>—</span>}
+                            ? <span className={styles.emptyValue}>No matches</span>
+                            : <span className={styles.emptyValue}>—</span>}
                       </td>
                       <td className={styles.dateCell}>{new Date(part.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</td>
                       <td>
                         {needsImages ? (
-                          <span className={`${styles.statusPill} ${styles.needs_images}`}>Need Images</span>
+                          <span className={`${styles.statusChip} ${styles.needs_images}`}>Need images</span>
                         ) : published ? (
-                          <span className={`${styles.statusPill} ${styles.imported}`}>Published</span>
+                          <span className={`${styles.statusChip} ${styles.imported}`}>Published</span>
                         ) : (
                           <button type="button" className={styles.publishBtn} disabled={draftBusy} onClick={() => void createDrafts([part.id])}>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
                             Publish
                           </button>
                         )}
@@ -1455,10 +1514,11 @@ export default function CatalogWorkspace() {
           <div>
             <span className={styles.inventoryEyebrow}>Catalog part</span>
             <h2 id="edit-part-title">Inventory details</h2>
+            {detailHydrating ? <span className={styles.detailHydrating}>Refreshing details…</span> : null}
           </div>
           <div className={styles.inventoryHeaderActions}>
             {detailMode === "view" ? (
-              <button type="button" className={styles.editDetailsBtn} onClick={() => setDetailMode("edit")}>Edit details</button>
+              <button type="button" className={styles.editDetailsBtn} disabled={detailHydrating} onClick={() => setDetailMode("edit")}>Edit details</button>
             ) : (
               <button type="button" className={styles.ghostBtn} onClick={() => setDetailMode("view")}>Cancel edit</button>
             )}
