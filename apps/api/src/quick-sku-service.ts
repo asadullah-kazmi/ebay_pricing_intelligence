@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { recordAuditEvent } from "./audit-service.js";
 import { prisma } from "./db.js";
+import { buildListingDescriptionHtml } from "./domain/listing-description.js";
 import { normalizePartNumber } from "./domain/matching.js";
 import { buildEbayListingTitle, cleanPartNameForTitle, isWeakPartName, modelFromText, yearRangeFromText } from "./domain/listing-title.js";
 import { normalizeFitmentApplications, scoreFitmentCandidate } from "./fitment-service.js";
@@ -151,14 +152,6 @@ function derivePartName(
   light = light.replace(/[|/·•,;:()[\]]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
   if (light && !isWeakPartName(light)) return light;
   return cleaned;
-}
-
-function aspectsToDescription(aspects: Record<string, string[]>, categoryName: string | null) {
-  const lines = Object.entries(aspects)
-    .slice(0, 20)
-    .map(([name, values]) => `${name}: ${values.join(", ")}`);
-  if (categoryName) lines.unshift(`Category: ${categoryName}`);
-  return lines.join("\n").slice(0, 4000) || null;
 }
 
 function rankCandidates(discovery: EbayFitmentDiscovery, partNumber: string, brand: string) {
@@ -369,11 +362,6 @@ export function assembleQuickSkuPrepared(input: {
   condition: "NEW" | "USED";
 }): QuickSkuPrepared {
   const { identify, fitment, condition } = input;
-  const description = identify.best
-    ? aspectsToDescription(identify.best.aspects, identify.discovery.categoryName)
-    : identify.identificationSource === "AI"
-      ? `Quick SKU AI-suggested part name for ${identify.brand} ${identify.partNumber}${identify.ai?.model ? ` (${identify.ai.model})` : ""}`
-      : `Quick SKU created for ${identify.brand} ${identify.partNumber}`;
   const { listingTitle } = buildQuickSkuListingTitle({
     partNumber: identify.partNumber,
     brand: identify.brand,
@@ -384,6 +372,14 @@ export function assembleQuickSkuPrepared(input: {
     aspects: identify.best?.aspects,
     sourceTitle: identify.best?.title ?? identify.ai?.titleHint ?? null,
     placement: identify.placement,
+  });
+  const description = buildListingDescriptionHtml({
+    title: listingTitle,
+    partName: identify.partName,
+    primaryPartNumber: identify.partNumber,
+    condition,
+    brand: identify.identifiedBrand,
+    fitmentApplications: fitment.applications.map(({ properties }) => properties),
   });
 
   return {
@@ -566,11 +562,20 @@ export async function finalizeQuickSku(
   const { marketplace } = parseQuickSkuBase(input);
   try {
     const created = await persistQuickSkuPart(organizationId, userId, input, prepared, requestId);
-    const pricing = await queuePartMarketPricing(organizationId, userId, {
-      partIds: [created.id],
-      marketplace,
-      conditionMode: "MATCH_PART",
-    });
+    let pricing: Awaited<ReturnType<typeof queuePartMarketPricing>>;
+    try {
+      pricing = await queuePartMarketPricing(organizationId, userId, {
+        partIds: [created.id],
+        marketplace,
+        conditionMode: "MATCH_PART",
+      });
+    } catch (pricingError) {
+      // Catalog write already committed — don't fail Quick SKU because pricing queue timed out.
+      const reason = pricingError instanceof Error
+        ? pricingError.message.slice(0, 300)
+        : "Unable to queue market pricing";
+      pricing = { skipped: true, reason };
+    }
     return toQuickSkuResponse(created, prepared, marketplace, pricing);
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {

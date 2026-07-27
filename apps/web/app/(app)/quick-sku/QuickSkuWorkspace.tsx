@@ -436,7 +436,7 @@ export default function QuickSkuWorkspace() {
                   <span>All {STEP_DEFS.length} pipeline stages completed</span>
                 </div>
 
-                <Link className={styles.catalogBtn} href={`/catalog?sort=newest&highlight=${encodeURIComponent(result.part.id)}`}>
+                <Link className={styles.catalogBtn} href="/catalog?sort=newest&from=quick-sku">
                   View in catalog
                   <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
                     <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>

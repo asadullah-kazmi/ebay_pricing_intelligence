@@ -93,12 +93,13 @@ const catalogQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });
 const optionalCatalogText = z.string().trim().max(5_000).nullable();
+const optionalListingDescription = z.string().trim().max(100_000).nullable();
 const catalogPartUpdateSchema = z.object({
   sku: z.string().trim().min(1).max(100).optional(),
   primaryPartNumber: z.string().trim().min(1).max(100).refine((value) => Boolean(normalizePartNumber(value)), "Part number must contain a letter or number").optional(),
   brand: z.string().trim().max(100).nullable().optional(),
   partName: z.string().trim().max(200).nullable().optional(),
-  description: optionalCatalogText.optional(),
+  description: optionalListingDescription.optional(),
   condition: z.enum(["NEW", "USED"]).optional(),
   status: catalogStatusSchema.optional(),
   donorMileage: z.number().int().nonnegative().nullable().optional(),
@@ -240,7 +241,7 @@ const quickSkuPreparedSchema = z.object({
   identifiedBrand: z.string().trim().min(1).max(80),
   partName: z.string().trim().min(1).max(200),
   listingTitle: z.string().trim().min(1).max(120),
-  description: z.string().trim().max(4000).nullable(),
+  description: z.string().trim().max(100_000).nullable(),
   matched: z.boolean(),
   identificationSource: quickSkuIdentificationSourceSchema.default("GENERIC"),
   candidateEpid: z.string().trim().max(120).nullable(),

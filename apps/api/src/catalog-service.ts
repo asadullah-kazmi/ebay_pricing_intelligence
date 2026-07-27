@@ -1,6 +1,8 @@
 import { Prisma, type CatalogPartStatus, type PartCondition } from "@prisma/client";
 import { recordAuditEvent } from "./audit-service.js";
 import { prisma } from "./db.js";
+import { buildListingDescriptionHtml, isListingDescriptionTemplate } from "./domain/listing-description.js";
+import { buildEbayListingTitle } from "./domain/listing-title.js";
 import { normalizePartNumber } from "./domain/matching.js";
 import { invalidateListingDraftsForCatalogChanges } from "./listing-draft-service.js";
 
@@ -315,8 +317,44 @@ export async function getCatalogPart(organizationId: string, partId: string) {
     },
   });
   if (!part) throw new CatalogError("Catalog part not found", 404);
+
+  let description = part.description;
+  if (!isListingDescriptionTemplate(description)) {
+    const fitmentRows = await prisma.fitmentApplication.findMany({
+      where: { partId: part.id, status: "APPROVED" },
+      select: { properties: true },
+      take: 120,
+    });
+    const applications = fitmentRows.flatMap(({ properties }) => {
+      if (!properties || typeof properties !== "object" || Array.isArray(properties)) return [];
+      return [Object.fromEntries(Object.entries(properties).flatMap(([key, value]) =>
+        typeof value === "string" && value.trim() ? [[key, value.trim()]] : [],
+      ))];
+    });
+    const title = part.listingDrafts[0]?.title?.trim() || buildEbayListingTitle({
+      brand: part.brand,
+      partName: part.partName,
+      primaryPartNumber: part.primaryPartNumber,
+      condition: part.condition,
+      placement: part.placement,
+      fitmentApplications: applications,
+    });
+    const notes = description?.trim() || null;
+    description = buildListingDescriptionHtml({
+      title,
+      partName: part.partName,
+      primaryPartNumber: part.primaryPartNumber,
+      condition: part.condition,
+      brand: part.brand,
+      notes,
+      fitmentApplications: applications,
+    });
+    await prisma.part.update({ where: { id: part.id }, data: { description } });
+  }
+
   return {
     ...part,
+    description,
     pricingJobItems: [],
     fitmentJobItems: [],
   };

@@ -171,7 +171,7 @@ export async function createPricingJob(organizationId: string, createdById: stri
         payload: { jobId: created.id, organizationId, marketplace: input.marketplace, partIds },
       });
       return created;
-    });
+    }, { maxWait: 10_000, timeout: 30_000 });
     return serializeJob(job);
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {

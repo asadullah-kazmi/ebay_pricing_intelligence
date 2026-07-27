@@ -1,5 +1,6 @@
 import { Prisma, type ListingDraft, type PartCondition } from "@prisma/client";
 import { prisma } from "./db.js";
+import { buildListingDescriptionHtml, isListingDescriptionTemplate } from "./domain/listing-description.js";
 import { buildEbayListingTitle } from "./domain/listing-title.js";
 import { enqueueOutboxEvent } from "./outbox-service.js";
 import { getCachedReadinessMetadata, refreshCategoryMetadata, syncSellerResources } from "./ebay-resource-service.js";
@@ -145,6 +146,15 @@ function snapshot(values: DraftValues, status: "BLOCKED" | "READY", issues: Read
   return asJson({ ...values, status, validationIssues: issues });
 }
 
+function fitmentPropertyRecords(applications: Array<{ properties: Prisma.JsonValue }> | undefined): Array<Record<string, string>> {
+  return (applications ?? []).flatMap((application) => {
+    if (!application.properties || typeof application.properties !== "object" || Array.isArray(application.properties)) return [];
+    return [Object.fromEntries(Object.entries(application.properties).flatMap(([key, value]) =>
+      typeof value === "string" && value.trim() ? [[key, value.trim()]] : [],
+    ))];
+  });
+}
+
 function generatedTitle(part: {
   brand: string | null;
   partName: string | null;
@@ -160,12 +170,29 @@ function generatedTitle(part: {
     primaryPartNumber: part.primaryPartNumber,
     condition: part.condition,
     placement: part.placement,
-    fitmentApplications: (part.fitmentApplications ?? []).flatMap((application) => {
-      if (!application.properties || typeof application.properties !== "object" || Array.isArray(application.properties)) return [];
-      return [Object.fromEntries(Object.entries(application.properties).flatMap(([key, value]) =>
-        typeof value === "string" && value.trim() ? [[key, value.trim()]] : [],
-      ))];
-    }),
+    fitmentApplications: fitmentPropertyRecords(part.fitmentApplications),
+  });
+}
+
+function generatedDescription(part: {
+  brand: string | null;
+  partName: string | null;
+  primaryPartNumber: string;
+  condition: PartCondition;
+  description?: string | null;
+  fitmentApplications?: Array<{ properties: Prisma.JsonValue }>;
+}, title: string): string {
+  if (isListingDescriptionTemplate(part.description)) {
+    return part.description!.trim();
+  }
+  return buildListingDescriptionHtml({
+    title,
+    partName: part.partName,
+    primaryPartNumber: part.primaryPartNumber,
+    condition: part.condition,
+    brand: part.brand,
+    notes: part.description?.trim() || null,
+    fitmentApplications: fitmentPropertyRecords(part.fitmentApplications),
   });
 }
 
@@ -247,9 +274,10 @@ export async function createListingDrafts(input: {
       const latestPrice = part.pricingJobItems[0];
       const activeProposal = proposals.find((proposal) => proposal.partId === part.id);
       const approvedProposal = activeProposal && ["APPROVED", "OVERRIDDEN"].includes(activeProposal.status) ? activeProposal : null;
+      const title = generatedTitle(part);
       const values: DraftValues = {
-        title: generatedTitle(part),
-        description: part.description?.trim() || `${part.condition === "USED" ? "Used OEM" : "New"} ${part.partName ?? "automotive part"}. Part number ${part.primaryPartNumber}. Review all actual-item images before purchase.`,
+        title,
+        description: generatedDescription(part, title),
         categoryId: null,
         condition: part.condition,
         ebayCondition: part.condition === "NEW" ? "NEW" : null,
@@ -283,24 +311,26 @@ export async function createListingDrafts(input: {
         } : null,
       });
       const status = issues.some(({ severity }) => severity === "BLOCKER") ? "BLOCKED" as const : "READY" as const;
-      const draft = await tx.listingDraft.upsert({
+      const existing = await tx.listingDraft.findUnique({
         where: { partId_marketplace: { partId: part.id, marketplace: input.marketplace } },
-        update: {},
-        create: {
-          organizationId: input.organizationId,
-          partId: part.id,
-          marketplace: input.marketplace,
-          ...values,
-          aspects: asJson(values.aspects),
-          status,
-          validationIssues: asJson(issues),
-          validatedAt: new Date(),
-          createdById: input.userId,
-          updatedById: input.userId,
-        },
+        select: { id: true, version: true, description: true },
       });
-      const hasVersion = await tx.listingDraftVersion.count({ where: { listingDraftId: draft.id } });
-      if (!hasVersion) {
+
+      if (!existing) {
+        const draft = await tx.listingDraft.create({
+          data: {
+            organizationId: input.organizationId,
+            partId: part.id,
+            marketplace: input.marketplace,
+            ...values,
+            aspects: asJson(values.aspects),
+            status,
+            validationIssues: asJson(issues),
+            validatedAt: new Date(),
+            createdById: input.userId,
+            updatedById: input.userId,
+          },
+        });
         await tx.listingDraftVersion.create({
           data: {
             organizationId: input.organizationId,
@@ -317,6 +347,47 @@ export async function createListingDrafts(input: {
           aggregateType: "ListingDraft",
           aggregateId: draft.id,
           payload: { draftId: draft.id, partId: part.id, marketplace: input.marketplace },
+        });
+        continue;
+      }
+
+      // Older drafts kept plain Quick SKU / one-line text. Refresh those to the HTML template
+      // without clobbering descriptions the seller already customized in template form.
+      if (!isListingDescriptionTemplate(existing.description)) {
+        const nextVersion = existing.version + 1;
+        await tx.listingDraft.update({
+          where: { id: existing.id },
+          data: {
+            title: values.title,
+            description: values.description,
+            quantity: values.quantity,
+            price: values.price,
+            currency: values.currency,
+            condition: values.condition,
+            status,
+            validationIssues: asJson(issues),
+            validatedAt: new Date(),
+            liveValidatedAt: null,
+            updatedById: input.userId,
+            version: nextVersion,
+          },
+        });
+        await tx.listingDraftVersion.create({
+          data: {
+            organizationId: input.organizationId,
+            listingDraftId: existing.id,
+            version: nextVersion,
+            snapshot: snapshot(values, status, issues),
+            reason: "Listing description template refreshed from catalog",
+            createdById: input.userId,
+          },
+        });
+        await enqueueOutboxEvent(tx, {
+          organizationId: input.organizationId,
+          topic: "listing.draft.updated",
+          aggregateType: "ListingDraft",
+          aggregateId: existing.id,
+          payload: { draftId: existing.id, partId: part.id, marketplace: input.marketplace, version: nextVersion },
         });
       }
     }

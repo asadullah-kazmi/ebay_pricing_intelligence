@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { Prisma, type DimensionUnit, type PartCondition, type WeightUnit } from "@prisma/client";
 import { getConfig } from "./config.js";
 import { prisma } from "./db.js";
+import { buildConditionDescriptionPlain } from "./domain/listing-description.js";
 import { getObjectStorage } from "./object-storage.js";
 import { enqueueOutboxEvent } from "./outbox-service.js";
 import { uploadImageToEbay } from "./providers/ebay-media.js";
@@ -20,6 +21,8 @@ export class InventoryPreparationError extends Error {
 interface PayloadInput {
   title: string;
   description: string;
+  /** Plain-text used-item condition blurb. HTML listing descriptions must not be reused here. */
+  conditionDescription?: string | null;
   condition: PartCondition;
   ebayCondition: string;
   quantity: number;
@@ -73,7 +76,9 @@ export function buildInventoryItemPayload(input: PayloadInput) {
     payload: {
       availability: { shipToLocationAvailability: { quantity: input.quantity } },
       condition: input.ebayCondition,
-      ...(input.condition === "USED" ? { conditionDescription: input.description.slice(0, 1_000) } : {}),
+      ...(input.condition === "USED" ? {
+        conditionDescription: (input.conditionDescription?.trim() || input.description.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()).slice(0, 1_000),
+      } : {}),
       product: {
         title: input.title,
         description: input.description,
@@ -184,6 +189,11 @@ export async function prepareInventoryItem(input: {
   const built = buildInventoryItemPayload({
     title: draft.title,
     description: draft.description,
+    conditionDescription: buildConditionDescriptionPlain({
+      condition: draft.condition,
+      partName: draft.part.partName,
+      primaryPartNumber: draft.part.primaryPartNumber,
+    }),
     condition: draft.condition,
     ebayCondition: draft.ebayCondition,
     quantity: draft.quantity,

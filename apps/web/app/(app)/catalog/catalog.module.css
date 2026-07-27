@@ -2163,6 +2163,19 @@
   white-space: pre-wrap;
 }
 
+.descriptionPreview {
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  padding: 8px;
+}
+
+.descriptionPreview :global(*) {
+  max-width: 100%;
+}
+
 .notesBlock {
   margin-top: 14px;
   padding: 12px 14px;

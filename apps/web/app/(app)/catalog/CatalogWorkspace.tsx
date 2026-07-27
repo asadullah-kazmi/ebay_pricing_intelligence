@@ -209,8 +209,7 @@ export default function CatalogWorkspace() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const highlightFromUrl = searchParams.get("highlight");
-  const [search, setSearch] = useState(() => (highlightFromUrl ? "" : searchParams.get("q") ?? ""));
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
   const deferredSearch = useDeferredValue(search);
   const [status, setStatus] = useState("");
   const [condition, setCondition] = useState("");
@@ -241,18 +240,50 @@ export default function CatalogWorkspace() {
   const [detailHydrating, setDetailHydrating] = useState(false);
   const detailRequestId = useRef(0);
   const [saving, setSaving] = useState(false);
-  const [highlightedPartId, setHighlightedPartId] = useState<string | null>(() => highlightFromUrl);
+  const [highlightedPartId, setHighlightedPartId] = useState<string | null>(null);
+  const [listRefreshKey, setListRefreshKey] = useState(0);
+  const skipDefaultSavedViewRef = useRef(
+    searchParams.get("from") === "quick-sku" || Boolean(searchParams.get("highlight")),
+  );
+
+  function clearCatalogFilters(nextSort = "newest") {
+    setSearch("");
+    setStatus("");
+    setCondition("");
+    setBrand("");
+    setHasImages("");
+    setHasPricing("");
+    setHasFitment("");
+    setListingState("");
+    setHasShippingPolicy("");
+    setMarketplaceFilter("");
+    setWarehouseId("");
+    setMinQuantity("");
+    setMaxQuantity("");
+    setMinCost("");
+    setMaxCost("");
+    setCreatedFrom("");
+    setCreatedTo("");
+    setActiveSavedViewId("");
+    setSort(nextSort === "oldest" || nextSort === "updated" || nextSort === "sku" ? nextSort : "newest");
+    setPage(1);
+  }
 
   useEffect(() => {
+    const fromQuickSku = searchParams.get("from") === "quick-sku";
     const highlight = searchParams.get("highlight");
     const query = searchParams.get("q");
     const sortParam = searchParams.get("sort");
 
-    if (highlight) {
-      setHighlightedPartId(highlight);
-      setSearch("");
-      setSort(sortParam === "oldest" || sortParam === "updated" || sortParam === "sku" ? sortParam : "newest");
-      setPage(1);
+    // Soft-nav keeps Catalog mounted — force a clean newest-first reload after Quick SKU.
+    if (fromQuickSku || highlight) {
+      skipDefaultSavedViewRef.current = true;
+      clearCatalogFilters(sortParam ?? "newest");
+      setHighlightedPartId(null);
+      setListRefreshKey((key) => key + 1);
+      if (typeof window !== "undefined") {
+        window.history.replaceState(null, "", "/catalog?sort=newest");
+      }
       return;
     }
 
@@ -322,8 +353,8 @@ export default function CatalogWorkspace() {
       .then((value) => {
         const views = value as CatalogSavedView[];
         setSavedViews(views);
-        // Coming from Quick SKU with highlight: show full newest-first list, not a saved filter.
-        if (searchParams.get("highlight")) return;
+        // Coming from Quick SKU: show full newest-first list, not a saved filter.
+        if (skipDefaultSavedViewRef.current || searchParams.get("from") === "quick-sku" || searchParams.get("highlight")) return;
         const defaultView = views.find(({ isDefault }) => isDefault);
         if (defaultView) {
           setActiveSavedViewId(defaultView.id);
@@ -374,7 +405,7 @@ export default function CatalogWorkspace() {
     } finally {
       if (requestId === catalogRequestId.current) setLoading(false);
     }
-  }, [authStatus, demo, queryString, request]);
+  }, [authStatus, demo, queryString, request, listRefreshKey]);
 
   useEffect(() => { void loadCatalog(); }, [loadCatalog]);
 
@@ -870,7 +901,7 @@ export default function CatalogWorkspace() {
       }) as ListingDraft[];
       setDrafts((current) => [...created, ...current.filter((draft) => !created.some(({ id }) => id === draft.id))].slice(0, 25));
       if (!partIds) setSelected(new Set());
-      setNotice(`${created.length} listing draft${created.length === 1 ? "" : "s"} prepared. Resolve readiness blockers before publishing.`);
+      setNotice(`${created.length} listing draft${created.length === 1 ? "" : "s"} prepared with the HTML description template. Open a draft to review, then resolve readiness blockers before publishing.`);
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to create listing drafts"); }
     finally { setDraftBusy(false); }
   }
@@ -1625,7 +1656,20 @@ export default function CatalogWorkspace() {
 
                   {detail.description ? (
                     <section className={styles.inventoryPanel}>
-                      <p className={styles.descriptionText}>{detail.description}</p>
+                      <header className={styles.panelHead}>
+                        <div>
+                          <h4>Listing description</h4>
+                          <p>Unbranded HTML template used when publishing to eBay</p>
+                        </div>
+                      </header>
+                      {/<\/?[a-z][\s\S]*>/i.test(detail.description) ? (
+                        <div
+                          className={styles.descriptionPreview}
+                          dangerouslySetInnerHTML={{ __html: detail.description }}
+                        />
+                      ) : (
+                        <p className={styles.descriptionText}>{detail.description}</p>
+                      )}
                     </section>
                   ) : null}
 
@@ -1677,7 +1721,10 @@ export default function CatalogWorkspace() {
               <label><span>Width</span><input name="width" type="number" min="0" step="0.01" defaultValue={detail.inventoryItem?.width == null ? "" : Number(detail.inventoryItem.width)}/></label>
               <label><span>Height</span><input name="height" type="number" min="0" step="0.01" defaultValue={detail.inventoryItem?.height == null ? "" : Number(detail.inventoryItem.height)}/></label>
               <label><span>Dimension unit</span><select name="dimensionUnit" defaultValue={detail.inventoryItem?.dimensionUnit ?? "IN"}><option value="IN">in</option><option value="CM">cm</option></select></label>
-              <label className={styles.wide}><span>Description</span><textarea name="description" defaultValue={detail.description ?? ""}/></label>
+              <label className={styles.wide}>
+                <span>Listing description (HTML)</span>
+                <textarea name="description" rows={10} defaultValue={detail.description ?? ""}/>
+              </label>
               <label className={styles.wide}><span>Internal notes</span><textarea name="notes" defaultValue={detail.notes ?? ""}/></label>
             </div>
             <div className={styles.formActions}>
@@ -1757,7 +1804,10 @@ export default function CatalogWorkspace() {
                 ? <select name={`aspect-${index}`} defaultValue={draftDetail.aspects[requirement.name]?.[0] ?? ""}><option value="">Select value</option>{requirement.values.map((value) => <option key={value} value={value}>{value}</option>)}</select>
                 : <input name={`aspect-${index}`} defaultValue={(draftDetail.aspects[requirement.name] ?? []).join(" | ")} placeholder={requirement.cardinality === "MULTI" ? "Separate multiple values with |" : undefined}/>}
             </label>)}
-            <label className={styles.wide}><span>Description</span><textarea name="description" defaultValue={draftDetail.description ?? ""}/></label>
+            <label className={styles.wide}>
+              <span>eBay listing description (HTML template)</span>
+              <textarea name="description" rows={12} defaultValue={draftDetail.description ?? ""}/>
+            </label>
           </div>
           <div className={styles.formActions}><button type="button" onClick={() => setDraftDetail(null)}>Close</button><button className={styles.primary} disabled={draftBusy}>{draftBusy ? "Validating..." : "Save & validate"}</button></div>
         </form>
