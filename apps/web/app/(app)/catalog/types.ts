@@ -41,8 +41,8 @@ export interface CatalogPartCard {
     quantity: number;
     cost: string | number;
     currency: string;
-    warehouse?: { id: string; code: string; name: string } | null;
-    binLocation?: { id: string; code: string } | null;
+    warehouse: { id: string; code: string; name: string } | null;
+    binLocation: { id: string; code: string } | null;
   } | null;
   media: Array<{ mediaAsset: { id: string; mimeType?: string; width?: number | null; height?: number | null } }>;
   pricingJobItems: Array<{

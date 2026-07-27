@@ -423,7 +423,19 @@ export default function CatalogWorkspace() {
         notes: null,
         partNumbers: [{ id: "pn", type: "PRIMARY", value: card.primaryPartNumber }],
         inventoryItem: card.inventoryItem
-          ? { ...card.inventoryItem, weight: null, weightUnit: null, length: null, width: null, height: null, dimensionUnit: null }
+          ? {
+              quantity: card.inventoryItem.quantity,
+              cost: card.inventoryItem.cost,
+              currency: card.inventoryItem.currency,
+              warehouse: card.inventoryItem.warehouse ?? null,
+              binLocation: card.inventoryItem.binLocation ?? null,
+              weight: null,
+              weightUnit: null,
+              length: null,
+              width: null,
+              height: null,
+              dimensionUnit: null,
+            }
           : null,
         media: [
           { id: "m1", displayOrder: 0, mediaAsset: { id: "", originalFilename: "main.jpg", mimeType: "image/jpeg" } },
