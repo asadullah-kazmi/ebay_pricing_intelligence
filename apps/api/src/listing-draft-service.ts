@@ -551,7 +551,7 @@ export async function listListingDrafts(
     },
     orderBy: { updatedAt: "desc" },
     take: input.limit,
-    include: { part: { select: { sku: true, primaryPartNumber: true, partName: true } } },
+    include: { part: { select: { sku: true, primaryPartNumber: true, partName: true, brand: true } } },
   });
   return drafts.map(serializeDraft);
 }
@@ -560,7 +560,7 @@ export async function getListingDraft(organizationId: string, draftId: string) {
   const draft = await prisma.listingDraft.findFirst({
     where: { id: draftId, organizationId },
     include: {
-      part: { select: { sku: true, primaryPartNumber: true, partName: true } },
+      part: { select: { sku: true, primaryPartNumber: true, partName: true, brand: true } },
       versions: { orderBy: { version: "desc" }, take: 20, select: { id: true, version: true, reason: true, createdAt: true, createdBy: { select: { id: true, email: true, name: true } } } },
     },
   });

@@ -310,7 +310,7 @@ export interface ListingDraft {
   version: number;
   createdAt: string;
   updatedAt: string;
-  part: { sku: string; primaryPartNumber: string; partName: string | null };
+  part: { sku: string; primaryPartNumber: string; partName: string | null; brand?: string | null };
   versions?: Array<{
     id: string;
     version: number;

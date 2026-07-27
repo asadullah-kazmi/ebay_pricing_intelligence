@@ -943,6 +943,14 @@ export default function CatalogWorkspace() {
       if (value) aspects[requirement.name] = requirement.cardinality === "MULTI" ? value.split("|").map((item) => item.trim()).filter(Boolean) : [value];
       else delete aspects[requirement.name];
     });
+    const brandValue = String(form.get("aspect-brand") ?? "").trim();
+    if (brandValue) aspects.Brand = [brandValue];
+    else delete aspects.Brand;
+    const partTypeValue = String(form.get("aspect-part-type") ?? "").trim();
+    if (partTypeValue) {
+      if (aspects.Type || categoryAspects.some((item) => item.name === "Type")) aspects.Type = [partTypeValue];
+      else aspects["Part Type"] = [partTypeValue];
+    }
     const body = {
       expectedVersion: draftDetail.version,
       reason: "Listing editor update",
@@ -1737,79 +1745,234 @@ export default function CatalogWorkspace() {
       </section>
     </div>}
     {draftDetail && <div className={styles.modalBackdrop} role="presentation">
-      <section className={styles.drawer} role="dialog" aria-modal="true" aria-labelledby="edit-draft-title">
-        <header>
-          <div><span className={styles.eyebrow}>EBAY LISTING DRAFT · VERSION {draftDetail.version}</span><h2 id="edit-draft-title">{draftDetail.part.sku}</h2></div>
-          <button aria-label="Close draft editor" onClick={() => setDraftDetail(null)}>×</button>
-        </header>
-        <div className={styles.readinessBox}>
-          <b>{draftDetail.status === "READY" ? "Ready for publication workflow" : "Publication blocked"}</b>
-          <span>{draftDetail.liveValidatedAt ? `Last checked with eBay ${new Date(draftDetail.liveValidatedAt).toLocaleString()}` : "Live eBay validation is still required."}</span>
-          {(draftDetail.validationIssues ?? []).map((issue) => <span key={`${issue.code}-${issue.field}`} className={issue.severity === "BLOCKER" ? styles.blocker : styles.warning}>{issue.severity}: {issue.message}</span>)}
-        </div>
-        <div className={styles.metadataActions}>
-          <button type="button" disabled={draftBusy} onClick={() => void syncResources()}>Refresh policies & locations</button>
-          <button type="button" className={styles.primary} disabled={draftBusy || !draftDetail.categoryId} onClick={() => void validateDraftLive()}>{draftBusy ? "Contacting eBay..." : "Validate with eBay"}</button>
-          <button type="button" className={styles.primary} disabled={draftBusy || Boolean(inventoryPreparationJob && ["QUEUED", "RUNNING"].includes(inventoryPreparationJob.status)) || draftDetail.status !== "READY" || !draftDetail.liveValidatedAt} onClick={() => void prepareInventoryPreview()}>{inventoryPreparationJob && ["QUEUED", "RUNNING"].includes(inventoryPreparationJob.status) ? "Worker preparing..." : draftBusy ? "Queueing..." : "Stage images & preview"}</button>
-        </div>
-        {inventoryPreparationJob && ["QUEUED", "RUNNING", "FAILED"].includes(inventoryPreparationJob.status) && <div className={styles.preparationStatus}><b>Image staging: {inventoryPreparationJob.status.toLowerCase()}</b>{inventoryPreparationJob.lastError && <span>{inventoryPreparationJob.lastError}</span>}</div>}
-        {inventoryPreparation && <section className={styles.inventoryPreview}>
-          <div><b>Inventory payload · {inventoryPreparation.sku}</b><span>{inventoryPreparation.draftVersion === draftDetail.version ? "Current draft version" : "Outdated — prepare this draft version again"}</span></div>
-          <small>SHA-256 {inventoryPreparation.payloadHash}</small>
-          {inventoryPreparation.warnings.map((warning) => <p key={warning}>{warning}</p>)}
-          <details><summary>View Inventory API JSON</summary><pre>{JSON.stringify(inventoryPreparation.inventoryPayload, null, 2)}</pre></details>
-          {inventoryPreparation.compatibilityPayload && <details><summary>View compatibility JSON</summary><pre>{JSON.stringify(inventoryPreparation.compatibilityPayload, null, 2)}</pre></details>}
-          <button type="button" className={styles.primary} disabled={draftBusy || inventoryPreparation.draftVersion !== draftDetail.version || Boolean(inventorySyncJob && ["QUEUED", "RUNNING"].includes(inventorySyncJob.status))} onClick={() => void applyInventoryToEbay()}>
-            {inventorySyncJob && ["QUEUED", "RUNNING"].includes(inventorySyncJob.status) ? "Writing inventory..." : "Write inventory to eBay"}
-          </button>
-          {inventorySyncJob && <p><b>eBay inventory sync: {inventorySyncJob.status.toLowerCase()}</b>{inventorySyncJob.status === "COMPLETED" ? " — inventory only; not published." : inventorySyncJob.lastError ? ` — ${inventorySyncJob.lastError}` : ""}</p>}
-          {inventorySyncJob?.status === "COMPLETED" && (!ebayOffer || ["PREPARING", "FAILED"].includes(ebayOffer.status)) && <button type="button" onClick={() => void prepareEbayOffer()} disabled={draftBusy || Boolean(ebayOfferJob && ["QUEUED", "RUNNING"].includes(ebayOfferJob.status))}>
-            {ebayOfferJob?.action === "PREPARE" && ["QUEUED", "RUNNING"].includes(ebayOfferJob.status) ? "Preparing offer..." : "Prepare offer & preview fees"}
-          </button>}
-        </section>}
-        {ebayOffer && <div className={styles.preparationStatus}>
-          <b>Offer: {ebayOffer.status.toLowerCase().replaceAll("_", " ")}</b>
-          {ebayOffer.ebayOfferId && <span>eBay offer ID: {ebayOffer.ebayOfferId}</span>}
-          {ebayOffer.ebayListingId && <span>Listing ID: {ebayOffer.ebayListingId}</span>}
-          {ebayOffer.feeTotal != null && <span>Expected listing fees: {money(ebayOffer.feeTotal, ebayOffer.feeCurrency ?? draftDetail.currency)}</span>}
-          {ebayOffer.remoteListingStatus && <span>Remote status: {humanStatus(ebayOffer.remoteListingStatus)}{ebayOffer.lastReconciledAt ? ` · checked ${new Date(ebayOffer.lastReconciledAt).toLocaleString()}` : ""}</span>}
-          {ebayOffer.revisionCount > 0 && <span>{ebayOffer.revisionCount} controlled revision{ebayOffer.revisionCount === 1 ? "" : "s"}</span>}
-          {ebayOffer.status === "FEES_READY" && <button type="button" className={styles.primary} disabled={draftBusy} onClick={() => void publishEbayOffer()}>Approve fees & publish live</button>}
-          {ebayOffer.status === "PUBLISHED" && inventorySyncJob?.status === "COMPLETED" && inventorySyncJob.draftVersion > ebayOffer.draftVersion && <button type="button" className={styles.primary} disabled={draftBusy || Boolean(listingOperationJob && ["QUEUED", "RUNNING"].includes(listingOperationJob.status))} onClick={() => void reviseLiveListing()}>Approve & revise live listing</button>}
-          {["PUBLISHED", "DRIFTED"].includes(ebayOffer.status) && <button type="button" disabled={draftBusy || Boolean(listingOperationJob && ["QUEUED", "RUNNING"].includes(listingOperationJob.status))} onClick={() => void withdrawLiveListing()}>Withdraw listing</button>}
-          {ebayOffer.ebayOfferId && <button type="button" disabled={draftBusy || Boolean(listingOperationJob && ["QUEUED", "RUNNING"].includes(listingOperationJob.status))} onClick={() => void reconcileLiveListing()}>Reconcile with eBay</button>}
-          {listingOperationJob && ["QUEUED", "RUNNING"].includes(listingOperationJob.status) && <span>{humanStatus(listingOperationJob.action)} job: {listingOperationJob.status.toLowerCase()}</span>}
-          {ebayOffer.ebayListingId && <a href={`https://${ebayOffer.marketplace === "EBAY_GB" ? "www.ebay.co.uk" : ebayOffer.marketplace === "EBAY_DE" ? "www.ebay.de" : "www.ebay.com"}/itm/${ebayOffer.ebayListingId}`} target="_blank" rel="noreferrer">Open eBay listing {ebayOffer.ebayListingId}</a>}
-          {ebayOffer.driftIssues?.map((issue) => <span key={issue} className={styles.warning}>DRIFT: {issue}</span>)}
-          {ebayOffer.lastError && <span>{ebayOffer.lastError}</span>}
-          {ebayOffer.feeResponse && <details><summary>View eBay fee response</summary><pre>{JSON.stringify(ebayOffer.feeResponse, null, 2)}</pre></details>}
-          {ebayOffer.remoteSnapshot && <details><summary>View last remote offer snapshot</summary><pre>{JSON.stringify(ebayOffer.remoteSnapshot, null, 2)}</pre></details>}
-        </div>}
-        <form onSubmit={saveDraft}>
-          <div className={styles.formGrid}>
-            <label className={styles.wide}><span>Title ({draftDetail.title.length}/80)</span><input name="title" maxLength={120} defaultValue={draftDetail.title} required/></label>
-            <label><span>eBay category ID</span><input name="categoryId" defaultValue={draftDetail.categoryId ?? ""}/></label>
-            <label><span>Condition</span><select name="condition" defaultValue={draftDetail.condition}><option value="NEW">New</option><option value="USED">Used</option></select></label>
-            <label><span>eBay condition</span><select name="ebayCondition" defaultValue={draftDetail.ebayCondition ?? ""}><option value="">Validate category to load conditions</option>{categoryConditions.map((option) => <option key={option.conditionId} value={option.enumValue}>{option.name}</option>)}</select></label>
-            <label><span>Price</span><input name="price" type="number" min="0.01" step="0.01" defaultValue={draftDetail.price ?? ""}/></label>
-            <label><span>Currency</span><input name="currency" maxLength={3} defaultValue={draftDetail.currency}/></label>
-            <label><span>Quantity</span><input name="quantity" type="number" min="0" defaultValue={draftDetail.quantity}/></label>
-            <label><span>Merchant location</span><select name="merchantLocationKey" defaultValue={draftDetail.merchantLocationKey ?? ""}><option value="">Select location</option>{sellerResources?.inventoryLocations.filter(({ enabled }) => enabled).map((resource) => <option key={resource.remoteId} value={resource.remoteId}>{resource.name ?? resource.remoteId}</option>)}</select></label>
-            <label><span>Payment policy</span><select name="paymentPolicyId" defaultValue={draftDetail.paymentPolicyId ?? ""}><option value="">Select payment policy</option>{sellerResources?.paymentPolicies.filter(({ enabled }) => enabled).map((resource) => <option key={resource.remoteId} value={resource.remoteId}>{resource.name ?? resource.remoteId}</option>)}</select></label>
-            <label><span>Return policy</span><select name="returnPolicyId" defaultValue={draftDetail.returnPolicyId ?? ""}><option value="">Select return policy</option>{sellerResources?.returnPolicies.filter(({ enabled }) => enabled).map((resource) => <option key={resource.remoteId} value={resource.remoteId}>{resource.name ?? resource.remoteId}</option>)}</select></label>
-            <label><span>Shipping policy</span><select name="shippingPolicyId" defaultValue={draftDetail.shippingPolicyId ?? ""}><option value="">Select fulfillment policy</option>{sellerResources?.fulfillmentPolicies.filter(({ enabled }) => enabled).map((resource) => <option key={resource.remoteId} value={resource.remoteId}>{resource.name ?? resource.remoteId}</option>)}</select></label>
-            {categoryAspects.map((requirement, index) => <label key={requirement.name} className={requirement.cardinality === "MULTI" ? styles.wide : undefined}>
-              <span>{requirement.name}{requirement.required ? " *" : requirement.recommended ? " (recommended)" : ""}</span>
-              {requirement.mode === "SELECTION_ONLY" && requirement.values.length && requirement.cardinality === "SINGLE"
-                ? <select name={`aspect-${index}`} defaultValue={draftDetail.aspects[requirement.name]?.[0] ?? ""}><option value="">Select value</option>{requirement.values.map((value) => <option key={value} value={value}>{value}</option>)}</select>
-                : <input name={`aspect-${index}`} defaultValue={(draftDetail.aspects[requirement.name] ?? []).join(" | ")} placeholder={requirement.cardinality === "MULTI" ? "Separate multiple values with |" : undefined}/>}
-            </label>)}
-            <label className={styles.wide}>
-              <span>eBay listing description (HTML template)</span>
-              <textarea name="description" rows={12} defaultValue={draftDetail.description ?? ""}/>
-            </label>
+      <section className={`${styles.drawer} ${styles.listingDrawer}`} role="dialog" aria-modal="true" aria-labelledby="edit-draft-title">
+        <header className={styles.listingDrawerHeader}>
+          <div>
+            <span className={styles.listingDrawerEyebrow}>Listing draft · v{draftDetail.version}</span>
+            <h2 id="edit-draft-title">{draftDetail.part.sku}</h2>
+            <p className={styles.listingDrawerSub}>{draftDetail.part.primaryPartNumber}{draftDetail.part.brand ? ` · ${draftDetail.part.brand}` : ""} · {draftDetail.marketplace.replace("EBAY_", "eBay ")}</p>
           </div>
-          <div className={styles.formActions}><button type="button" onClick={() => setDraftDetail(null)}>Close</button><button className={styles.primary} disabled={draftBusy}>{draftBusy ? "Validating..." : "Save & validate"}</button></div>
+          <button type="button" aria-label="Close draft editor" onClick={() => setDraftDetail(null)}>×</button>
+        </header>
+
+        <form onSubmit={saveDraft} className={styles.listingDrawerBody}>
+          <section className={styles.listingDetailsCard}>
+            <span className={styles.listingSectionLabel}>Listing details</span>
+
+            <label className={styles.listingFieldWide}>
+              <span>Title</span>
+              <input name="title" maxLength={120} defaultValue={draftDetail.title} required />
+              <small>{draftDetail.title.length}/80 recommended for eBay</small>
+            </label>
+
+            <div className={styles.listingDetailsGrid}>
+              <label className={styles.listingField}>
+                <span>Brand</span>
+                <input
+                  name="aspect-brand"
+                  defaultValue={draftDetail.aspects.Brand?.[0] ?? draftDetail.part.brand ?? ""}
+                  placeholder="Brand"
+                />
+              </label>
+              <label className={styles.listingField}>
+                <span>Condition</span>
+                <select name="condition" defaultValue={draftDetail.condition}>
+                  <option value="NEW">New</option>
+                  <option value="USED">Used</option>
+                </select>
+              </label>
+              <label className={styles.listingField}>
+                <span>Part type</span>
+                <input
+                  name="aspect-part-type"
+                  defaultValue={
+                    draftDetail.aspects.Type?.[0]
+                    ?? draftDetail.aspects["Part Type"]?.[0]
+                    ?? draftDetail.part.partName
+                    ?? ""
+                  }
+                  placeholder="Part type"
+                />
+              </label>
+              <label className={styles.listingField}>
+                <span>Price</span>
+                <div className={styles.listingPriceRow}>
+                  <input name="price" type="number" min="0.01" step="0.01" defaultValue={draftDetail.price ?? ""} />
+                  <input name="currency" maxLength={3} defaultValue={draftDetail.currency} aria-label="Currency" />
+                </div>
+              </label>
+              <label className={styles.listingField}>
+                <span>Quantity</span>
+                <input name="quantity" type="number" min="0" defaultValue={draftDetail.quantity} />
+              </label>
+              <div className={styles.listingField}>
+                <span>Stock status</span>
+                <div className={`${styles.listingStockStatus} ${draftDetail.quantity <= 2 ? styles.listingStockLow : styles.listingStockOk}`}>
+                  {draftDetail.quantity <= 0 ? "Out of stock" : draftDetail.quantity <= 2 ? "Low stock" : "In stock"}
+                </div>
+              </div>
+              <label className={styles.listingField}>
+                <span>Shipping policy</span>
+                <select name="shippingPolicyId" defaultValue={draftDetail.shippingPolicyId ?? ""}>
+                  <option value="">Select fulfillment policy</option>
+                  {sellerResources?.fulfillmentPolicies.filter(({ enabled }) => enabled).map((resource) => (
+                    <option key={resource.remoteId} value={resource.remoteId}>{resource.name ?? resource.remoteId}</option>
+                  ))}
+                </select>
+              </label>
+              <label className={styles.listingField}>
+                <span>eBay condition</span>
+                <select name="ebayCondition" defaultValue={draftDetail.ebayCondition ?? ""}>
+                  <option value="">Validate category to load</option>
+                  {categoryConditions.map((option) => (
+                    <option key={option.conditionId} value={option.enumValue}>{option.name}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <label className={styles.listingFieldWide}>
+              <span>Category</span>
+              <div className={styles.listingCategoryRow}>
+                <input name="categoryId" defaultValue={draftDetail.categoryId ?? ""} placeholder="eBay category ID" />
+                <span className={styles.listingCategoryId}>
+                  {draftDetail.categoryId ? `ID: ${draftDetail.categoryId}` : "Set an eBay category ID"}
+                </span>
+              </div>
+            </label>
+          </section>
+
+          <section className={styles.listingDetailsCard}>
+            <span className={styles.listingSectionLabel}>Policies & location</span>
+            <div className={styles.listingDetailsGrid}>
+              <label className={styles.listingField}>
+                <span>Payment policy</span>
+                <select name="paymentPolicyId" defaultValue={draftDetail.paymentPolicyId ?? ""}>
+                  <option value="">Select payment policy</option>
+                  {sellerResources?.paymentPolicies.filter(({ enabled }) => enabled).map((resource) => (
+                    <option key={resource.remoteId} value={resource.remoteId}>{resource.name ?? resource.remoteId}</option>
+                  ))}
+                </select>
+              </label>
+              <label className={styles.listingField}>
+                <span>Return policy</span>
+                <select name="returnPolicyId" defaultValue={draftDetail.returnPolicyId ?? ""}>
+                  <option value="">Select return policy</option>
+                  {sellerResources?.returnPolicies.filter(({ enabled }) => enabled).map((resource) => (
+                    <option key={resource.remoteId} value={resource.remoteId}>{resource.name ?? resource.remoteId}</option>
+                  ))}
+                </select>
+              </label>
+              <label className={styles.listingFieldWide}>
+                <span>Merchant location</span>
+                <select name="merchantLocationKey" defaultValue={draftDetail.merchantLocationKey ?? ""}>
+                  <option value="">Select location</option>
+                  {sellerResources?.inventoryLocations.filter(({ enabled }) => enabled).map((resource) => (
+                    <option key={resource.remoteId} value={resource.remoteId}>{resource.name ?? resource.remoteId}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </section>
+
+          {categoryAspects.filter((requirement) => !["Brand", "Type", "Part Type"].includes(requirement.name)).length > 0 && (
+            <section className={styles.listingDetailsCard}>
+              <span className={styles.listingSectionLabel}>Item specifics</span>
+              <div className={styles.listingDetailsGrid}>
+                {categoryAspects.filter((requirement) => !["Brand", "Type", "Part Type"].includes(requirement.name)).map((requirement, index) => {
+                  const aspectIndex = categoryAspects.findIndex((item) => item.name === requirement.name);
+                  return (
+                  <label key={requirement.name} className={requirement.cardinality === "MULTI" ? styles.listingFieldWide : styles.listingField}>
+                    <span>{requirement.name}{requirement.required ? " *" : requirement.recommended ? " (recommended)" : ""}</span>
+                    {requirement.mode === "SELECTION_ONLY" && requirement.values.length && requirement.cardinality === "SINGLE"
+                      ? <select name={`aspect-${aspectIndex}`} defaultValue={draftDetail.aspects[requirement.name]?.[0] ?? ""}><option value="">Select value</option>{requirement.values.map((value) => <option key={value} value={value}>{value}</option>)}</select>
+                      : <input name={`aspect-${aspectIndex}`} defaultValue={(draftDetail.aspects[requirement.name] ?? []).join(" | ")} placeholder={requirement.cardinality === "MULTI" ? "Separate multiple values with |" : undefined}/>}
+                  </label>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          <section className={styles.listingDetailsCard}>
+            <span className={styles.listingSectionLabel}>Description</span>
+            {draftDetail.description && /<\/?[a-z][\s\S]*>/i.test(draftDetail.description) ? (
+              <div className={styles.descriptionPreview} dangerouslySetInnerHTML={{ __html: draftDetail.description }} />
+            ) : null}
+            <label className={styles.listingFieldWide}>
+              <span>HTML source</span>
+              <textarea name="description" rows={8} defaultValue={draftDetail.description ?? ""} />
+            </label>
+          </section>
+
+          <section className={styles.listingPublishCard}>
+            <div className={styles.listingPublishHead}>
+              <div>
+                <span className={styles.listingSectionLabel}>Publication</span>
+                <b className={draftDetail.status === "READY" ? styles.listingReady : styles.listingBlocked}>
+                  {draftDetail.status === "READY" ? "Ready for publication workflow" : "Publication blocked"}
+                </b>
+                <p>{draftDetail.liveValidatedAt ? `Last checked with eBay ${new Date(draftDetail.liveValidatedAt).toLocaleString()}` : "Live eBay validation is still required."}</p>
+              </div>
+              <div className={styles.listingPublishActions}>
+                <button type="button" disabled={draftBusy} onClick={() => void syncResources()}>Refresh policies</button>
+                <button type="button" className={styles.primary} disabled={draftBusy || !draftDetail.categoryId} onClick={() => void validateDraftLive()}>{draftBusy ? "Contacting eBay..." : "Validate with eBay"}</button>
+                <button type="button" className={styles.primary} disabled={draftBusy || Boolean(inventoryPreparationJob && ["QUEUED", "RUNNING"].includes(inventoryPreparationJob.status)) || draftDetail.status !== "READY" || !draftDetail.liveValidatedAt} onClick={() => void prepareInventoryPreview()}>{inventoryPreparationJob && ["QUEUED", "RUNNING"].includes(inventoryPreparationJob.status) ? "Worker preparing..." : draftBusy ? "Queueing..." : "Stage images & preview"}</button>
+              </div>
+            </div>
+            {(draftDetail.validationIssues ?? []).length > 0 && (
+              <div className={styles.listingIssues}>
+                {(draftDetail.validationIssues ?? []).map((issue) => (
+                  <span key={`${issue.code}-${issue.field}`} className={issue.severity === "BLOCKER" ? styles.blocker : styles.warning}>
+                    {issue.severity}: {issue.message}
+                  </span>
+                ))}
+              </div>
+            )}
+            {inventoryPreparationJob && ["QUEUED", "RUNNING", "FAILED"].includes(inventoryPreparationJob.status) && (
+              <div className={styles.preparationStatus}>
+                <b>Image staging: {inventoryPreparationJob.status.toLowerCase()}</b>
+                {inventoryPreparationJob.lastError && <span>{inventoryPreparationJob.lastError}</span>}
+              </div>
+            )}
+            {inventoryPreparation && <section className={styles.inventoryPreview}>
+              <div><b>Inventory payload · {inventoryPreparation.sku}</b><span>{inventoryPreparation.draftVersion === draftDetail.version ? "Current draft version" : "Outdated — prepare this draft version again"}</span></div>
+              <small>SHA-256 {inventoryPreparation.payloadHash}</small>
+              {inventoryPreparation.warnings.map((warning) => <p key={warning}>{warning}</p>)}
+              <details><summary>View Inventory API JSON</summary><pre>{JSON.stringify(inventoryPreparation.inventoryPayload, null, 2)}</pre></details>
+              {inventoryPreparation.compatibilityPayload && <details><summary>View compatibility JSON</summary><pre>{JSON.stringify(inventoryPreparation.compatibilityPayload, null, 2)}</pre></details>}
+              <button type="button" className={styles.primary} disabled={draftBusy || inventoryPreparation.draftVersion !== draftDetail.version || Boolean(inventorySyncJob && ["QUEUED", "RUNNING"].includes(inventorySyncJob.status))} onClick={() => void applyInventoryToEbay()}>
+                {inventorySyncJob && ["QUEUED", "RUNNING"].includes(inventorySyncJob.status) ? "Writing inventory..." : "Write inventory to eBay"}
+              </button>
+              {inventorySyncJob && <p><b>eBay inventory sync: {inventorySyncJob.status.toLowerCase()}</b>{inventorySyncJob.status === "COMPLETED" ? " — inventory only; not published." : inventorySyncJob.lastError ? ` — ${inventorySyncJob.lastError}` : ""}</p>}
+              {inventorySyncJob?.status === "COMPLETED" && (!ebayOffer || ["PREPARING", "FAILED"].includes(ebayOffer.status)) && <button type="button" onClick={() => void prepareEbayOffer()} disabled={draftBusy || Boolean(ebayOfferJob && ["QUEUED", "RUNNING"].includes(ebayOfferJob.status))}>
+                {ebayOfferJob?.action === "PREPARE" && ["QUEUED", "RUNNING"].includes(ebayOfferJob.status) ? "Preparing offer..." : "Prepare offer & preview fees"}
+              </button>}
+            </section>}
+            {ebayOffer && <div className={styles.preparationStatus}>
+              <b>Offer: {ebayOffer.status.toLowerCase().replaceAll("_", " ")}</b>
+              {ebayOffer.ebayOfferId && <span>eBay offer ID: {ebayOffer.ebayOfferId}</span>}
+              {ebayOffer.ebayListingId && <span>Listing ID: {ebayOffer.ebayListingId}</span>}
+              {ebayOffer.feeTotal != null && <span>Expected listing fees: {money(ebayOffer.feeTotal, ebayOffer.feeCurrency ?? draftDetail.currency)}</span>}
+              {ebayOffer.remoteListingStatus && <span>Remote status: {humanStatus(ebayOffer.remoteListingStatus)}{ebayOffer.lastReconciledAt ? ` · checked ${new Date(ebayOffer.lastReconciledAt).toLocaleString()}` : ""}</span>}
+              {ebayOffer.revisionCount > 0 && <span>{ebayOffer.revisionCount} controlled revision{ebayOffer.revisionCount === 1 ? "" : "s"}</span>}
+              {ebayOffer.status === "FEES_READY" && <button type="button" className={styles.primary} disabled={draftBusy} onClick={() => void publishEbayOffer()}>Approve fees & publish live</button>}
+              {ebayOffer.status === "PUBLISHED" && inventorySyncJob?.status === "COMPLETED" && inventorySyncJob.draftVersion > ebayOffer.draftVersion && <button type="button" className={styles.primary} disabled={draftBusy || Boolean(listingOperationJob && ["QUEUED", "RUNNING"].includes(listingOperationJob.status))} onClick={() => void reviseLiveListing()}>Approve & revise live listing</button>}
+              {["PUBLISHED", "DRIFTED"].includes(ebayOffer.status) && <button type="button" disabled={draftBusy || Boolean(listingOperationJob && ["QUEUED", "RUNNING"].includes(listingOperationJob.status))} onClick={() => void withdrawLiveListing()}>Withdraw listing</button>}
+              {ebayOffer.ebayOfferId && <button type="button" disabled={draftBusy || Boolean(listingOperationJob && ["QUEUED", "RUNNING"].includes(listingOperationJob.status))} onClick={() => void reconcileLiveListing()}>Reconcile with eBay</button>}
+              {listingOperationJob && ["QUEUED", "RUNNING"].includes(listingOperationJob.status) && <span>{humanStatus(listingOperationJob.action)} job: {listingOperationJob.status.toLowerCase()}</span>}
+              {ebayOffer.ebayListingId && <a href={`https://${ebayOffer.marketplace === "EBAY_GB" ? "www.ebay.co.uk" : ebayOffer.marketplace === "EBAY_DE" ? "www.ebay.de" : "www.ebay.com"}/itm/${ebayOffer.ebayListingId}`} target="_blank" rel="noreferrer">Open eBay listing {ebayOffer.ebayListingId}</a>}
+              {ebayOffer.driftIssues?.map((issue) => <span key={issue} className={styles.warning}>DRIFT: {issue}</span>)}
+              {ebayOffer.lastError && <span>{ebayOffer.lastError}</span>}
+              {ebayOffer.feeResponse && <details><summary>View eBay fee response</summary><pre>{JSON.stringify(ebayOffer.feeResponse, null, 2)}</pre></details>}
+              {ebayOffer.remoteSnapshot && <details><summary>View last remote offer snapshot</summary><pre>{JSON.stringify(ebayOffer.remoteSnapshot, null, 2)}</pre></details>}
+            </div>}
+          </section>
+
+          <div className={styles.listingFormActions}>
+            <button type="button" onClick={() => setDraftDetail(null)}>Close</button>
+            <button className={styles.primary} disabled={draftBusy}>{draftBusy ? "Saving..." : "Save & validate"}</button>
+          </div>
         </form>
       </section>
     </div>}

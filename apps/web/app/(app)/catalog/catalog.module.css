@@ -2176,6 +2176,223 @@
   max-width: 100%;
 }
 
+.listingDrawer {
+  width: min(880px, 96vw);
+  background: #f8fafc;
+}
+
+.listingDrawerHeader {
+  background: #fffffff5 !important;
+}
+
+.listingDrawerEyebrow {
+  display: block;
+  margin-bottom: 4px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.55px;
+  text-transform: uppercase;
+}
+
+.listingDrawerSub {
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.listingDrawerBody {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px 20px !important;
+}
+
+.listingDetailsCard,
+.listingPublishCard {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 18px 20px;
+}
+
+.listingSectionLabel {
+  display: block;
+  margin-bottom: 14px;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.55px;
+  text-transform: uppercase;
+}
+
+.listingDetailsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 28px;
+}
+
+.listingField,
+.listingFieldWide {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  font-weight: 400;
+}
+
+.listingFieldWide {
+  grid-column: 1 / -1;
+  margin-top: 16px;
+}
+
+.listingField > span,
+.listingFieldWide > span {
+  color: #94a3b8 !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.5px !important;
+  text-transform: uppercase !important;
+  margin-bottom: 0 !important;
+}
+
+.listingDrawer .listingField input,
+.listingDrawer .listingField select,
+.listingDrawer .listingFieldWide input,
+.listingDrawer .listingFieldWide select,
+.listingDrawer .listingFieldWide textarea {
+  border: 1px solid #eef2f7;
+  background: #f8fafc;
+  border-radius: 10px;
+  padding: 11px 12px;
+  color: #0f172a;
+  font: 600 14px/1.35 "Plus Jakarta Sans", sans-serif;
+}
+
+.listingDrawer .listingField input:focus,
+.listingDrawer .listingField select:focus,
+.listingDrawer .listingFieldWide input:focus,
+.listingDrawer .listingFieldWide select:focus,
+.listingDrawer .listingFieldWide textarea:focus {
+  border-color: #cbd5e1;
+  background: #fff;
+  box-shadow: none;
+}
+
+.listingFieldWide small {
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.listingPriceRow {
+  display: grid;
+  grid-template-columns: 1fr 72px;
+  gap: 8px;
+}
+
+.listingStockStatus {
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font: 700 13px/1 "Plus Jakarta Sans", sans-serif;
+}
+
+.listingStockLow {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.listingStockOk {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.listingCategoryRow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.listingCategoryId {
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.listingPublishHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.listingPublishHead p {
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.listingPublishHead b {
+  display: block;
+  font-size: 14px;
+}
+
+.listingReady {
+  color: #047857;
+}
+
+.listingBlocked {
+  color: #b45309;
+}
+
+.listingPublishActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.listingIssues {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.listingFormActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.listingDrawerBody .descriptionPreview {
+  margin-bottom: 12px;
+}
+
+@media (max-width: 720px) {
+  .listingDetailsGrid,
+  .listingCategoryRow,
+  .listingPublishHead {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .listingPublishActions {
+    justify-content: stretch;
+  }
+
+  .listingPublishActions button {
+    flex: 1;
+  }
+}
+
 .notesBlock {
   margin-top: 14px;
   padding: 12px 14px;
