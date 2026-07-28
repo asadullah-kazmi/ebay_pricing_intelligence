@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { createHash } from "node:crypto";
 import { recordAuditEvent } from "./audit-service.js";
 import { prisma } from "./db.js";
 import { buildListingDescriptionHtml } from "./domain/listing-description.js";
@@ -6,9 +7,10 @@ import { normalizePartNumber } from "./domain/matching.js";
 import { buildEbayListingTitle, cleanPartNameForTitle, isWeakPartName, modelFromText, yearRangeFromText } from "./domain/listing-title.js";
 import { normalizeFitmentApplications, scoreFitmentCandidate } from "./fitment-service.js";
 import { discoverEbayFitment, getEbayProductCompatibilities, isBrowseDerivedEpid, type EbayFitmentDiscovery } from "./providers/ebay-fitment.js";
+import { searchEbay } from "./providers/ebay.js";
 import { identifyPartWithGemini, type AiPartIdentificationResult } from "./providers/gemini-part-identification.js";
 import { queuePartMarketPricing } from "./pricing-service.js";
-import type { Marketplace } from "./types.js";
+import type { Marketplace, RawListing } from "./types.js";
 
 export type QuickSkuIdentificationSource = "EBAY" | "AI" | "GENERIC";
 
@@ -25,6 +27,7 @@ export type QuickSkuInput = {
   price: number;
   quantity: number;
   condition?: "NEW" | "USED";
+  productSource?: "OEM" | "AFTERMARKET" | "PRIVATE_LABEL";
   marketplace?: Marketplace;
   currency?: string;
 };
@@ -49,6 +52,14 @@ export type QuickSkuPrepared = {
   fitmentCount: number;
   fitmentReason: string | null;
   applications: Array<{ fingerprint: string; properties: Record<string, string> }>;
+};
+
+export type QuickSkuImageResult = {
+  status: "SKIPPED" | "ATTACHED" | "PARTIAL" | "FAILED";
+  attachedCount: number;
+  requestedCount: number;
+  source: "EBAY_BROWSE_API" | null;
+  message: string | null;
 };
 
 export type QuickSkuIdentifyResult = {
@@ -90,13 +101,14 @@ function parseQuickSkuBase(input: QuickSkuInput) {
   const brand = input.brand.trim();
   const marketplace = input.marketplace ?? "EBAY_US";
   const condition = input.condition ?? "USED";
+  const productSource = input.productSource ?? "OEM";
   const currency = (input.currency ?? "USD").toUpperCase();
   const normalized = normalizePartNumber(partNumber);
   if (!normalized) throw new QuickSkuError("Part number is required");
   if (!brand) throw new QuickSkuError("Brand is required");
   if (!Number.isFinite(input.price) || input.price <= 0) throw new QuickSkuError("Price must be greater than zero");
   if (!Number.isInteger(input.quantity) || input.quantity < 0) throw new QuickSkuError("Quantity must be a non-negative integer");
-  return { partNumber, brand, marketplace, condition, currency, normalized };
+  return { partNumber, brand, marketplace, condition, productSource, currency, normalized };
 }
 
 function buildSku(brand: string, partNumber: string) {
@@ -179,6 +191,147 @@ async function allocateUniqueSku(organizationId: string, preferred: string) {
   }
   throw new QuickSkuError("Unable to allocate a unique SKU for this part number", 409);
 }
+
+function exactPartNumberMatch(listing: RawListing, normalized: string) {
+  const titleMatches = normalizePartNumber(listing.title).includes(normalized);
+  const aspectMatches = Object.entries(listing.aspects).some(([name, values]) => {
+    const key = name.toLowerCase();
+    if (!["manufacturer part number", "mpn", "oe/oem part number", "interchange part number"].includes(key)) return false;
+    return values.some((value) => normalizePartNumber(value) === normalized);
+  });
+  return titleMatches || aspectMatches;
+}
+
+function brandMatches(listing: RawListing, brand: string) {
+  const normalizedBrand = brand.trim().toLowerCase();
+  if (!normalizedBrand) return true;
+  if (listing.title.toLowerCase().includes(normalizedBrand)) return true;
+  return Object.entries(listing.aspects).some(([name, values]) => {
+    if (!["brand", "manufacturer"].includes(name.toLowerCase())) return false;
+    return values.some((value) => value.trim().toLowerCase() === normalizedBrand);
+  });
+}
+
+function scoreImageListing(listing: RawListing, input: { normalizedPartNumber: string; brand: string; condition: "NEW" | "USED" }) {
+  if (!listing.imageUrls?.length) return 0;
+  if (!exactPartNumberMatch(listing, input.normalizedPartNumber)) return 0;
+  let score = 70;
+  if (brandMatches(listing, input.brand)) score += 15;
+  if (input.condition === "NEW" && /^new/i.test(listing.condition)) score += 5;
+  if (input.condition === "USED" && /^used/i.test(listing.condition)) score += 5;
+  score += Math.min(listing.imageUrls.length, 6);
+  return score;
+}
+
+async function attachAftermarketBrowseImages(input: {
+  organizationId: string;
+  partId: string;
+  partNumber: string;
+  brand: string;
+  marketplace: Marketplace;
+  condition: "NEW" | "USED";
+  requestedCount?: number;
+}): Promise<QuickSkuImageResult> {
+  const requestedCount = input.requestedCount ?? 2;
+  const normalized = normalizePartNumber(input.partNumber);
+  if (!normalized) return { status: "SKIPPED", attachedCount: 0, requestedCount, source: "EBAY_BROWSE_API", message: "Part number was not usable for image discovery" };
+
+  let listings: RawListing[];
+  try {
+    listings = await searchEbay(input.partNumber, input.marketplace, input.condition);
+  } catch (error) {
+    const message = error instanceof Error ? error.message.slice(0, 300) : "Unable to fetch eBay Browse images";
+    return { status: "FAILED", attachedCount: 0, requestedCount, source: "EBAY_BROWSE_API", message };
+  }
+
+  const ranked = listings
+    .map((listing) => ({ listing, score: scoreImageListing(listing, { normalizedPartNumber: normalized, brand: input.brand, condition: input.condition }) }))
+    .filter(({ score }) => score > 0)
+    .sort((left, right) => right.score - left.score);
+  const selected: Array<{ listing: RawListing; imageUrl: string; score: number }> = [];
+  const usedUrls = new Set<string>();
+  for (const { listing, score } of ranked) {
+    for (const imageUrl of listing.imageUrls ?? []) {
+      if (usedUrls.has(imageUrl)) continue;
+      usedUrls.add(imageUrl);
+      selected.push({ listing, imageUrl, score });
+      if (selected.length >= requestedCount) break;
+    }
+    if (selected.length >= requestedCount) break;
+  }
+
+  let displayOrder = await prisma.partMedia.count({ where: { partId: input.partId } });
+  let attachedCount = 0;
+  for (const [index, candidate] of selected.entries()) {
+    const checksum = createHash("sha256").update(candidate.imageUrl).digest("hex");
+    const storageKey = `external/ebay-browse/${input.marketplace}/${candidate.listing.id}/${checksum.slice(0, 16)}`;
+    const mediaAsset = await prisma.mediaAsset.upsert({
+      where: { organizationId_storageKey: { organizationId: input.organizationId, storageKey } },
+      create: {
+        organizationId: input.organizationId,
+        storageKey,
+        externalUrl: candidate.imageUrl,
+        sourceType: "EBAY_BROWSE_API",
+        sourceMetadata: asJson({
+          sourceItemId: candidate.listing.id,
+          sourceItemWebUrl: candidate.listing.url,
+          sourceSellerUsername: candidate.listing.seller,
+          sourceMarketplace: input.marketplace,
+          matchedPartNumber: input.partNumber,
+          matchScore: candidate.score,
+        }),
+        originalFilename: `${input.partNumber}-${candidate.listing.id}-${index + 1}.jpg`.slice(0, 255),
+        mimeType: "image/jpeg",
+        byteSize: 0,
+        checksum,
+        status: "READY",
+      },
+      update: {
+        externalUrl: candidate.imageUrl,
+        sourceType: "EBAY_BROWSE_API",
+        sourceMetadata: asJson({
+          sourceItemId: candidate.listing.id,
+          sourceItemWebUrl: candidate.listing.url,
+          sourceSellerUsername: candidate.listing.seller,
+          sourceMarketplace: input.marketplace,
+          matchedPartNumber: input.partNumber,
+          matchScore: candidate.score,
+        }),
+        status: "READY",
+      },
+    });
+    await prisma.partMedia.upsert({
+      where: { partId_mediaAssetId: { partId: input.partId, mediaAssetId: mediaAsset.id } },
+      create: {
+        organizationId: input.organizationId,
+        partId: input.partId,
+        mediaAssetId: mediaAsset.id,
+        displayOrder,
+        approved: true,
+        altText: `${input.brand} ${input.partNumber} eBay Browse image`,
+      },
+      update: { approved: true, displayOrder },
+    });
+    displayOrder += 1;
+    attachedCount += 1;
+  }
+
+  return {
+    status: attachedCount >= requestedCount ? "ATTACHED" : attachedCount > 0 ? "PARTIAL" : "FAILED",
+    attachedCount,
+    requestedCount,
+    source: "EBAY_BROWSE_API",
+    message: attachedCount >= requestedCount ? null : `Only ${attachedCount} matching eBay image${attachedCount === 1 ? "" : "s"} found`,
+  };
+}
+
+const skippedImageResult: QuickSkuImageResult = {
+  status: "SKIPPED",
+  attachedCount: 0,
+  requestedCount: 0,
+  source: null,
+  message: null,
+};
 
 function toAiPayload(result: AiPartIdentificationResult) {
   return {
@@ -412,7 +565,7 @@ async function persistQuickSkuPart(
   prepared: QuickSkuPrepared,
   requestId?: string,
 ) {
-  const { partNumber, brand, marketplace, condition, currency, normalized } = parseQuickSkuBase(input);
+  const { partNumber, brand, marketplace, condition, productSource, currency, normalized } = parseQuickSkuBase(input);
   const preferredSku = buildSku(prepared.identifiedBrand, partNumber);
   const { sku, normalizedSku } = await allocateUniqueSku(organizationId, preferredSku);
 
@@ -428,6 +581,7 @@ async function persistQuickSkuPart(
         partName: prepared.partName,
         description: prepared.description,
         condition,
+        productSource: productSource as "OEM" | "AFTERMARKET",
         status: "READY_FOR_ENRICHMENT",
         notes: prepared.identificationSource === "EBAY"
           ? `Quick SKU identified via eBay ${prepared.discoverySource ?? "catalog"} (${prepared.candidateEpid})${prepared.categoryName ? ` · ${prepared.categoryName}` : ""}${prepared.aiModel ? ` · part name filled by AI (${prepared.aiModel})` : ""}`
@@ -514,11 +668,16 @@ async function persistQuickSkuPart(
   }, { maxWait: 10_000, timeout: 60_000 });
 }
 
+type PersistedQuickSkuPart = Prisma.PromiseReturnType<typeof persistQuickSkuPart> & {
+  inventoryItem: { quantity: number; cost: Prisma.Decimal; currency: string } | null;
+};
+
 function toQuickSkuResponse(
-  created: Awaited<ReturnType<typeof persistQuickSkuPart>>,
+  created: PersistedQuickSkuPart,
   prepared: QuickSkuPrepared,
   marketplace: Marketplace,
   pricing: Awaited<ReturnType<typeof queuePartMarketPricing>>,
+  images: QuickSkuImageResult = skippedImageResult,
 ) {
   return {
     part: {
@@ -549,6 +708,7 @@ function toQuickSkuResponse(
     pricing: "jobId" in pricing
       ? { jobId: pricing.jobId, status: "QUEUED" as const }
       : { status: "SKIPPED" as const, reason: pricing.reason },
+    images,
   };
 }
 
@@ -559,9 +719,27 @@ export async function finalizeQuickSku(
   prepared: QuickSkuPrepared,
   requestId?: string,
 ) {
-  const { marketplace } = parseQuickSkuBase(input);
+  const { marketplace, condition, productSource } = parseQuickSkuBase(input);
   try {
     const created = await persistQuickSkuPart(organizationId, userId, input, prepared, requestId);
+    let images = skippedImageResult;
+    if (productSource === "AFTERMARKET" || productSource === "PRIVATE_LABEL") {
+      images = await attachAftermarketBrowseImages({
+        organizationId,
+        partId: created.id,
+        partNumber: input.partNumber,
+        brand: prepared.identifiedBrand || input.brand,
+        marketplace,
+        condition,
+        requestedCount: 2,
+      });
+      if (images.attachedCount < 2) {
+        await prisma.part.updateMany({
+          where: { id: created.id, organizationId },
+          data: { status: "NEEDS_IMAGES" },
+        });
+      }
+    }
     let pricing: Awaited<ReturnType<typeof queuePartMarketPricing>>;
     try {
       pricing = await queuePartMarketPricing(organizationId, userId, {
@@ -576,7 +754,7 @@ export async function finalizeQuickSku(
         : "Unable to queue market pricing";
       pricing = { skipped: true, reason };
     }
-    return toQuickSkuResponse(created, prepared, marketplace, pricing);
+    return toQuickSkuResponse(created, prepared, marketplace, pricing, images);
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       throw new QuickSkuError("A catalog part with this SKU or part number already exists", 409);

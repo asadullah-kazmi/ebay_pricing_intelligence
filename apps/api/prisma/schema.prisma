@@ -41,6 +41,12 @@ enum PartCondition {
   USED
 }
 
+enum PartProductSource {
+  OEM
+  AFTERMARKET
+  PRIVATE_LABEL
+}
+
 enum CatalogPartStatus {
   IMPORTED
   NEEDS_IMAGES
@@ -686,6 +692,7 @@ model Part {
   partName             String?
   description          String?
   condition            PartCondition
+  productSource        PartProductSource   @default(OEM)
   imageGroup           String?
   status               CatalogPartStatus    @default(IMPORTED)
   donorVehicleId       String?
@@ -712,6 +719,7 @@ model Part {
   @@unique([organizationId, normalizedSku])
   @@index([organizationId, normalizedPartNumber])
   @@index([organizationId, status, createdAt])
+  @@index([organizationId, productSource])
   @@index([donorVehicleId])
   @@index([createdById])
 }
@@ -790,6 +798,9 @@ model MediaAsset {
   id               String             @id @default(cuid())
   organizationId   String
   storageKey       String
+  externalUrl      String?
+  sourceType       String             @default("USER_UPLOAD")
+  sourceMetadata   Json?
   originalFilename String
   mimeType         String
   byteSize         Int
@@ -807,6 +818,7 @@ model MediaAsset {
   @@unique([organizationId, storageKey])
   @@index([organizationId, checksum])
   @@index([organizationId, status])
+  @@index([organizationId, sourceType])
 }
 
 model EbayPublishedImage {

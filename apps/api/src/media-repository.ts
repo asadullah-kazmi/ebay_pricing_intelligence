@@ -26,9 +26,9 @@ export async function saveConfirmedMediaAsset(organizationId: string, image: Con
 export async function findMediaStorageKey(organizationId: string, mediaAssetId: string): Promise<string | null> {
   const asset = await prisma.mediaAsset.findFirst({
     where: { id: mediaAssetId, organizationId },
-    select: { storageKey: true },
+    select: { storageKey: true, externalUrl: true },
   });
-  return asset?.storageKey ?? null;
+  return asset?.externalUrl ?? asset?.storageKey ?? null;
 }
 
 export async function findMediaStorageKeys(
@@ -39,7 +39,7 @@ export async function findMediaStorageKeys(
   if (!uniqueIds.length) return new Map();
   const assets = await prisma.mediaAsset.findMany({
     where: { organizationId, id: { in: uniqueIds } },
-    select: { id: true, storageKey: true },
+    select: { id: true, storageKey: true, externalUrl: true },
   });
-  return new Map(assets.map((asset) => [asset.id, asset.storageKey]));
+  return new Map(assets.map((asset) => [asset.id, asset.externalUrl ?? asset.storageKey]));
 }

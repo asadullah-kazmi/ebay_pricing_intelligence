@@ -135,6 +135,46 @@
   line-height: 1.5;
 }
 
+.detailsHeader {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 4px;
+  color: #9aa4b2;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.detailsHeader::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: #edf1f6;
+}
+
+.detailsHeader a {
+  order: 2;
+  color: #9aa4b2;
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.detailsHeader a::before {
+  content: "?";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-right: 6px;
+  border: 1px solid #aeb8c6;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 1;
+}
+
 .formCard label {
   display: grid;
   gap: 6px;
@@ -164,6 +204,74 @@
   border-color: #93c5fd;
   box-shadow: 0 0 0 3px #0052ff22;
   background: #fff;
+}
+
+.formCard small {
+  color: #98a2b3;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.segmentField {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-inline-size: 0;
+}
+
+.segmentField legend {
+  padding: 0;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.segmentedControl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-height: 54px;
+  padding: 5px;
+  border: 1px solid #dde5ef;
+  border-radius: 9px;
+  background: #f8fafc;
+}
+
+.segmentedControl label {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  border-radius: 7px;
+  color: #6b7280;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.segmentedControl input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.segmentedControl span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.segmentActive {
+  background: linear-gradient(135deg, #315cf6 0%, #7048ee 100%);
+  color: #fff !important;
+  box-shadow: 0 8px 18px #315cf626;
+}
+
+.segmentField:disabled .segmentedControl {
+  opacity: 0.6;
 }
 
 .row {
@@ -535,6 +643,50 @@
   background: #fff;
   border: 1px solid #e8eef5;
   box-shadow: 0 1px 2px #0b142605;
+}
+
+.imageSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid #e8eef5;
+  box-shadow: 0 1px 2px #0b142605;
+}
+
+.imageSummary p {
+  margin: 0;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.imageOk,
+.imageWarn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.imageOk {
+  background: #ecfdf3;
+  border: 1px solid #bbf7d0;
+  color: #047857;
+}
+
+.imageWarn {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #c2410c;
 }
 
 .listingPreviewLabel {

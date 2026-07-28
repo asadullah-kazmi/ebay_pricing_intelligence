@@ -12,6 +12,7 @@ export interface RawListing {
   marketplace: Marketplace;
   url: string;
   aspects: Record<string, string[]>;
+  imageUrls?: string[];
 }
 
 export interface MatchedListing extends RawListing {

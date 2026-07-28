@@ -99,6 +99,10 @@ function demoListings(oem: string, marketplace: Marketplace, condition: ListingC
     aspects: (index === 4
       ? { "Manufacturer Part Number": ["UNRELATED-123"] }
       : { "Manufacturer Part Number": [oem], "OE/OEM Part Number": [oem] }) as Record<string, string[]>,
+    imageUrls: [
+      `https://i.ebayimg.com/images/g/demo-${encodeURIComponent(oem)}-${index + 1}/s-l1600.jpg`,
+      `https://i.ebayimg.com/images/g/demo-${encodeURIComponent(oem)}-${index + 1}-detail/s-l1600.jpg`,
+    ],
   }));
   return condition === "ANY"
     ? listings
@@ -109,6 +113,12 @@ function toListing(item: Record<string, unknown>, marketplace: Marketplace): Raw
   const price = item.price as { value?: string; currency?: string } | undefined;
   const shippingOptions = item.shippingOptions as Array<{ shippingCost?: { value?: string } }> | undefined;
   const localizedAspects = item.localizedAspects as Array<{ name?: string; value?: string }> | undefined;
+  const primaryImage = item.image as { imageUrl?: string } | undefined;
+  const additionalImages = item.additionalImages as Array<{ imageUrl?: string }> | undefined;
+  const imageUrls = [
+    primaryImage?.imageUrl,
+    ...(additionalImages ?? []).map((image) => image.imageUrl),
+  ].filter((url): url is string => typeof url === "string" && url.startsWith("https://"));
   const aspects = (localizedAspects ?? []).reduce<Record<string, string[]>>((result, aspect) => {
     if (aspect.name && aspect.value) (result[aspect.name] ??= []).push(aspect.value);
     return result;
@@ -121,6 +131,7 @@ function toListing(item: Record<string, unknown>, marketplace: Marketplace): Raw
     currency: price?.currency ?? marketplaceCurrency[marketplace],
     condition: String(item.condition ?? "Unknown"), marketplace,
     url: String(item.itemWebUrl ?? ""), aspects,
+    imageUrls: [...new Set(imageUrls)],
   };
 }
 

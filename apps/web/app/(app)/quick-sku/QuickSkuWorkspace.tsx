@@ -12,7 +12,22 @@ type QuickSkuResult = {
     source?: "EBAY" | "AI" | "GENERIC";
     aiModel?: string | null;
   };
+  images?: {
+    status: "SKIPPED" | "ATTACHED" | "PARTIAL" | "FAILED";
+    attachedCount: number;
+    requestedCount: number;
+    source: "EBAY_BROWSE_API" | null;
+    message: string | null;
+  };
 };
+
+type ProductSource = "OEM" | "AFTERMARKET" | "PRIVATE_LABEL";
+
+const productSourceOptions: Array<{ value: ProductSource; label: string }> = [
+  { value: "OEM", label: "OEM" },
+  { value: "AFTERMARKET", label: "Aftermarket" },
+  { value: "PRIVATE_LABEL", label: "Private Label" },
+];
 
 type IdentifyResponse = {
   partNumber: string;
@@ -62,6 +77,7 @@ const STEP_DEFS = [
   { id: "fitment", label: "Applying vehicle fitment" },
   { id: "title", label: "Building listing title" },
   { id: "catalog", label: "Adding to your catalog" },
+  { id: "images", label: "Finding aftermarket images" },
   { id: "pricing", label: "Starting market pricing" },
 ] as const;
 
@@ -97,6 +113,7 @@ export default function QuickSkuWorkspace() {
   const [price, setPrice] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [condition, setCondition] = useState<"USED" | "NEW">("USED");
+  const [productSource, setProductSource] = useState<ProductSource>("OEM");
   const [marketplace, setMarketplace] = useState("EBAY_US");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -122,6 +139,7 @@ export default function QuickSkuWorkspace() {
       price: Number(price),
       quantity: Number(quantity),
       condition,
+      productSource,
       marketplace,
     };
 
@@ -143,6 +161,9 @@ export default function QuickSkuWorkspace() {
             title: `2012-2018 ${demoBrand} A6 C7 Front Left Rear Brake Caliper ${demoPartNumber} OEM Used`,
             source: "EBAY",
           },
+          images: payload.productSource !== "OEM"
+            ? { status: "ATTACHED", attachedCount: 2, requestedCount: 2, source: "EBAY_BROWSE_API", message: null }
+            : { status: "SKIPPED", attachedCount: 0, requestedCount: 0, source: null, message: null },
         });
         return;
       }
@@ -204,9 +225,12 @@ export default function QuickSkuWorkspace() {
           source?: "EBAY" | "AI" | "GENERIC";
           aiModel?: string | null;
         };
+        images?: QuickSkuResult["images"];
       };
 
       progress = activateNext(progress, "catalog");
+      setSteps([...progress]);
+      progress = activateNext(progress, "images", payload.productSource !== "OEM" ? "done" : "skipped");
       setSteps([...progress]);
       progress = activateNext(progress, "pricing");
       setSteps([...progress]);
@@ -218,11 +242,13 @@ export default function QuickSkuWorkspace() {
           source: created.identification.source ?? identify.identificationSource,
           aiModel: created.identification.aiModel ?? identify.ai?.model ?? null,
         },
+        images: created.images,
       });
       setPartNumber("");
       setBrand("");
       setPrice("");
       setQuantity("1");
+      setProductSource("OEM");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to upload Quick SKU");
       setSteps((current) => current.map((step) =>
@@ -254,6 +280,29 @@ export default function QuickSkuWorkspace() {
           <h2>Create from OEM / MPN</h2>
           <p className={styles.formLead}>We match against eBay catalog data, generate a listing-ready title, and attach fitment when available.</p>
 
+          <div className={styles.detailsHeader}>
+            <span>Part details</span>
+            <a href="/settings" aria-label="Open help settings">Need help?</a>
+          </div>
+
+          <fieldset className={styles.segmentField} disabled={busy}>
+            <legend>Part type</legend>
+            <div className={styles.segmentedControl}>
+              {productSourceOptions.map((option) => (
+                <label key={option.value} className={productSource === option.value ? styles.segmentActive : undefined}>
+                  <input
+                    type="radio"
+                    name="productSource"
+                    value={option.value}
+                    checked={productSource === option.value}
+                    onChange={() => setProductSource(option.value)}
+                  />
+                  <span>{option.label}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
           <label>
             <span>Part number</span>
             <input
@@ -264,6 +313,7 @@ export default function QuickSkuWorkspace() {
               autoComplete="off"
               disabled={busy}
             />
+            <small>OE or manufacturer number - not casting / stamped marks.</small>
           </label>
           <label>
             <span>Brand</span>
@@ -430,6 +480,22 @@ export default function QuickSkuWorkspace() {
                     )}
                   </div>
                 </article>
+
+                {result.images && result.images.status !== "SKIPPED" && (
+                  <article className={styles.imageSummary}>
+                    <div>
+                      <span className={styles.listingPreviewLabel}>Image discovery</span>
+                      <p>
+                        {result.images.attachedCount >= 2
+                          ? `${result.images.attachedCount} eBay Browse images attached and approved.`
+                          : `${result.images.attachedCount} of ${result.images.requestedCount} eBay Browse images attached.`}
+                      </p>
+                    </div>
+                    <span className={result.images.attachedCount >= 2 ? styles.imageOk : styles.imageWarn}>
+                      {result.images.attachedCount >= 2 ? "Ready" : "Review"}
+                    </span>
+                  </article>
+                )}
 
                 <div className={styles.successSummary}>
                   <span className={styles.successSummaryIcon} aria-hidden="true">✓</span>

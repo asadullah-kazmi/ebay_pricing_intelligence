@@ -101,8 +101,9 @@ export function buildCompatibilityPayload(applications: Array<Record<string, str
 
 async function stageImage(input: {
   organizationId: string;
-  mediaAsset: { id: string; storageKey: string; originalFilename: string; mimeType: string; checksum: string };
+  mediaAsset: { id: string; storageKey: string; externalUrl: string | null; originalFilename: string; mimeType: string; checksum: string };
 }) {
+  if (input.mediaAsset.externalUrl?.startsWith("https://")) return input.mediaAsset.externalUrl;
   const environment = getConfig().ebay.environment;
   const existing = await prisma.ebayPublishedImage.findUnique({
     where: { organizationId_mediaAssetId_environment: { organizationId: input.organizationId, mediaAssetId: input.mediaAsset.id, environment } },

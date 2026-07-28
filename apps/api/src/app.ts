@@ -210,6 +210,7 @@ const quickSkuSchema = z.object({
   price: z.number().positive().max(1_000_000),
   quantity: z.number().int().min(0).max(100_000),
   condition: z.enum(["NEW", "USED"]).default("USED"),
+  productSource: z.enum(["OEM", "AFTERMARKET", "PRIVATE_LABEL"]).default("OEM"),
   marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).default("EBAY_US"),
   currency: z.string().trim().length(3).default("USD"),
 }).strict();
@@ -1834,31 +1835,36 @@ app.post("/api/media/uploads/confirm", requireTenantContext, mediaUploadRoles, a
 
 app.get("/api/media/:id/download-url", requireTenantContext, async (req, res, next) => {
   try {
-    const storage = getObjectStorage();
-    if (!storage) return res.status(503).json({ error: "Object storage is not configured" });
     const tenant = getTenantContext(res);
     const mediaAssetId = req.params.id;
     if (typeof mediaAssetId !== "string") return res.status(400).json({ error: "Invalid media asset ID" });
     const storageKey = await findMediaStorageKey(tenant.organization.id, mediaAssetId);
     if (!storageKey) return res.status(404).json({ error: "Media asset not found" });
+    if (storageKey.startsWith("https://")) return res.json({ downloadUrl: storageKey, expiresIn: 300 });
+    const storage = getObjectStorage();
+    if (!storage) return res.status(503).json({ error: "Object storage is not configured" });
     res.json({ downloadUrl: await storage.createDownloadUrl(tenant.organization.id, storageKey), expiresIn: 300 });
   } catch (error) { next(error); }
 });
 
 app.post("/api/media/download-urls", requireTenantContext, async (req, res, next) => {
   try {
-    const storage = getObjectStorage();
-    if (!storage) return res.status(503).json({ error: "Object storage is not configured" });
     const tenant = getTenantContext(res);
     const { ids } = mediaDownloadUrlsSchema.parse(req.body);
     const keys = await findMediaStorageKeys(tenant.organization.id, ids);
+    const externalUrls = [...keys.entries()]
+      .filter(([, storageKey]) => storageKey.startsWith("https://"))
+      .map(([id, downloadUrl]) => ({ id, downloadUrl }));
+    const internalKeys = [...keys.entries()].filter(([, storageKey]) => !storageKey.startsWith("https://"));
+    const storage = internalKeys.length ? getObjectStorage() : null;
+    if (internalKeys.length && !storage) return res.status(503).json({ error: "Object storage is not configured" });
     const urls = await Promise.all(
-      [...keys.entries()].map(async ([id, storageKey]) => ({
+      internalKeys.map(async ([id, storageKey]) => ({
         id,
-        downloadUrl: await storage.createDownloadUrl(tenant.organization.id, storageKey),
+        downloadUrl: await storage!.createDownloadUrl(tenant.organization.id, storageKey),
       })),
     );
-    res.json({ urls, expiresIn: 300 });
+    res.json({ urls: [...externalUrls, ...urls], expiresIn: 300 });
   } catch (error) { next(error); }
 });
 
