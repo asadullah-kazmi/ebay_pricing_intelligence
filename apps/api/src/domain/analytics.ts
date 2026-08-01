@@ -4,7 +4,7 @@ const money = (value: number) => Math.round(value * 100) / 100;
 
 export function calculateAnalytics(listings: MatchedListing[]): Analytics | null {
   if (!listings.length) return null;
-  return calculateAnalyticsFromPrices(listings.map((item) => item.landedPrice), listings[0]!.currency);
+  return calculateAnalyticsFromPrices(listings.map((item) => item.price), listings[0]!.currency);
 }
 
 export function calculateAnalyticsFromPrices(values: number[], currency: string): Analytics | null {

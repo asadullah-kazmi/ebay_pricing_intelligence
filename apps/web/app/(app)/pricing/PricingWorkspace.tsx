@@ -433,7 +433,7 @@ export default function PricingWorkspace() {
               <article>
                 <b>03</b>
                 <h3>Set your price</h3>
-                <p>Landed low, median, and recommended price give you a clear decision.</p>
+                <p>Selling low, median, and recommended price give you a clear decision.</p>
               </article>
             </section>
           )}
@@ -465,7 +465,7 @@ export default function PricingWorkspace() {
                 <>
                   <div className={styles.metrics}>
                     {[
-                      ["Lowest landed", result.analytics.lowest],
+                      ["Lowest selling", result.analytics.lowest],
                       ["Market average", result.analytics.average],
                       ["Median", result.analytics.median],
                       ["Highest", result.analytics.highest],
@@ -486,7 +486,7 @@ export default function PricingWorkspace() {
                           <th>Condition</th>
                           <th>Item</th>
                           <th>Shipping</th>
-                          <th>Landed price</th>
+                          <th>Selling price</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -500,7 +500,7 @@ export default function PricingWorkspace() {
                             <td><span className={styles.pill}>{item.condition}</span></td>
                             <td>{money(item.price, item.currency)}</td>
                             <td>{money(item.shipping, item.currency)}</td>
-                            <td><b className={styles.landed}>{money(item.landedPrice, item.currency)}</b></td>
+                            <td><b className={styles.landed}>{money(item.price, item.currency)}</b></td>
                           </tr>
                         ))}
                       </tbody>

@@ -1905,7 +1905,7 @@ app.post("/api/search", searchRateLimit, async (req, res, next) => {
     const listings = candidates.flatMap((item) => {
       const matchedOn = matchListing(item, oem);
       if (!matchedOn.length || ownSellers.has(item.seller.toLowerCase())) return [];
-      return [{ ...item, matchedOn, landedPrice: Math.round((item.price + item.shipping) * 100) / 100 }];
+      return [{ ...item, matchedOn, landedPrice: Math.round(item.price * 100) / 100 }];
     });
     const result = {
       oem,

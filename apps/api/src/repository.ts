@@ -91,7 +91,7 @@ export async function findListing(id: string) {
     ...listing,
     price: Number(listing.price),
     shipping: Number(listing.shipping),
-    landedPrice: Number(listing.price) + Number(listing.shipping),
+    landedPrice: Number(listing.price),
     prices: listing.prices.map((capture) => ({
       ...capture,
       price: Number(capture.price),
@@ -145,10 +145,10 @@ export async function deleteListingsForClosedEbayAccount(username?: string): Pro
     for (const affected of affectedPricingItems) {
       const remaining = await tx.competitorListingSnapshot.findMany({
         where: { pricingJobItemId: affected.pricingJobItemId },
-        orderBy: { landedPrice: "asc" },
-        select: { landedPrice: true, currency: true },
+        orderBy: { price: "asc" },
+        select: { price: true, currency: true },
       });
-      const prices = remaining.map(({ landedPrice }) => Number(landedPrice));
+      const prices = remaining.map(({ price }) => Number(price));
       const analytics = calculateAnalyticsFromPrices(prices, remaining[0]?.currency ?? "USD");
       await tx.pricingJobItem.update({
         where: { id: affected.pricingJobItemId },

@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { calculateAnalytics, calculateAnalyticsFromPrices } from "./analytics.js";
 import type { MatchedListing } from "../types.js";
 
-const listing = (landedPrice: number): MatchedListing => ({
-  id: String(landedPrice), title: "Part", seller: "seller", price: landedPrice, shipping: 0,
-  landedPrice, currency: "USD", condition: "New", marketplace: "EBAY_US", url: "", aspects: {}, matchedOn: ["MPN"],
+const listing = (price: number, shipping = 0): MatchedListing => ({
+  id: String(price), title: "Part", seller: "seller", price, shipping,
+  landedPrice: price + shipping, currency: "USD", condition: "New", marketplace: "EBAY_US", url: "", aspects: {}, matchedOn: ["MPN"],
 });
 
 describe("calculateAnalytics", () => {
@@ -15,7 +15,7 @@ describe("calculateAnalytics", () => {
     expect(calculateAnalyticsFromPrices([], "USD")).toBeNull();
   });
   it("calculates summary statistics and a median-based recommendation", () => {
-    expect(calculateAnalytics([listing(10), listing(20), listing(40)])).toEqual({
+    expect(calculateAnalytics([listing(10, 99), listing(20, 15), listing(40, 8)])).toEqual({
       count: 3, lowest: 10, average: 23.33, median: 20, highest: 40, recommendedPrice: 19.6, currency: "USD",
     });
   });

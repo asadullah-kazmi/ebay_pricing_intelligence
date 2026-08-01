@@ -25,13 +25,13 @@ describe("bulk pricing selection", () => {
     expect(resolvePricingCondition("ANY", "USED")).toBe("ANY");
   });
 
-  it("keeps only exact item-specific matches and excludes owned sellers", () => {
+  it("keeps only exact item-specific matches, excludes owned sellers, and prices without shipping", () => {
     const matches = selectExactCompetitors([
       listing(),
       listing({ id: "owned", seller: "My-Store" }),
       listing({ id: "partial", aspects: { "OE/OEM Part Number": ["841787830"] } }),
     ], "84-178-783", new Set(["my-store"]));
     expect(matches).toHaveLength(1);
-    expect(matches[0]).toMatchObject({ id: "v1|123|0", landedPrice: 47.5, matchedOn: ["OE/OEM Part Number"] });
+    expect(matches[0]).toMatchObject({ id: "v1|123|0", landedPrice: 40, matchedOn: ["OE/OEM Part Number"] });
   });
 });

@@ -270,6 +270,10 @@
   box-shadow: 0 8px 18px #315cf626;
 }
 
+.segmentActive span {
+  color: #fff;
+}
+
 .segmentField:disabled .segmentedControl {
   opacity: 0.6;
 }

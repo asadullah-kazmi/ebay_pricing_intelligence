@@ -39,7 +39,7 @@ export function selectExactCompetitors(candidates: RawListing[], partNumber: str
   return candidates.flatMap((candidate) => {
     const matchedOn = matchListing(candidate, normalized);
     if (!matchedOn.length || ownSellers.has(candidate.seller.toLowerCase())) return [];
-    return [{ ...candidate, matchedOn, landedPrice: Math.round((candidate.price + candidate.shipping) * 100) / 100 }];
+    return [{ ...candidate, matchedOn, landedPrice: Math.round(candidate.price * 100) / 100 }];
   });
 }
 
@@ -104,7 +104,7 @@ const jobInclude = {
     orderBy: { createdAt: "asc" as const },
     include: {
       part: { select: { id: true, sku: true, primaryPartNumber: true, partName: true, condition: true } },
-      listings: { orderBy: { landedPrice: "asc" as const } },
+      listings: { orderBy: { price: "asc" as const } },
       proposal: { include: { decidedBy: { select: { id: true, email: true, name: true } } } },
     },
   },
