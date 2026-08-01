@@ -274,6 +274,7 @@ export default function PricingWorkspace() {
   const [openMarketItemId, setOpenMarketItemId] = useState<string | null>(null);
   const [openCalculatorItemId, setOpenCalculatorItemId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const bulkResultsRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (!bulkJob || demo) return;
@@ -507,10 +508,12 @@ export default function PricingWorkspace() {
           lastError: null,
           items: [],
         });
+        window.setTimeout(() => bulkResultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
         return;
       }
       const job = await apiFetch(`/api/pricing/bulk/${jobId}`) as BulkPricingJob;
       setBulkJob(job);
+      window.setTimeout(() => bulkResultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to open pricing job");
     }
@@ -823,8 +826,8 @@ export default function PricingWorkspace() {
                         <span>{job.noMatchItems ? `${job.noMatchItems} no match` : "All matched so far"}</span>
                       </div>
                       <div>
-                        <b>{created}</b>
-                        <span>{job.status.toLowerCase().replaceAll("_", " ")}</span>
+                        <span className={styles.historyDate}>{created}</span>
+                        <span className={styles.historyStatus}>{job.status.toLowerCase().replaceAll("_", " ")}</span>
                       </div>
                       <button type="button" onClick={() => void openBulkHistoryJob(job.id)}>
                         {bulkJob?.id === job.id ? "Opened" : "Open job"}
@@ -839,7 +842,7 @@ export default function PricingWorkspace() {
           </section>
 
           {bulkJob && (
-            <section className={styles.results} aria-live="polite">
+            <section ref={bulkResultsRef} className={styles.results} aria-live="polite">
               <div className={styles.resultHead}>
                 <div>
                   <span className={styles.eyebrow}>Bulk job</span>

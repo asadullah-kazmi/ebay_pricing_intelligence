@@ -368,10 +368,10 @@
 .historyPanel {
   margin-bottom: 18px;
   border: 1px solid #e2e8f0;
-  border-radius: 16px;
+  border-radius: 14px;
   background: #fff;
   overflow: hidden;
-  box-shadow: 0 18px 40px #0b14260f;
+  box-shadow: 0 10px 24px #0b142608;
 }
 
 .historyHead {
@@ -379,21 +379,31 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
-  padding: 20px 24px;
+  padding: 16px 20px;
   border-bottom: 1px solid #eef2f7;
 }
 
+.historyHead .ghostBtn {
+  min-height: 34px;
+  margin-top: 0;
+  padding: 0 12px;
+  border-radius: 9px;
+  font-size: 11px;
+  box-shadow: none;
+}
+
 .historyHead h3 {
-  margin: 6px 0;
+  margin: 4px 0;
   color: #0c274d;
-  font-size: 22px;
-  line-height: 1.1;
+  font-size: 18px;
+  line-height: 1.2;
+  letter-spacing: -0.25px;
 }
 
 .historyHead p {
   margin: 0;
   color: #64748b;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .historyList {
@@ -405,8 +415,13 @@
   grid-template-columns: minmax(260px, 1.5fr) minmax(130px, 0.55fr) minmax(210px, 0.9fr) auto;
   gap: 16px;
   align-items: center;
-  padding: 16px 24px;
+  padding: 12px 20px;
   border-bottom: 1px solid #eef2f7;
+  transition: background 140ms ease;
+}
+
+.historyList article:hover {
+  background: #fafcff;
 }
 
 .historyList article:last-child {
@@ -414,7 +429,9 @@
 }
 
 .historyActive {
-  background: #f8fbff;
+  position: relative;
+  background: #f8fbff !important;
+  box-shadow: inset 3px 0 0 #0052ff;
 }
 
 .historyList b,
@@ -424,23 +441,47 @@
 
 .historyList b {
   color: #0f172a;
-  font-size: 13px;
+  font-size: 12.5px;
+  font-weight: 650;
+  letter-spacing: -0.05px;
 }
 
 .historyList span {
-  margin-top: 4px;
+  margin-top: 3px;
   color: #64748b;
-  font-size: 12px;
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+.historyDate {
+  margin-top: 0 !important;
+  color: #334155 !important;
+  font-weight: 600;
+}
+
+.historyStatus {
+  display: inline-flex !important;
+  width: fit-content;
+  margin-top: 5px !important;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #475569 !important;
+  font-size: 10.5px !important;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .historyList button {
-  min-height: 36px;
-  padding: 0 14px;
+  min-height: 30px;
+  padding: 0 11px;
   border: 1px solid #c7d7ff;
-  border-radius: 10px;
+  border-radius: 8px;
   background: #eff6ff;
   color: #0052ff;
-  font-weight: 800;
+  font-size: 11.5px;
+  font-weight: 700;
   cursor: pointer;
 }
 
