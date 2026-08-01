@@ -28,6 +28,7 @@ import {
   createBulkPricingTemplateCsv,
   exportBulkPricingCsv,
   getBulkPricingJob,
+  listBulkPricingJobs,
   parseBulkPricingCsv,
   startBulkPricingJob,
 } from "./bulk-pricing-service.js";
@@ -1127,6 +1128,13 @@ app.post("/api/pricing/bulk", searchRateLimit, requireTenantContext, pricingRole
     });
     if (getConfig().jobs.executionMode !== "inline") startBulkPricingJob(job.id);
     res.status(202).json(job);
+  } catch (error) { next(error); }
+});
+
+app.get("/api/pricing/bulk/jobs", requireTenantContext, pricingRoles, async (req, res, next) => {
+  try {
+    const { limit } = pricingJobListSchema.parse(req.query);
+    res.json(await listBulkPricingJobs(getTenantContext(res).organization.id, limit));
   } catch (error) { next(error); }
 });
 

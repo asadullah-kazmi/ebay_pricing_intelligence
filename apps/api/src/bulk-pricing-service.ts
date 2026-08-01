@@ -465,6 +465,31 @@ export async function getBulkPricingJob(organizationId: string, jobId: string) {
   return serializeJob(job);
 }
 
+export async function listBulkPricingJobs(organizationId: string, limit = 20) {
+  const jobs = await prisma.bulkPricingJob.findMany({
+    where: { organizationId },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    select: {
+      id: true,
+      marketplace: true,
+      defaultCondition: true,
+      targetMarginPercent: true,
+      status: true,
+      totalItems: true,
+      completedItems: true,
+      noMatchItems: true,
+      failedItems: true,
+      sourceFilename: true,
+      lastError: true,
+      startedAt: true,
+      completedAt: true,
+      createdAt: true,
+    },
+  });
+  return jobs.map(serializeJob);
+}
+
 function csvEscape(value: string | number | boolean | null | undefined) {
   if (value === null || value === undefined) return "";
   const text = String(value);

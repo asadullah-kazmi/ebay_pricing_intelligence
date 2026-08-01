@@ -80,7 +80,10 @@ type BulkPricingJob = {
   failedItems: number;
   sourceFilename: string | null;
   lastError: string | null;
-  items: BulkPricingItem[];
+  createdAt?: string;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  items?: BulkPricingItem[];
 };
 
 const demoResult: SearchResult = {
@@ -266,6 +269,8 @@ export default function PricingWorkspace() {
   const [bulkFile, setBulkFile] = useState<File | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkJob, setBulkJob] = useState<BulkPricingJob | null>(null);
+  const [bulkHistory, setBulkHistory] = useState<BulkPricingJob[]>([]);
+  const [historyBusy, setHistoryBusy] = useState(false);
   const [openMarketItemId, setOpenMarketItemId] = useState<string | null>(null);
   const [openCalculatorItemId, setOpenCalculatorItemId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -280,6 +285,42 @@ export default function PricingWorkspace() {
     }, 2_000);
     return () => window.clearInterval(timer);
   }, [apiFetch, bulkJob, demo]);
+
+  async function loadBulkHistory() {
+    setHistoryBusy(true);
+    try {
+      if (demo) {
+        setBulkHistory([{
+          id: "demo-bulk-previous",
+          marketplace: "EBAY_US",
+          defaultCondition: "USED",
+          targetMarginPercent: 20,
+          status: "COMPLETED",
+          totalItems: 16,
+          completedItems: 12,
+          noMatchItems: 4,
+          failedItems: 0,
+          sourceFilename: "partpulse-bulk-pricing-template.csv",
+          lastError: null,
+          createdAt: new Date(Date.now() - 86_400_000).toISOString(),
+          startedAt: new Date(Date.now() - 86_390_000).toISOString(),
+          completedAt: new Date(Date.now() - 86_000_000).toISOString(),
+        }]);
+        return;
+      }
+      const jobs = await apiFetch("/api/pricing/bulk/jobs?limit=20") as BulkPricingJob[];
+      setBulkHistory(jobs);
+    } catch {
+      // History is helpful, not blocking.
+    } finally {
+      setHistoryBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    if (authStatus !== "ready" || mode !== "bulk") return;
+    void loadBulkHistory();
+  }, [authStatus, mode]);
 
   async function search(event: FormEvent) {
     event.preventDefault();
@@ -416,8 +457,10 @@ export default function PricingWorkspace() {
         },
       ) as BulkPricingJob;
       setBulkJob(job);
+      void loadBulkHistory();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to start bulk pricing");
+      void loadBulkHistory();
     } finally {
       setBulkBusy(false);
     }
@@ -429,7 +472,7 @@ export default function PricingWorkspace() {
     try {
       if (demo) {
         const header = "PartNumber,Brand,CostPrice,Currency,Condition,Marketplace,MatchCount,Lowest,Median,Highest,MarketRecommended,SellingPrice,FloorPrice,MarginPercent,Status,Error,CatalogMatch,Notes";
-        const lines = bulkJob.items.map((item) => [
+        const lines = (bulkJob.items ?? []).map((item) => [
           item.partNumber, item.brand, item.costPrice, item.currency, item.condition, bulkJob.marketplace,
           item.competitorCount, item.lowest, item.median, item.highest, item.marketRecommended, item.sellingPrice,
           item.floorPrice, item.marginPercent, item.status, item.error ?? "", item.catalogMatch ? "Yes" : "No", item.notes ?? "",
@@ -441,6 +484,35 @@ export default function PricingWorkspace() {
       downloadTextFile(`partpulse-bulk-pricing-${bulkJob.id}.csv`, csv);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to export results");
+    }
+  }
+
+  async function openBulkHistoryJob(jobId: string) {
+    setError("");
+    setOpenMarketItemId(null);
+    setOpenCalculatorItemId(null);
+    try {
+      if (demo) {
+        setBulkJob((current) => current ?? {
+          id: jobId,
+          marketplace: "EBAY_US",
+          defaultCondition: "USED",
+          targetMarginPercent: 20,
+          status: "COMPLETED",
+          totalItems: 0,
+          completedItems: 0,
+          noMatchItems: 0,
+          failedItems: 0,
+          sourceFilename: "demo-history.csv",
+          lastError: null,
+          items: [],
+        });
+        return;
+      }
+      const job = await apiFetch(`/api/pricing/bulk/${jobId}`) as BulkPricingJob;
+      setBulkJob(job);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to open pricing job");
     }
   }
 
@@ -724,6 +796,48 @@ export default function PricingWorkspace() {
             <div className={styles.notice}>Development preview — upload any CSV to see sample bulk results.</div>
           )}
 
+          <section className={styles.historyPanel}>
+            <div className={styles.historyHead}>
+              <div>
+                <span className={styles.eyebrow}>Pricing history</span>
+                <h3>Bulk pricing jobs</h3>
+                <p>Open a previous upload, monitor running jobs, or download completed pricing results.</p>
+              </div>
+              <button type="button" className={styles.ghostBtn} onClick={() => void loadBulkHistory()} disabled={historyBusy}>
+                {historyBusy ? "Refreshing…" : "Refresh history"}
+              </button>
+            </div>
+            {bulkHistory.length ? (
+              <div className={styles.historyList}>
+                {bulkHistory.map((job) => {
+                  const processed = job.completedItems + job.noMatchItems + job.failedItems;
+                  const created = job.createdAt ? new Date(job.createdAt).toLocaleString() : "—";
+                  return (
+                    <article key={job.id} className={bulkJob?.id === job.id ? styles.historyActive : undefined}>
+                      <div>
+                        <b>{job.sourceFilename || job.id}</b>
+                        <span>{job.marketplace.replace("EBAY_", "eBay ")} · {job.defaultCondition} · {job.targetMarginPercent ?? 20}% margin</span>
+                      </div>
+                      <div>
+                        <b>{processed}/{job.totalItems}</b>
+                        <span>{job.noMatchItems ? `${job.noMatchItems} no match` : "All matched so far"}</span>
+                      </div>
+                      <div>
+                        <b>{created}</b>
+                        <span>{job.status.toLowerCase().replaceAll("_", " ")}</span>
+                      </div>
+                      <button type="button" onClick={() => void openBulkHistoryJob(job.id)}>
+                        {bulkJob?.id === job.id ? "Opened" : "Open job"}
+                      </button>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className={styles.historyEmpty}>No bulk pricing jobs yet. Start an upload and it will appear here.</div>
+            )}
+          </section>
+
           {bulkJob && (
             <section className={styles.results} aria-live="polite">
               <div className={styles.resultHead}>
@@ -763,7 +877,7 @@ export default function PricingWorkspace() {
                     </tr>
                   </thead>
                   <tbody>
-                    {bulkJob.items.map((item) => (
+                    {(bulkJob.items ?? []).map((item) => (
                       <Fragment key={item.id}>
                       <tr className={openMarketItemId === item.id || openCalculatorItemId === item.id ? styles.expandedSourceRow : undefined}>
                         <td>
