@@ -8,7 +8,7 @@ import { inlineJobOptions, runWithRetry, type JobRunOptions } from "./job-runtim
 import { calculateGovernedPrice, getOrganizationPricingRule } from "./pricing-governance-service.js";
 import { selectExactCompetitors } from "./pricing-service.js";
 import { searchEbay } from "./providers/ebay.js";
-import type { ListingCondition, Marketplace } from "./types.js";
+import type { ListingCondition, Marketplace, MatchedListing } from "./types.js";
 
 export const BULK_PRICING_MAX_ROWS = 50;
 export const bulkPricingTemplateFilename = "partpulse-bulk-pricing-template.csv";
@@ -29,6 +29,19 @@ export type BulkPricingRowInput = {
   currency: string;
   condition: ListingCondition;
   notes: string | null;
+};
+
+type BulkCompetitor = {
+  listingId: string;
+  title: string;
+  seller: string;
+  price: number;
+  shipping: number;
+  currency: string;
+  condition: string;
+  marketplace: Marketplace;
+  url: string;
+  matchedOn: string[];
 };
 
 const activeJobs = new Set<string>();
@@ -158,6 +171,7 @@ function serializeItem<T extends {
   sellingPrice: Prisma.Decimal | null;
   floorPrice: Prisma.Decimal | null;
   marginPercent: Prisma.Decimal | null;
+  competitors?: Prisma.JsonValue | null;
 }>(item: T) {
   return {
     ...item,
@@ -170,6 +184,7 @@ function serializeItem<T extends {
     sellingPrice: numberOrNull(item.sellingPrice),
     floorPrice: numberOrNull(item.floorPrice),
     marginPercent: numberOrNull(item.marginPercent),
+    competitors: Array.isArray(item.competitors) ? item.competitors : [],
   };
 }
 
@@ -184,12 +199,32 @@ function serializeJob<T extends {
     sellingPrice: Prisma.Decimal | null;
     floorPrice: Prisma.Decimal | null;
     marginPercent: Prisma.Decimal | null;
+    competitors?: Prisma.JsonValue | null;
   }>;
 }>(job: T) {
   return {
     ...job,
     items: job.items?.map(serializeItem),
   };
+}
+
+function ebayListingId(id: string) {
+  return id.startsWith("v1|") ? (id.split("|")[1] ?? id) : id;
+}
+
+function serializeCompetitors(listings: MatchedListing[]): BulkCompetitor[] {
+  return listings.slice(0, 12).map((listing) => ({
+    listingId: ebayListingId(listing.id),
+    title: listing.title,
+    seller: listing.seller,
+    price: listing.price,
+    shipping: listing.shipping,
+    currency: listing.currency,
+    condition: listing.condition,
+    marketplace: listing.marketplace,
+    url: listing.url,
+    matchedOn: listing.matchedOn,
+  }));
 }
 
 async function refreshJobProgress(jobId: string) {
@@ -251,6 +286,7 @@ async function processBulkItem(
         data: {
           status: "NO_MATCHES",
           competitorCount: 0,
+          competitors: [],
           completedAt,
         },
       });
@@ -282,6 +318,7 @@ async function processBulkItem(
         sellingPrice: governed.proposedPrice,
         floorPrice: governed.floorPrice,
         marginPercent,
+        competitors: serializeCompetitors(listings) as unknown as Prisma.InputJsonValue,
         error: null,
         completedAt,
       },

@@ -488,6 +488,236 @@
   text-decoration: underline;
 }
 
+.priceAction {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  margin: -2px -6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #0c274d;
+  font-weight: 800;
+  font: inherit;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.priceAction:hover {
+  background: #eaf2ff;
+  color: #0052ff;
+}
+
+.sellingPriceAction {
+  color: #0c274d;
+  font-size: 15px;
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(8, 22, 45, 0.44);
+  backdrop-filter: blur(4px);
+}
+
+.modal {
+  width: min(920px, 96vw);
+  max-height: min(780px, 92vh);
+  overflow: auto;
+  border: 1px solid #dbe5f1;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 30px 80px rgba(8, 22, 45, 0.24);
+}
+
+.calculatorModal {
+  width: min(680px, 96vw);
+}
+
+.modalHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 24px 28px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.modalHeader h3 {
+  margin: 8px 0 4px;
+  color: #0c274d;
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.modalHeader p {
+  margin: 0;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.modalClose {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid #dbe5f1;
+  border-radius: 10px;
+  background: #fff;
+  color: #0c274d;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.modalClose:hover {
+  border-color: #0052ff;
+  color: #0052ff;
+}
+
+.modalSummary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-bottom: 1px solid #eef2f7;
+  background: #f8fafc;
+}
+
+.modalSummary div {
+  padding: 18px 28px;
+  border-right: 1px solid #eef2f7;
+}
+
+.modalSummary div:last-child {
+  border-right: 0;
+}
+
+.modalSummary span,
+.calculatorRow span,
+.formulaBox span {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.modalSummary b {
+  display: block;
+  margin-top: 6px;
+  color: #0c274d;
+  font-size: 22px;
+}
+
+.competitorList {
+  display: grid;
+  gap: 12px;
+  padding: 20px 28px 28px;
+}
+
+.competitorCard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.75fr);
+  gap: 18px;
+  align-items: center;
+  padding: 16px;
+  border: 1px solid #edf2f7;
+  border-radius: 14px;
+  background: #fff;
+  color: #0f172a;
+  text-decoration: none;
+}
+
+.competitorCard:hover {
+  border-color: #b9cdf5;
+  background: #f8fbff;
+  text-decoration: none;
+}
+
+.competitorInfo b,
+.competitorInfo small {
+  display: block;
+}
+
+.competitorInfo b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.competitorInfo small {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.priceBreakdown {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.priceBreakdown span {
+  padding: 10px;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.priceBreakdown b {
+  display: block;
+  margin-top: 5px;
+  color: #0c274d;
+  font-size: 14px;
+  text-transform: none;
+}
+
+.calculatorPanel {
+  display: grid;
+  gap: 10px;
+  padding: 24px 28px 16px;
+}
+
+.calculatorRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 15px 16px;
+  border: 1px solid #edf2f7;
+  border-radius: 14px;
+  background: #fbfdff;
+}
+
+.calculatorRow b {
+  color: #0c274d;
+  font-size: 18px;
+}
+
+.formulaBox {
+  margin: 0 28px 28px;
+  padding: 18px;
+  border: 1px solid #bdd7ff;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #f4f8ff, #ffffff);
+  color: #0c274d;
+}
+
+.formulaBox b {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.formulaBox p {
+  margin: 0 0 12px;
+  color: #52637a;
+  line-height: 1.6;
+}
+
 .subtle {
   display: block;
   margin-top: 4px;

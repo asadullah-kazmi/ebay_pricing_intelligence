@@ -965,6 +965,7 @@ model BulkPricingJobItem {
   sellingPrice       Decimal?             @db.Decimal(12, 2)
   floorPrice         Decimal?             @db.Decimal(12, 2)
   marginPercent      Decimal?             @db.Decimal(8, 2)
+  competitors        Json?
   error              String?
   startedAt          DateTime?
   completedAt        DateTime?

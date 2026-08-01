@@ -53,6 +53,18 @@ type BulkPricingItem = {
   sellingPrice: number | null;
   floorPrice: number | null;
   marginPercent: number | null;
+  competitors: Array<{
+    listingId: string;
+    title: string;
+    seller: string;
+    price: number;
+    shipping: number;
+    currency: string;
+    condition: string;
+    marketplace: string;
+    url: string;
+    matchedOn: string[];
+  }>;
   error: string | null;
 };
 
@@ -131,6 +143,19 @@ function ebayListingId(id: string) {
   return id.startsWith("v1|") ? (id.split("|")[1] ?? id) : id;
 }
 
+function landedAmount(price: number, shipping: number) {
+  return Math.round((price + shipping) * 100) / 100;
+}
+
+function visibleSellingFormula(item: BulkPricingItem) {
+  if (item.marketRecommended === null || item.floorPrice === null || item.sellingPrice === null) return null;
+  const visibleResult = Math.max(item.marketRecommended, item.floorPrice);
+  if (Math.abs(visibleResult - item.sellingPrice) < 0.01) {
+    return `Result: max(${money(item.marketRecommended, item.currency)}, ${money(item.floorPrice, item.currency)}) = ${money(item.sellingPrice, item.currency)}`;
+  }
+  return `Result: pricing rule output = ${money(item.sellingPrice, item.currency)} after market adjustment and margin-floor checks.`;
+}
+
 function downloadTextFile(filename: string, content: string, mime = "text/csv;charset=utf-8") {
   const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
@@ -153,6 +178,8 @@ export default function PricingWorkspace() {
   const [bulkFile, setBulkFile] = useState<File | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkJob, setBulkJob] = useState<BulkPricingJob | null>(null);
+  const [marketModalItem, setMarketModalItem] = useState<BulkPricingItem | null>(null);
+  const [calculatorItem, setCalculatorItem] = useState<BulkPricingItem | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -251,6 +278,10 @@ export default function PricingWorkspace() {
               sellingPrice: 92,
               floorPrice: 66.25,
               marginPercent: 51.09,
+              competitors: [
+                { listingId: "336012345678", title: "Audi A4 A5 Q5 Rear Brake Caliper 8K0615301M Left Driver Side Used", seller: "euroautoparts_us", price: 79.99, shipping: 12.5, currency: "USD", condition: "USED", marketplace: "EBAY_US", url: "https://www.ebay.com", matchedOn: ["OE/OEM Part Number"] },
+                { listingId: "336098765432", title: "OEM Audi Rear Caliper Assembly 8K0615301M Tested", seller: "germanparts_direct", price: 89, shipping: 0, currency: "USD", condition: "USED", marketplace: "EBAY_US", url: "https://www.ebay.com", matchedOn: ["Manufacturer Part Number"] },
+              ],
               error: null,
             },
             {
@@ -273,6 +304,9 @@ export default function PricingWorkspace() {
               sellingPrice: 115.64,
               floorPrice: 88.13,
               marginPercent: 45.95,
+              competitors: [
+                { listingId: "335511223344", title: "BMW Brake Caliper 34116791244 OEM Used", seller: "bmw_parts_house", price: 109.95, shipping: 8.99, currency: "USD", condition: "USED", marketplace: "EBAY_US", url: "https://www.ebay.com", matchedOn: ["OE/OEM Part Number"] },
+              ],
               error: null,
             },
           ],
@@ -354,7 +388,7 @@ export default function PricingWorkspace() {
               <ul className={styles.trustList}>
                 <li>Exact item-specific verification</li>
                 <li>Own sellers excluded</li>
-                <li>Shipping included</li>
+                <li>Selling price only</li>
               </ul>
             </div>
 
@@ -362,8 +396,8 @@ export default function PricingWorkspace() {
               <label className={styles.oemField}>
                 <span>OEM / MPN / Interchange number</span>
                 <input
-                  value={oem}
-                  onChange={(event) => setOem(event.target.value)}
+                  value={oem ?? ""}
+                  onChange={(event) => setOem(event.currentTarget.value ?? "")}
                   placeholder="e.g. 8K0615301M"
                   required
                   autoComplete="off"
@@ -372,7 +406,7 @@ export default function PricingWorkspace() {
               <div className={styles.searchRow}>
                 <label>
                   <span>Marketplace</span>
-                  <select value={marketplace} onChange={(event) => setMarketplace(event.target.value)}>
+                  <select value={marketplace ?? "EBAY_US"} onChange={(event) => setMarketplace(event.currentTarget.value || "EBAY_US")}>
                     <option value="EBAY_US">eBay US</option>
                     <option value="EBAY_GB">eBay UK</option>
                     <option value="EBAY_DE">eBay DE</option>
@@ -381,8 +415,8 @@ export default function PricingWorkspace() {
                 <label>
                   <span>Condition</span>
                   <select
-                    value={condition}
-                    onChange={(event) => setCondition(event.target.value as "ANY" | "NEW" | "USED")}
+                    value={condition ?? "ANY"}
+                    onChange={(event) => setCondition((event.currentTarget.value || "ANY") as "ANY" | "NEW" | "USED")}
                     aria-label="Listing condition"
                   >
                     <option value="ANY">Any condition</option>
@@ -546,7 +580,7 @@ export default function PricingWorkspace() {
               <div className={styles.searchRow}>
                 <label>
                   <span>Marketplace</span>
-                  <select value={marketplace} onChange={(event) => setMarketplace(event.target.value)}>
+                  <select value={marketplace ?? "EBAY_US"} onChange={(event) => setMarketplace(event.currentTarget.value || "EBAY_US")}>
                     <option value="EBAY_US">eBay US</option>
                     <option value="EBAY_GB">eBay UK</option>
                     <option value="EBAY_DE">eBay DE</option>
@@ -555,8 +589,8 @@ export default function PricingWorkspace() {
                 <label>
                   <span>Default condition</span>
                   <select
-                    value={condition}
-                    onChange={(event) => setCondition(event.target.value as "ANY" | "NEW" | "USED")}
+                    value={condition ?? "ANY"}
+                    onChange={(event) => setCondition((event.currentTarget.value || "ANY") as "ANY" | "NEW" | "USED")}
                   >
                     <option value="ANY">Any condition</option>
                     <option value="NEW">New only</option>
@@ -630,16 +664,30 @@ export default function PricingWorkspace() {
                         </td>
                         <td>{money(item.costPrice, item.currency)}</td>
                         <td>
-                          {item.marketRecommended != null
-                            ? money(item.marketRecommended, item.currency)
-                            : "—"}
+                          {item.marketRecommended != null ? (
+                            <button
+                              type="button"
+                              className={styles.priceAction}
+                              onClick={() => setMarketModalItem(item)}
+                              aria-label={`View competitors for ${item.sku}`}
+                            >
+                              {money(item.marketRecommended, item.currency)}
+                            </button>
+                          ) : "—"}
                           {item.competitorCount > 0 ? (
                             <span className={styles.subtle}>{item.competitorCount} comps · med {item.median != null ? money(item.median, item.currency) : "—"}</span>
                           ) : null}
                         </td>
                         <td>
                           {item.sellingPrice != null ? (
-                            <b className={styles.landed}>{money(item.sellingPrice, item.currency)}</b>
+                            <button
+                              type="button"
+                              className={`${styles.priceAction} ${styles.sellingPriceAction}`}
+                              onClick={() => setCalculatorItem(item)}
+                              aria-label={`View selling price calculation for ${item.sku}`}
+                            >
+                              {money(item.sellingPrice, item.currency)}
+                            </button>
                           ) : "—"}
                           {item.floorPrice != null ? (
                             <span className={styles.subtle}>Floor {money(item.floorPrice, item.currency)}</span>
@@ -659,6 +707,140 @@ export default function PricingWorkspace() {
           )}
         </>
       )}
+
+      {marketModalItem ? (
+        <div
+          className={styles.modalBackdrop}
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setMarketModalItem(null);
+          }}
+        >
+          <section className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="market-modal-title">
+            <header className={styles.modalHeader}>
+              <div>
+                <span className={styles.eyebrow}>Competitor evidence</span>
+                <h3 id="market-modal-title">{marketModalItem.sku}</h3>
+                <p>{marketModalItem.brand} · {marketModalItem.partNumber} · {marketModalItem.condition}</p>
+              </div>
+              <button type="button" className={styles.modalClose} onClick={() => setMarketModalItem(null)} aria-label="Close competitor details">
+                Close
+              </button>
+            </header>
+
+            <div className={styles.modalSummary}>
+              <div>
+                <span>Market estimate</span>
+                <b>{marketModalItem.marketRecommended != null ? money(marketModalItem.marketRecommended, marketModalItem.currency) : "—"}</b>
+              </div>
+              <div>
+                <span>Median</span>
+                <b>{marketModalItem.median != null ? money(marketModalItem.median, marketModalItem.currency) : "—"}</b>
+              </div>
+              <div>
+                <span>Competitors</span>
+                <b>{marketModalItem.competitorCount}</b>
+              </div>
+            </div>
+
+            {(marketModalItem.competitors ?? []).length ? (
+              <div className={styles.competitorList}>
+                {(marketModalItem.competitors ?? []).map((competitor) => (
+                  <a key={`${marketModalItem.id}-${competitor.listingId}`} href={competitor.url} target="_blank" rel="noreferrer" className={styles.competitorCard}>
+                    <div className={styles.competitorInfo}>
+                      <b>{competitor.title}</b>
+                      <small>ID {competitor.listingId} · {competitor.seller} · {competitor.condition}</small>
+                      {competitor.matchedOn.length ? <small>Matched: {competitor.matchedOn.join(", ")}</small> : null}
+                    </div>
+                    <div className={styles.priceBreakdown}>
+                      <span>
+                        Selling
+                        <b>{money(competitor.price, competitor.currency)}</b>
+                      </span>
+                      <span>
+                        Shipping
+                        <b>{money(competitor.shipping, competitor.currency)}</b>
+                      </span>
+                      <span>
+                        Landing
+                        <b>{money(landedAmount(competitor.price, competitor.shipping), competitor.currency)}</b>
+                      </span>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <div className={styles.empty}>
+                <b>No competitors stored for this row.</b>
+                <span>Run pricing again after the latest backend update if this was priced before competitor snapshots were saved.</span>
+              </div>
+            )}
+          </section>
+        </div>
+      ) : null}
+
+      {calculatorItem ? (
+        <div
+          className={styles.modalBackdrop}
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setCalculatorItem(null);
+          }}
+        >
+          <section className={`${styles.modal} ${styles.calculatorModal}`} role="dialog" aria-modal="true" aria-labelledby="calculator-modal-title">
+            <header className={styles.modalHeader}>
+              <div>
+                <span className={styles.eyebrow}>Selling price calculator</span>
+                <h3 id="calculator-modal-title">{calculatorItem.sku}</h3>
+                <p>{calculatorItem.brand} · {calculatorItem.partNumber} · {calculatorItem.condition}</p>
+              </div>
+              <button type="button" className={styles.modalClose} onClick={() => setCalculatorItem(null)} aria-label="Close selling price calculator">
+                Close
+              </button>
+            </header>
+
+            <div className={styles.calculatorPanel}>
+              <div className={styles.calculatorRow}>
+                <span>Cost</span>
+                <b>{money(calculatorItem.costPrice, calculatorItem.currency)}</b>
+              </div>
+              <div className={styles.calculatorRow}>
+                <span>Market estimate</span>
+                <b>{calculatorItem.marketRecommended != null ? money(calculatorItem.marketRecommended, calculatorItem.currency) : "—"}</b>
+              </div>
+              <div className={styles.calculatorRow}>
+                <span>Margin floor price</span>
+                <b>{calculatorItem.floorPrice != null ? money(calculatorItem.floorPrice, calculatorItem.currency) : "—"}</b>
+              </div>
+              <div className={styles.calculatorRow}>
+                <span>Selected selling price</span>
+                <b>{calculatorItem.sellingPrice != null ? money(calculatorItem.sellingPrice, calculatorItem.currency) : "—"}</b>
+              </div>
+              <div className={styles.calculatorRow}>
+                <span>Estimated gross profit</span>
+                <b>
+                  {calculatorItem.sellingPrice != null
+                    ? money(Math.round((calculatorItem.sellingPrice - calculatorItem.costPrice) * 100) / 100, calculatorItem.currency)
+                    : "—"}
+                </b>
+              </div>
+              <div className={styles.calculatorRow}>
+                <span>Estimated margin</span>
+                <b>{calculatorItem.marginPercent != null ? `${calculatorItem.marginPercent.toFixed(1)}%` : "—"}</b>
+              </div>
+            </div>
+
+            <div className={styles.formulaBox}>
+              <b>How PartPulse chose it</b>
+              <p>
+                We estimate the market from competitor selling prices only, then protect your margin with the floor price.
+                Shipping is shown in competitor evidence, but it is not included in your selling price recommendation.
+              </p>
+              {visibleSellingFormula(calculatorItem) ? <span>{visibleSellingFormula(calculatorItem)}</span> : null}
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
