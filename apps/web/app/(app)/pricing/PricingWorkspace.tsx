@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { Fragment, FormEvent, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../components/AuthProvider";
 import styles from "./pricing.module.css";
 
@@ -172,14 +172,15 @@ export default function PricingWorkspace() {
   const [oem, setOem] = useState("8K0615301M");
   const [marketplace, setMarketplace] = useState("EBAY_US");
   const [condition, setCondition] = useState<"ANY" | "NEW" | "USED">("ANY");
+  const [bulkCurrency, setBulkCurrency] = useState("USD");
   const [result, setResult] = useState<SearchResult | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [bulkFile, setBulkFile] = useState<File | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkJob, setBulkJob] = useState<BulkPricingJob | null>(null);
-  const [marketModalItem, setMarketModalItem] = useState<BulkPricingItem | null>(null);
-  const [calculatorItem, setCalculatorItem] = useState<BulkPricingItem | null>(null);
+  const [openMarketItemId, setOpenMarketItemId] = useState<string | null>(null);
+  const [openCalculatorItemId, setOpenCalculatorItemId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -227,7 +228,7 @@ export default function PricingWorkspace() {
       if (demo) {
         downloadTextFile(
           "partpulse-bulk-pricing-template.csv",
-          ["SKU,PartNumber,Brand,CostPrice,Currency,Condition,Notes", "AUDI-8K0615301M,8K0615301M,Audi,45.00,USD,USED,Example rear caliper"].join("\n"),
+          ["PartNumber,Brand,CostPrice,Notes", "8K0615301M,Audi,45.00,Example rear caliper"].join("\n"),
         );
         return;
       }
@@ -316,7 +317,7 @@ export default function PricingWorkspace() {
 
       const bytes = await bulkFile.arrayBuffer();
       const job = await apiFetch(
-        `/api/pricing/bulk?marketplace=${encodeURIComponent(marketplace)}&condition=${encodeURIComponent(condition)}`,
+        `/api/pricing/bulk?marketplace=${encodeURIComponent(marketplace)}&condition=${encodeURIComponent(condition)}&currency=${encodeURIComponent(bulkCurrency)}`,
         {
           method: "POST",
           headers: {
@@ -597,12 +598,22 @@ export default function PricingWorkspace() {
                     <option value="USED">Used only</option>
                   </select>
                 </label>
+                <label>
+                  <span>Currency</span>
+                  <input
+                    value={bulkCurrency}
+                    onChange={(event) => setBulkCurrency(event.currentTarget.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3))}
+                    placeholder="USD"
+                    maxLength={3}
+                    required
+                  />
+                </label>
                 <button type="submit" className={styles.primary} disabled={bulkBusy || !bulkFile}>
                   {bulkBusy ? "Uploading…" : "Run bulk pricing"}
                 </button>
               </div>
               <p className={styles.bulkHint}>
-                Required columns: SKU, PartNumber, Brand, CostPrice. Optional: Currency, Condition, Notes.
+                Required columns: PartNumber, Brand, CostPrice. Optional: Notes. Currency and condition are applied from this upload form.
               </p>
             </form>
           </section>
@@ -653,7 +664,8 @@ export default function PricingWorkspace() {
                   </thead>
                   <tbody>
                     {bulkJob.items.map((item) => (
-                      <tr key={item.id}>
+                      <Fragment key={item.id}>
+                      <tr className={openMarketItemId === item.id || openCalculatorItemId === item.id ? styles.expandedSourceRow : undefined}>
                         <td>
                           <b>{item.sku}</b>
                           {item.catalogMatch ? <span className={styles.subtle}>Catalog match</span> : null}
@@ -668,7 +680,11 @@ export default function PricingWorkspace() {
                             <button
                               type="button"
                               className={styles.priceAction}
-                              onClick={() => setMarketModalItem(item)}
+                              onClick={() => {
+                                setOpenMarketItemId((current) => current === item.id ? null : item.id);
+                                setOpenCalculatorItemId(null);
+                              }}
+                              aria-expanded={openMarketItemId === item.id}
                               aria-label={`View competitors for ${item.sku}`}
                             >
                               {money(item.marketRecommended, item.currency)}
@@ -683,7 +699,11 @@ export default function PricingWorkspace() {
                             <button
                               type="button"
                               className={`${styles.priceAction} ${styles.sellingPriceAction}`}
-                              onClick={() => setCalculatorItem(item)}
+                              onClick={() => {
+                                setOpenCalculatorItemId((current) => current === item.id ? null : item.id);
+                                setOpenMarketItemId(null);
+                              }}
+                              aria-expanded={openCalculatorItemId === item.id}
                               aria-label={`View selling price calculation for ${item.sku}`}
                             >
                               {money(item.sellingPrice, item.currency)}
@@ -699,6 +719,73 @@ export default function PricingWorkspace() {
                           {item.error ? <span className={styles.subtle}>{item.error}</span> : null}
                         </td>
                       </tr>
+                      {openMarketItemId === item.id ? (
+                        <tr className={styles.expandedDetailRow}>
+                          <td colSpan={7}>
+                            <div className={styles.expandedDetail}>
+                              <div className={styles.inlineDropdownHead}>
+                                <div>
+                                  <b>Competitor evidence</b>
+                                  <span>{item.competitorCount} competitors · Market {item.marketRecommended != null ? money(item.marketRecommended, item.currency) : "—"}</span>
+                                </div>
+                                <button type="button" onClick={() => setOpenMarketItemId(null)} aria-label="Close competitor details">Close</button>
+                              </div>
+                              {(item.competitors ?? []).length ? (
+                                <div className={styles.competitorList}>
+                                  {(item.competitors ?? []).map((competitor) => (
+                                    <a key={`${item.id}-${competitor.listingId}`} href={competitor.url} target="_blank" rel="noreferrer" className={styles.competitorCard}>
+                                      <div className={styles.competitorInfo}>
+                                        <b>{competitor.title}</b>
+                                        <small>ID {competitor.listingId} · {competitor.seller} · {competitor.condition}</small>
+                                        {competitor.matchedOn.length ? <small>Matched: {competitor.matchedOn.join(", ")}</small> : null}
+                                      </div>
+                                      <div className={styles.priceBreakdown}>
+                                        <span>Selling <b>{money(competitor.price, competitor.currency)}</b></span>
+                                        <span>Shipping <b>{money(competitor.shipping, competitor.currency)}</b></span>
+                                        <span>Landing <b>{money(landedAmount(competitor.price, competitor.shipping), competitor.currency)}</b></span>
+                                      </div>
+                                    </a>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className={styles.inlineEmpty}>No competitors stored for this row.</div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                      {openCalculatorItemId === item.id ? (
+                        <tr className={styles.expandedDetailRow}>
+                          <td colSpan={7}>
+                            <div className={styles.expandedDetail}>
+                              <div className={styles.inlineDropdownHead}>
+                                <div>
+                                  <b>Selling price calculator</b>
+                                  <span>{item.sku} · {item.partNumber}</span>
+                                </div>
+                                <button type="button" onClick={() => setOpenCalculatorItemId(null)} aria-label="Close calculator details">Close</button>
+                              </div>
+                              <div className={styles.calculatorPanel}>
+                                <div className={styles.calculatorRow}><span>Cost</span><b>{money(item.costPrice, item.currency)}</b></div>
+                                <div className={styles.calculatorRow}><span>Market estimate</span><b>{item.marketRecommended != null ? money(item.marketRecommended, item.currency) : "—"}</b></div>
+                                <div className={styles.calculatorRow}><span>Margin floor price</span><b>{item.floorPrice != null ? money(item.floorPrice, item.currency) : "—"}</b></div>
+                                <div className={styles.calculatorRow}><span>Selected selling price</span><b>{item.sellingPrice != null ? money(item.sellingPrice, item.currency) : "—"}</b></div>
+                                <div className={styles.calculatorRow}>
+                                  <span>Estimated gross profit</span>
+                                  <b>{item.sellingPrice != null ? money(Math.round((item.sellingPrice - item.costPrice) * 100) / 100, item.currency) : "—"}</b>
+                                </div>
+                                <div className={styles.calculatorRow}><span>Estimated margin</span><b>{item.marginPercent != null ? `${item.marginPercent.toFixed(1)}%` : "—"}</b></div>
+                              </div>
+                              <div className={styles.formulaBox}>
+                                <b>How PartPulse chose it</b>
+                                <p>Market uses competitor selling prices only. Shipping is visible for review, but not included in the recommended selling price.</p>
+                                {visibleSellingFormula(item) ? <span>{visibleSellingFormula(item)}</span> : null}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>
@@ -707,140 +794,6 @@ export default function PricingWorkspace() {
           )}
         </>
       )}
-
-      {marketModalItem ? (
-        <div
-          className={styles.modalBackdrop}
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setMarketModalItem(null);
-          }}
-        >
-          <section className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="market-modal-title">
-            <header className={styles.modalHeader}>
-              <div>
-                <span className={styles.eyebrow}>Competitor evidence</span>
-                <h3 id="market-modal-title">{marketModalItem.sku}</h3>
-                <p>{marketModalItem.brand} · {marketModalItem.partNumber} · {marketModalItem.condition}</p>
-              </div>
-              <button type="button" className={styles.modalClose} onClick={() => setMarketModalItem(null)} aria-label="Close competitor details">
-                Close
-              </button>
-            </header>
-
-            <div className={styles.modalSummary}>
-              <div>
-                <span>Market estimate</span>
-                <b>{marketModalItem.marketRecommended != null ? money(marketModalItem.marketRecommended, marketModalItem.currency) : "—"}</b>
-              </div>
-              <div>
-                <span>Median</span>
-                <b>{marketModalItem.median != null ? money(marketModalItem.median, marketModalItem.currency) : "—"}</b>
-              </div>
-              <div>
-                <span>Competitors</span>
-                <b>{marketModalItem.competitorCount}</b>
-              </div>
-            </div>
-
-            {(marketModalItem.competitors ?? []).length ? (
-              <div className={styles.competitorList}>
-                {(marketModalItem.competitors ?? []).map((competitor) => (
-                  <a key={`${marketModalItem.id}-${competitor.listingId}`} href={competitor.url} target="_blank" rel="noreferrer" className={styles.competitorCard}>
-                    <div className={styles.competitorInfo}>
-                      <b>{competitor.title}</b>
-                      <small>ID {competitor.listingId} · {competitor.seller} · {competitor.condition}</small>
-                      {competitor.matchedOn.length ? <small>Matched: {competitor.matchedOn.join(", ")}</small> : null}
-                    </div>
-                    <div className={styles.priceBreakdown}>
-                      <span>
-                        Selling
-                        <b>{money(competitor.price, competitor.currency)}</b>
-                      </span>
-                      <span>
-                        Shipping
-                        <b>{money(competitor.shipping, competitor.currency)}</b>
-                      </span>
-                      <span>
-                        Landing
-                        <b>{money(landedAmount(competitor.price, competitor.shipping), competitor.currency)}</b>
-                      </span>
-                    </div>
-                  </a>
-                ))}
-              </div>
-            ) : (
-              <div className={styles.empty}>
-                <b>No competitors stored for this row.</b>
-                <span>Run pricing again after the latest backend update if this was priced before competitor snapshots were saved.</span>
-              </div>
-            )}
-          </section>
-        </div>
-      ) : null}
-
-      {calculatorItem ? (
-        <div
-          className={styles.modalBackdrop}
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setCalculatorItem(null);
-          }}
-        >
-          <section className={`${styles.modal} ${styles.calculatorModal}`} role="dialog" aria-modal="true" aria-labelledby="calculator-modal-title">
-            <header className={styles.modalHeader}>
-              <div>
-                <span className={styles.eyebrow}>Selling price calculator</span>
-                <h3 id="calculator-modal-title">{calculatorItem.sku}</h3>
-                <p>{calculatorItem.brand} · {calculatorItem.partNumber} · {calculatorItem.condition}</p>
-              </div>
-              <button type="button" className={styles.modalClose} onClick={() => setCalculatorItem(null)} aria-label="Close selling price calculator">
-                Close
-              </button>
-            </header>
-
-            <div className={styles.calculatorPanel}>
-              <div className={styles.calculatorRow}>
-                <span>Cost</span>
-                <b>{money(calculatorItem.costPrice, calculatorItem.currency)}</b>
-              </div>
-              <div className={styles.calculatorRow}>
-                <span>Market estimate</span>
-                <b>{calculatorItem.marketRecommended != null ? money(calculatorItem.marketRecommended, calculatorItem.currency) : "—"}</b>
-              </div>
-              <div className={styles.calculatorRow}>
-                <span>Margin floor price</span>
-                <b>{calculatorItem.floorPrice != null ? money(calculatorItem.floorPrice, calculatorItem.currency) : "—"}</b>
-              </div>
-              <div className={styles.calculatorRow}>
-                <span>Selected selling price</span>
-                <b>{calculatorItem.sellingPrice != null ? money(calculatorItem.sellingPrice, calculatorItem.currency) : "—"}</b>
-              </div>
-              <div className={styles.calculatorRow}>
-                <span>Estimated gross profit</span>
-                <b>
-                  {calculatorItem.sellingPrice != null
-                    ? money(Math.round((calculatorItem.sellingPrice - calculatorItem.costPrice) * 100) / 100, calculatorItem.currency)
-                    : "—"}
-                </b>
-              </div>
-              <div className={styles.calculatorRow}>
-                <span>Estimated margin</span>
-                <b>{calculatorItem.marginPercent != null ? `${calculatorItem.marginPercent.toFixed(1)}%` : "—"}</b>
-              </div>
-            </div>
-
-            <div className={styles.formulaBox}>
-              <b>How PartPulse chose it</b>
-              <p>
-                We estimate the market from competitor selling prices only, then protect your margin with the floor price.
-                Shipping is shown in competitor evidence, but it is not included in your selling price recommendation.
-              </p>
-              {visibleSellingFormula(calculatorItem) ? <span>{visibleSellingFormula(calculatorItem)}</span> : null}
-            </div>
-          </section>
-        </div>
-      ) : null}
     </div>
   );
 }

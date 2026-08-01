@@ -4,36 +4,40 @@ import { createBulkPricingTemplateCsv, parseBulkPricingCsv } from "./bulk-pricin
 describe("bulk pricing sheet parser", () => {
   it("parses required columns and defaults currency/condition", () => {
     const rows = parseBulkPricingCsv(
-      ["SKU,PartNumber,Brand,CostPrice", "AUDI-1,8K0615301M,Audi,45.5"].join("\n"),
-      { marketplace: "EBAY_US", condition: "USED" },
+      ["PartNumber,Brand,CostPrice", "8K0615301M,Audi,45.5"].join("\n"),
+      { marketplace: "EBAY_US", condition: "USED", currency: "GBP" },
     );
     expect(rows).toEqual([{
       rowNumber: 1,
-      sku: "AUDI-1",
+      sku: "AUDI-8K0615301M-001",
       partNumber: "8K0615301M",
       brand: "Audi",
       costPrice: 45.5,
-      currency: "USD",
+      currency: "GBP",
       condition: "USED",
       notes: null,
     }]);
   });
 
-  it("accepts header aliases and row overrides", () => {
+  it("accepts header aliases but uses upload-level currency and condition", () => {
     const rows = parseBulkPricingCsv(
       ["sku,part no,brand,cost,currency,condition,notes", "X,ABC123,BMW,$10.00,GBP,NEW,ok"].join("\n"),
-      { marketplace: "EBAY_US", condition: "ANY" },
+      { marketplace: "EBAY_US", condition: "USED", currency: "USD" },
     );
     expect(rows[0]).toMatchObject({
+      sku: "X",
       partNumber: "ABC123",
       costPrice: 10,
-      currency: "GBP",
-      condition: "NEW",
+      currency: "USD",
+      condition: "USED",
       notes: "ok",
     });
   });
 
   it("exposes a template with required headers", () => {
-    expect(createBulkPricingTemplateCsv()).toContain("SKU,PartNumber,Brand,CostPrice,Currency,Condition,Notes");
+    expect(createBulkPricingTemplateCsv()).toContain("PartNumber,Brand,CostPrice,Notes");
+    expect(createBulkPricingTemplateCsv()).not.toContain("SKU");
+    expect(createBulkPricingTemplateCsv()).not.toContain("Currency");
+    expect(createBulkPricingTemplateCsv()).not.toContain("Condition");
   });
 });

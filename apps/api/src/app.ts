@@ -179,6 +179,7 @@ const pricingJobListSchema = z.object({ limit: z.coerce.number().int().min(1).ma
 const bulkPricingUploadQuerySchema = z.object({
   marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).default("EBAY_US"),
   condition: z.enum(["ANY", "NEW", "USED"]).default("ANY"),
+  currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).default("USD"),
 });
 const bulkPricingFilenameSchema = z.string().trim().min(1).max(255).regex(/\.csv$/i, "Only .csv files are supported for bulk pricing");
 const pricingRoles = requireOrganizationRoles(...organizationPermissionRoles.pricing);
@@ -1112,6 +1113,7 @@ app.post("/api/pricing/bulk", searchRateLimit, requireTenantContext, pricingRole
     const rows = parseBulkPricingCsv(req.body.toString("utf8"), {
       marketplace: query.marketplace,
       condition: query.condition,
+      currency: query.currency,
     });
     const job = await createBulkPricingJob({
       organizationId: tenant.organization.id,

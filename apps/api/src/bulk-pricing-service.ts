@@ -90,17 +90,27 @@ function parseCost(value: string) {
   return Number.isFinite(parsed) && parsed >= 0 ? money(parsed) : null;
 }
 
+function generatedSku(brand: string, partNumber: string, rowNumber: number) {
+  const base = [brand, partNumber]
+    .join("-")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 88);
+  return `${base || "PART"}-${rowNumber.toString().padStart(3, "0")}`;
+}
+
 export function createBulkPricingTemplateCsv() {
   return [
-    "SKU,PartNumber,Brand,CostPrice,Currency,Condition,Notes",
-    "AUDI-8K0615301M,8K0615301M,Audi,45.00,USD,USED,Example rear caliper",
-    "BMW-34116791244,34116791244,BMW,62.50,USD,USED,",
+    "PartNumber,Brand,CostPrice,Notes",
+    "8K0615301M,Audi,45.00,Example rear caliper",
+    "34116791244,BMW,62.50,",
   ].join("\n");
 }
 
 export function parseBulkPricingCsv(
   content: string,
-  defaults: { marketplace: Marketplace; condition: ListingCondition },
+  defaults: { marketplace: Marketplace; condition: ListingCondition; currency?: string },
 ): BulkPricingRowInput[] {
   const records = parseCsv(content, {
     columns: true,
@@ -114,7 +124,8 @@ export function parseBulkPricingCsv(
     throw new BulkPricingError(`Bulk pricing supports up to ${BULK_PRICING_MAX_ROWS} rows per upload. Split the sheet and try again.`);
   }
 
-  const defaultCurrency = marketplaceCurrency(defaults.marketplace);
+  const defaultCurrency = (defaults.currency || marketplaceCurrency(defaults.marketplace)).trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(defaultCurrency)) throw new BulkPricingError("Currency must be a 3-letter code.");
   const rows: BulkPricingRowInput[] = [];
 
   for (let index = 0; index < records.length; index += 1) {
@@ -125,13 +136,11 @@ export function parseBulkPricingCsv(
       if (alias) mapped[alias] = String(value ?? "").trim();
     }
 
-    const sku = mapped.sku ?? "";
     const partNumber = mapped.partNumber ?? "";
     const brand = mapped.brand ?? "";
     const costRaw = mapped.costPrice ?? "";
     const rowLabel = index + 2;
 
-    if (!sku) throw new BulkPricingError(`Row ${rowLabel}: SKU is required.`);
     if (!partNumber || !normalizePartNumber(partNumber)) {
       throw new BulkPricingError(`Row ${rowLabel}: PartNumber is required and must include a letter or number.`);
     }
@@ -139,8 +148,7 @@ export function parseBulkPricingCsv(
     const costPrice = parseCost(costRaw);
     if (costPrice === null) throw new BulkPricingError(`Row ${rowLabel}: CostPrice must be a non-negative number.`);
 
-    const currency = (mapped.currency || defaultCurrency).trim().toUpperCase();
-    if (!/^[A-Z]{3}$/.test(currency)) throw new BulkPricingError(`Row ${rowLabel}: Currency must be a 3-letter code.`);
+    const sku = mapped.sku || generatedSku(brand, partNumber, index + 1);
 
     rows.push({
       rowNumber: index + 1,
@@ -148,8 +156,8 @@ export function parseBulkPricingCsv(
       partNumber: partNumber.slice(0, 100),
       brand: brand.slice(0, 100),
       costPrice,
-      currency,
-      condition: parseCondition(mapped.condition, defaults.condition),
+      currency: defaultCurrency,
+      condition: parseCondition(undefined, defaults.condition),
       notes: mapped.notes?.slice(0, 500) || null,
     });
   }
