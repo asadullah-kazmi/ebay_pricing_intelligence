@@ -192,6 +192,7 @@ function serializeItem<T extends {
 }
 
 function serializeJob<T extends {
+  targetMarginPercent?: Prisma.Decimal | null;
   items?: Array<{
     costPrice: Prisma.Decimal;
     lowest: Prisma.Decimal | null;
@@ -207,6 +208,7 @@ function serializeJob<T extends {
 }>(job: T) {
   return {
     ...job,
+    targetMarginPercent: job.targetMarginPercent === undefined ? undefined : numberOrNull(job.targetMarginPercent),
     items: job.items?.map(serializeItem),
   };
 }
@@ -350,6 +352,7 @@ async function runBulkPricingJob(jobId: string, options: JobRunOptions = inlineJ
       select: {
         organizationId: true,
         marketplace: true,
+        targetMarginPercent: true,
         items: {
           where: { status: "QUEUED" },
           orderBy: { rowNumber: "asc" },
@@ -366,7 +369,9 @@ async function runBulkPricingJob(jobId: string, options: JobRunOptions = inlineJ
     });
     if (!job) return;
 
-    const rule = await getOrganizationPricingRule(job.organizationId);
+    const baseRule = await getOrganizationPricingRule(job.organizationId);
+    const targetMarginPercent = job.targetMarginPercent === null ? baseRule.minimumMarginPercent : Number(job.targetMarginPercent.toString());
+    const rule = { ...baseRule, minimumMarginPercent: targetMarginPercent };
     for (const item of job.items) {
       await processBulkItem(item, job.marketplace as Marketplace, rule, options);
       await refreshJobProgress(jobId);
@@ -391,6 +396,7 @@ export async function createBulkPricingJob(input: {
   userId: string;
   marketplace: Marketplace;
   condition: ListingCondition;
+  targetMarginPercent?: number | null;
   rows: BulkPricingRowInput[];
   sourceFilename?: string | null;
 }) {
@@ -419,6 +425,7 @@ export async function createBulkPricingJob(input: {
       createdById: input.userId,
       marketplace: input.marketplace,
       defaultCondition: input.condition,
+      targetMarginPercent: input.targetMarginPercent ?? null,
       totalItems: input.rows.length,
       sourceFilename: input.sourceFilename?.slice(0, 255) || null,
       items: {

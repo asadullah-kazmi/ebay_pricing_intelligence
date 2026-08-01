@@ -927,6 +927,7 @@ model BulkPricingJob {
   noMatchItems     Int              @default(0)
   failedItems      Int              @default(0)
   sourceFilename   String?
+  targetMarginPercent Decimal?         @db.Decimal(6, 2)
   lastError        String?
   startedAt        DateTime?
   completedAt      DateTime?

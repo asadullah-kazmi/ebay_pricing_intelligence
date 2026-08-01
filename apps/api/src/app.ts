@@ -180,6 +180,7 @@ const bulkPricingUploadQuerySchema = z.object({
   marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).default("EBAY_US"),
   condition: z.enum(["ANY", "NEW", "USED"]).default("ANY"),
   currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).default("USD"),
+  targetMarginPercent: z.coerce.number().min(0).max(95).default(20),
 });
 const bulkPricingFilenameSchema = z.string().trim().min(1).max(255).regex(/\.csv$/i, "Only .csv files are supported for bulk pricing");
 const pricingRoles = requireOrganizationRoles(...organizationPermissionRoles.pricing);
@@ -1120,6 +1121,7 @@ app.post("/api/pricing/bulk", searchRateLimit, requireTenantContext, pricingRole
       userId: tenant.user.id,
       marketplace: query.marketplace,
       condition: query.condition,
+      targetMarginPercent: query.targetMarginPercent,
       rows,
       sourceFilename: filename,
     });

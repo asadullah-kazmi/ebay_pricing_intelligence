@@ -73,9 +73,12 @@
 }
 
 .searchForm input[type="file"] {
+  max-width: 100%;
   padding: 10px 12px;
   height: auto;
   font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .bulkProgressTrack {
@@ -193,11 +196,14 @@
   display: grid;
   gap: 16px;
   align-content: center;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .searchForm label {
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .searchForm label > span {
@@ -211,6 +217,8 @@
 .searchForm input,
 .searchForm select {
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   height: 46px;
   border: 1px solid #2a4d78;
   border-radius: 10px;
@@ -246,6 +254,16 @@
   grid-template-columns: 1fr 1fr auto;
   gap: 12px;
   align-items: end;
+}
+
+.bulkHero .searchRow {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.bulkHero .searchRow .primary {
+  width: fit-content;
+  min-width: 180px;
+  grid-column: 1 / -1;
 }
 
 .primary {
@@ -576,7 +594,7 @@
   color: #0052ff;
 }
 
-.calculatorRow span,
+.breakdownEyebrow,
 .formulaBox span {
   display: block;
   color: #64748b;
@@ -652,27 +670,77 @@
   text-transform: none;
 }
 
-.calculatorPanel {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  padding: 16px 18px;
+.costBreakdown {
+  padding: 16px 18px 8px;
 }
 
-.calculatorRow {
+.breakdownLine,
+.breakdownSubLine,
+.totalLanded {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  padding: 12px 14px;
-  border: 1px solid #edf2f7;
-  border-radius: 12px;
-  background: #fbfdff;
+  padding: 11px 0;
+  border-bottom: 1px solid #edf2f7;
 }
 
-.calculatorRow b {
+.breakdownLine span,
+.breakdownSubLine span,
+.totalLanded span {
+  color: #52637a;
+  font-size: 14px;
+}
+
+.breakdownLine small {
+  display: block;
+  margin-top: 3px;
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.breakdownLine b,
+.breakdownSubLine b,
+.totalLanded b {
   color: #0c274d;
   font-size: 15px;
+}
+
+.breakdownSubLine {
+  padding-left: 14px;
+}
+
+.breakdownSubLine span,
+.breakdownSubLine b {
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.profitLine b {
+  color: #059669;
+}
+
+.totalLanded {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 10px;
+  background: #f3f5f9;
+}
+
+.totalLanded span {
+  font-size: 12px;
+}
+
+.breakEvenNote {
+  margin: 10px 0 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.breakEvenNote b {
+  color: #334155;
 }
 
 .formulaBox {
