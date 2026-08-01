@@ -10,7 +10,6 @@ import { selectExactCompetitors } from "./pricing-service.js";
 import { searchEbay } from "./providers/ebay.js";
 import type { ListingCondition, Marketplace, MatchedListing } from "./types.js";
 
-export const BULK_PRICING_MAX_ROWS = 50;
 export const bulkPricingTemplateFilename = "partpulse-bulk-pricing-template.csv";
 
 export class BulkPricingError extends Error {
@@ -120,10 +119,6 @@ export function parseBulkPricingCsv(
   }) as Array<Record<string, string>>;
 
   if (!records.length) throw new BulkPricingError("The sheet has no data rows.");
-  if (records.length > BULK_PRICING_MAX_ROWS) {
-    throw new BulkPricingError(`Bulk pricing supports up to ${BULK_PRICING_MAX_ROWS} rows per upload. Split the sheet and try again.`);
-  }
-
   const defaultCurrency = (defaults.currency || marketplaceCurrency(defaults.marketplace)).trim().toUpperCase();
   if (!/^[A-Z]{3}$/.test(defaultCurrency)) throw new BulkPricingError("Currency must be a 3-letter code.");
   const rows: BulkPricingRowInput[] = [];
@@ -400,9 +395,6 @@ export async function createBulkPricingJob(input: {
   sourceFilename?: string | null;
 }) {
   if (!input.rows.length) throw new BulkPricingError("At least one row is required.");
-  if (input.rows.length > BULK_PRICING_MAX_ROWS) {
-    throw new BulkPricingError(`Bulk pricing supports up to ${BULK_PRICING_MAX_ROWS} rows per upload.`);
-  }
 
   const active = await prisma.bulkPricingJob.findFirst({
     where: { organizationId: input.organizationId, status: { in: ["QUEUED", "RUNNING"] } },
@@ -475,14 +467,13 @@ function csvEscape(value: string | number | boolean | null | undefined) {
 export async function exportBulkPricingCsv(organizationId: string, jobId: string) {
   const job = await getBulkPricingJob(organizationId, jobId);
   const header = [
-    "SKU", "PartNumber", "Brand", "CostPrice", "Currency", "Condition", "Marketplace",
+    "PartNumber", "Brand", "CostPrice", "Currency", "Condition", "Marketplace",
     "MatchCount", "Lowest", "Median", "Highest", "MarketRecommended", "SellingPrice",
     "FloorPrice", "MarginPercent", "Status", "Error", "CatalogMatch", "Notes",
   ];
   const lines = [header.join(",")];
   for (const item of job.items ?? []) {
     lines.push([
-      item.sku,
       item.partNumber,
       item.brand,
       item.costPrice,

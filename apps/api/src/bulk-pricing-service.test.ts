@@ -34,6 +34,16 @@ describe("bulk pricing sheet parser", () => {
     });
   });
 
+  it("accepts more than 50 rows in one upload", () => {
+    const csv = [
+      "PartNumber,Brand,CostPrice",
+      ...Array.from({ length: 75 }, (_value, index) => `ABC${index + 1},Audi,45`),
+    ].join("\n");
+    const rows = parseBulkPricingCsv(csv, { marketplace: "EBAY_US", condition: "NEW", currency: "USD" });
+    expect(rows).toHaveLength(75);
+    expect(rows[74]).toMatchObject({ rowNumber: 75, partNumber: "ABC75", condition: "NEW" });
+  });
+
   it("exposes a template with required headers", () => {
     expect(createBulkPricingTemplateCsv()).toContain("PartNumber,Brand,CostPrice,Notes");
     expect(createBulkPricingTemplateCsv()).not.toContain("SKU");

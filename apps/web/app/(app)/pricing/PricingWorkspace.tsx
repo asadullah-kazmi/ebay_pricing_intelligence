@@ -340,9 +340,9 @@ export default function PricingWorkspace() {
     setError("");
     try {
       if (demo) {
-        const header = "SKU,PartNumber,Brand,CostPrice,Currency,Condition,Marketplace,MatchCount,Lowest,Median,Highest,MarketRecommended,SellingPrice,FloorPrice,MarginPercent,Status,Error,CatalogMatch,Notes";
+        const header = "PartNumber,Brand,CostPrice,Currency,Condition,Marketplace,MatchCount,Lowest,Median,Highest,MarketRecommended,SellingPrice,FloorPrice,MarginPercent,Status,Error,CatalogMatch,Notes";
         const lines = bulkJob.items.map((item) => [
-          item.sku, item.partNumber, item.brand, item.costPrice, item.currency, item.condition, bulkJob.marketplace,
+          item.partNumber, item.brand, item.costPrice, item.currency, item.condition, bulkJob.marketplace,
           item.competitorCount, item.lowest, item.median, item.highest, item.marketRecommended, item.sellingPrice,
           item.floorPrice, item.marginPercent, item.status, item.error ?? "", item.catalogMatch ? "Yes" : "No", item.notes ?? "",
         ].join(","));
@@ -558,9 +558,9 @@ export default function PricingWorkspace() {
               <span className={styles.eyebrow}>Bulk pricing</span>
               <h2>Price a full sheet in one pass.</h2>
               <ul className={styles.trustList}>
-                <li>Upload SKU, part number, brand, and cost</li>
+                <li>Upload part number, brand, and cost</li>
                 <li>Exact eBay comps + org margin rules</li>
-                <li>Download selling prices (max 50 rows)</li>
+                <li>Download priced results after the job completes</li>
               </ul>
               <button type="button" className={styles.ghostBtn} onClick={() => void downloadTemplate()}>
                 Download CSV template
@@ -653,7 +653,6 @@ export default function PricingWorkspace() {
                 <table>
                   <thead>
                     <tr>
-                      <th>SKU</th>
                       <th>Part</th>
                       <th>Cost</th>
                       <th>Market</th>
@@ -667,12 +666,10 @@ export default function PricingWorkspace() {
                       <Fragment key={item.id}>
                       <tr className={openMarketItemId === item.id || openCalculatorItemId === item.id ? styles.expandedSourceRow : undefined}>
                         <td>
-                          <b>{item.sku}</b>
-                          {item.catalogMatch ? <span className={styles.subtle}>Catalog match</span> : null}
-                        </td>
-                        <td>
                           {item.brand} · {item.partNumber}
-                          <span className={styles.subtle}>{item.condition}</span>
+                          <span className={styles.subtle}>
+                            {item.condition}{item.catalogMatch ? " · Catalog match" : ""}
+                          </span>
                         </td>
                         <td>{money(item.costPrice, item.currency)}</td>
                         <td>
@@ -685,7 +682,7 @@ export default function PricingWorkspace() {
                                 setOpenCalculatorItemId(null);
                               }}
                               aria-expanded={openMarketItemId === item.id}
-                              aria-label={`View competitors for ${item.sku}`}
+                              aria-label={`View competitors for ${item.brand} ${item.partNumber}`}
                             >
                               {money(item.marketRecommended, item.currency)}
                             </button>
@@ -704,7 +701,7 @@ export default function PricingWorkspace() {
                                 setOpenMarketItemId(null);
                               }}
                               aria-expanded={openCalculatorItemId === item.id}
-                              aria-label={`View selling price calculation for ${item.sku}`}
+                              aria-label={`View selling price calculation for ${item.brand} ${item.partNumber}`}
                             >
                               {money(item.sellingPrice, item.currency)}
                             </button>
@@ -721,7 +718,7 @@ export default function PricingWorkspace() {
                       </tr>
                       {openMarketItemId === item.id ? (
                         <tr className={styles.expandedDetailRow}>
-                          <td colSpan={7}>
+                          <td colSpan={6}>
                             <div className={styles.expandedDetail}>
                               <div className={styles.inlineDropdownHead}>
                                 <div>
@@ -756,12 +753,12 @@ export default function PricingWorkspace() {
                       ) : null}
                       {openCalculatorItemId === item.id ? (
                         <tr className={styles.expandedDetailRow}>
-                          <td colSpan={7}>
+                          <td colSpan={6}>
                             <div className={styles.expandedDetail}>
                               <div className={styles.inlineDropdownHead}>
                                 <div>
                                   <b>Selling price calculator</b>
-                                  <span>{item.sku} · {item.partNumber}</span>
+                                  <span>{item.brand} · {item.partNumber}</span>
                                 </div>
                                 <button type="button" onClick={() => setOpenCalculatorItemId(null)} aria-label="Close calculator details">Close</button>
                               </div>
