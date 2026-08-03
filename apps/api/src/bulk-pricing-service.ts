@@ -391,6 +391,51 @@ export function startBulkPricingJob(jobId: string, options: JobRunOptions = inli
   setImmediate(() => void runBulkPricingJob(jobId, options));
 }
 
+export async function startQueuedBulkPricingJobs(options: JobRunOptions = inlineJobOptions): Promise<number> {
+  const queued = await prisma.bulkPricingJob.findMany({
+    where: { status: "QUEUED" },
+    select: { id: true },
+    orderBy: { createdAt: "asc" },
+  });
+  queued.forEach(({ id }) => startBulkPricingJob(id, options));
+  return queued.length;
+}
+
+export async function resumeInterruptedBulkPricingJobs(options: JobRunOptions = inlineJobOptions): Promise<number> {
+  const staleBefore = new Date(Date.now() - 30 * 60_000);
+  const stale = await prisma.bulkPricingJob.findMany({
+    where: {
+      status: "RUNNING",
+      updatedAt: { lt: staleBefore },
+    },
+    select: { id: true },
+    orderBy: { createdAt: "asc" },
+  });
+
+  for (const { id } of stale) {
+    if (activeJobs.has(id)) continue;
+    await prisma.$transaction(async (tx) => {
+      const reclaimed = await tx.bulkPricingJob.updateMany({
+        where: { id, status: "RUNNING", updatedAt: { lt: staleBefore } },
+        data: {
+          status: "QUEUED",
+          startedAt: null,
+          completedAt: null,
+          lastError: "Worker interrupted; bulk pricing job requeued",
+        },
+      });
+      if (reclaimed.count) {
+        await tx.bulkPricingJobItem.updateMany({
+          where: { bulkPricingJobId: id, status: "RUNNING" },
+          data: { status: "QUEUED", startedAt: null, completedAt: null, error: null },
+        });
+      }
+    });
+  }
+
+  return startQueuedBulkPricingJobs(options);
+}
+
 export async function createBulkPricingJob(input: {
   organizationId: string;
   userId: string;

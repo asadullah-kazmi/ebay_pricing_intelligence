@@ -4,6 +4,7 @@ import { getConfig } from "./config.js";
 import { disconnectDatabase } from "./db.js";
 import { resumeInterruptedPricingJobs } from "./pricing-service.js";
 import { resumeInterruptedFitmentJobs } from "./fitment-service.js";
+import { resumeInterruptedBulkPricingJobs } from "./bulk-pricing-service.js";
 
 const { port, ebay, shutdownTimeoutMs, jobs } = getConfig();
 const server = app.listen(port, () => console.log(`API listening on http://localhost:${port}`));
@@ -19,11 +20,15 @@ if (jobs.executionMode === "inline") {
   void resumeInterruptedFitmentJobs()
     .then((count) => { if (count) console.info(JSON.stringify({ type: "fitment_jobs_resumed", count })); })
     .catch((error) => console.error(JSON.stringify({ type: "fitment_job_recovery_failed", error: error instanceof Error ? { name: error.name, message: error.message } : { name: "UnknownError" } })));
+  void resumeInterruptedBulkPricingJobs()
+    .then((count) => { if (count) console.info(JSON.stringify({ type: "bulk_pricing_jobs_resumed", count })); })
+    .catch((error) => console.error(JSON.stringify({ type: "bulk_pricing_job_recovery_failed", error: error instanceof Error ? { name: error.name, message: error.message } : { name: "UnknownError" } })));
 }
 const inlineRecoveryTimer = jobs.executionMode === "inline"
   ? setInterval(() => {
     void resumeInterruptedPricingJobs().catch((error) => console.error(JSON.stringify({ type: "pricing_job_recovery_failed", error: error instanceof Error ? { name: error.name, message: error.message } : { name: "UnknownError" } })));
     void resumeInterruptedFitmentJobs().catch((error) => console.error(JSON.stringify({ type: "fitment_job_recovery_failed", error: error instanceof Error ? { name: error.name, message: error.message } : { name: "UnknownError" } })));
+    void resumeInterruptedBulkPricingJobs().catch((error) => console.error(JSON.stringify({ type: "bulk_pricing_job_recovery_failed", error: error instanceof Error ? { name: error.name, message: error.message } : { name: "UnknownError" } })));
   }, 30_000)
   : undefined;
 inlineRecoveryTimer?.unref();
