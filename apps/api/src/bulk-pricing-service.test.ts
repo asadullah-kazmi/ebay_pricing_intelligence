@@ -13,6 +13,7 @@ describe("bulk pricing sheet parser", () => {
       partNumber: "8K0615301M",
       brand: "Audi",
       costPrice: 45.5,
+      quantity: 1,
       currency: "GBP",
       condition: "USED",
       notes: null,
@@ -21,13 +22,14 @@ describe("bulk pricing sheet parser", () => {
 
   it("accepts header aliases but uses upload-level currency and condition", () => {
     const rows = parseBulkPricingCsv(
-      ["sku,part no,brand,cost,currency,condition,notes", "X,ABC123,BMW,$10.00,GBP,NEW,ok"].join("\n"),
+      ["sku,part no,brand,cost,qty,currency,condition,notes", "X,ABC123,BMW,$10.00,7,GBP,NEW,ok"].join("\n"),
       { marketplace: "EBAY_US", condition: "USED", currency: "USD" },
     );
     expect(rows[0]).toMatchObject({
       sku: "X",
       partNumber: "ABC123",
       costPrice: 10,
+      quantity: 7,
       currency: "USD",
       condition: "USED",
       notes: "ok",
@@ -45,7 +47,7 @@ describe("bulk pricing sheet parser", () => {
   });
 
   it("exposes a template with required headers", () => {
-    expect(createBulkPricingTemplateCsv()).toContain("PartNumber,Brand,CostPrice,Notes");
+    expect(createBulkPricingTemplateCsv()).toContain("PartNumber,Brand,CostPrice,Quantity,Notes");
     expect(createBulkPricingTemplateCsv()).not.toContain("SKU");
     expect(createBulkPricingTemplateCsv()).not.toContain("Currency");
     expect(createBulkPricingTemplateCsv()).not.toContain("Condition");

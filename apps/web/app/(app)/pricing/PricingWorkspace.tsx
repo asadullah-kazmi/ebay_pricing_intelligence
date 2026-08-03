@@ -40,6 +40,7 @@ type BulkPricingItem = {
   partNumber: string;
   brand: string;
   costPrice: number;
+  quantity: number;
   currency: string;
   condition: string;
   notes: string | null;
@@ -197,6 +198,12 @@ function downloadTextFile(filename: string, content: string, mime = "text/csv;ch
   URL.revokeObjectURL(url);
 }
 
+function csvCell(value: string | number | boolean | null | undefined) {
+  if (value === null || value === undefined) return "";
+  const text = String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
 function BulkSellingCalculator({ item }: { item: BulkPricingItem }) {
   const breakdown = feeBreakdown(item.sellingPrice, item.costPrice, item.currency);
 
@@ -271,6 +278,11 @@ export default function PricingWorkspace() {
   const [bulkJob, setBulkJob] = useState<BulkPricingJob | null>(null);
   const [bulkHistory, setBulkHistory] = useState<BulkPricingJob[]>([]);
   const [historyBusy, setHistoryBusy] = useState(false);
+  const [bulkSearch, setBulkSearch] = useState("");
+  const [bulkStatusFilter, setBulkStatusFilter] = useState("ALL");
+  const [quantityMin, setQuantityMin] = useState("");
+  const [quantityMax, setQuantityMax] = useState("");
+  const [hideCostAboveMarket, setHideCostAboveMarket] = useState(false);
   const [openMarketItemId, setOpenMarketItemId] = useState<string | null>(null);
   const [openCalculatorItemId, setOpenCalculatorItemId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -357,7 +369,7 @@ export default function PricingWorkspace() {
       if (demo) {
         downloadTextFile(
           "partpulse-bulk-pricing-template.csv",
-          ["PartNumber,Brand,CostPrice,Notes", "8K0615301M,Audi,45.00,Example rear caliper"].join("\n"),
+          ["PartNumber,Brand,CostPrice,Quantity,Notes", "8K0615301M,Audi,45.00,3,Example rear caliper"].join("\n"),
         );
         return;
       }
@@ -396,6 +408,7 @@ export default function PricingWorkspace() {
               partNumber: "8K0615301M",
               brand: "Audi",
               costPrice: 45,
+              quantity: 3,
               currency: "USD",
               condition: "USED",
               notes: "Demo row",
@@ -422,6 +435,7 @@ export default function PricingWorkspace() {
               partNumber: "34116791244",
               brand: "BMW",
               costPrice: 62.5,
+              quantity: 1,
               currency: "USD",
               condition: "USED",
               notes: null,
@@ -467,22 +481,31 @@ export default function PricingWorkspace() {
     }
   }
 
+  function getVisibleBulkItems() {
+    const min = quantityMin.trim() ? Number(quantityMin) : null;
+    const max = quantityMax.trim() ? Number(quantityMax) : null;
+    const query = bulkSearch.trim().toLowerCase();
+    return (bulkJob?.items ?? []).filter((item) => {
+      if (query && !`${item.brand} ${item.partNumber} ${item.notes ?? ""}`.toLowerCase().includes(query)) return false;
+      if (bulkStatusFilter !== "ALL" && item.status !== bulkStatusFilter) return false;
+      if (min !== null && Number.isFinite(min) && item.quantity < min) return false;
+      if (max !== null && Number.isFinite(max) && item.quantity > max) return false;
+      if (hideCostAboveMarket && item.marketRecommended !== null && item.costPrice > item.marketRecommended) return false;
+      return true;
+    });
+  }
+
   async function exportBulkResults() {
     if (!bulkJob) return;
     setError("");
     try {
-      if (demo) {
-        const header = "PartNumber,Brand,CostPrice,Currency,Condition,Marketplace,MatchCount,Lowest,Median,Highest,MarketRecommended,SellingPrice,FloorPrice,MarginPercent,Status,Error,CatalogMatch,Notes";
-        const lines = (bulkJob.items ?? []).map((item) => [
-          item.partNumber, item.brand, item.costPrice, item.currency, item.condition, bulkJob.marketplace,
-          item.competitorCount, item.lowest, item.median, item.highest, item.marketRecommended, item.sellingPrice,
-          item.floorPrice, item.marginPercent, item.status, item.error ?? "", item.catalogMatch ? "Yes" : "No", item.notes ?? "",
-        ].join(","));
-        downloadTextFile(`partpulse-bulk-pricing-${bulkJob.id}.csv`, [header, ...lines].join("\n"));
-        return;
-      }
-      const csv = await apiFetch(`/api/pricing/bulk/${bulkJob.id}/export`) as string;
-      downloadTextFile(`partpulse-bulk-pricing-${bulkJob.id}.csv`, csv);
+      const header = "PartNumber,Brand,CostPrice,Quantity,Currency,Condition,Marketplace,MatchCount,Lowest,Median,Highest,MarketRecommended,SellingPrice,FloorPrice,MarginPercent,Status,Error,CatalogMatch,Notes";
+      const lines = getVisibleBulkItems().map((item) => [
+        item.partNumber, item.brand, item.costPrice, item.quantity, item.currency, item.condition, bulkJob.marketplace,
+        item.competitorCount, item.lowest, item.median, item.highest, item.marketRecommended, item.sellingPrice,
+        item.floorPrice, item.marginPercent, item.status, item.error ?? "", item.catalogMatch ? "Yes" : "No", item.notes ?? "",
+      ].map(csvCell).join(","));
+      downloadTextFile(`partpulse-bulk-pricing-${bulkJob.id}.csv`, [header, ...lines].join("\n"));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to export results");
     }
@@ -525,6 +548,7 @@ export default function PricingWorkspace() {
   const bulkProgress = bulkJob
     ? Math.round(((bulkJob.completedItems + bulkJob.noMatchItems + bulkJob.failedItems) / Math.max(bulkJob.totalItems, 1)) * 100)
     : 0;
+  const visibleBulkItems = getVisibleBulkItems();
 
   return (
     <div className={styles.page}>
@@ -789,7 +813,7 @@ export default function PricingWorkspace() {
                 </button>
               </div>
               <p className={styles.bulkHint}>
-                Required columns: PartNumber, Brand, CostPrice. Optional: Notes. Currency and condition are applied from this upload form.
+                Required columns: PartNumber, Brand, CostPrice, Quantity. Optional: Notes. Currency and condition are applied from this upload form.
               </p>
             </form>
           </section>
@@ -867,20 +891,54 @@ export default function PricingWorkspace() {
               </div>
               {bulkJob.lastError && <div className={styles.error}>{bulkJob.lastError}</div>}
 
+              <div className={styles.reviewFilters}>
+                <label>
+                  <span>Search</span>
+                  <input value={bulkSearch} onChange={(event) => setBulkSearch(event.currentTarget.value)} placeholder="Brand, part number, notes" />
+                </label>
+                <label>
+                  <span>Status</span>
+                  <select value={bulkStatusFilter} onChange={(event) => setBulkStatusFilter(event.currentTarget.value)}>
+                    <option value="ALL">All</option>
+                    <option value="COMPLETED">Completed</option>
+                    <option value="NO_MATCHES">No matches</option>
+                    <option value="FAILED">Failed</option>
+                    <option value="QUEUED">Queued</option>
+                    <option value="RUNNING">Running</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Qty ≥</span>
+                  <input type="number" min="0" value={quantityMin} onChange={(event) => setQuantityMin(event.currentTarget.value)} placeholder="0" />
+                </label>
+                <label>
+                  <span>Qty ≤</span>
+                  <input type="number" min="0" value={quantityMax} onChange={(event) => setQuantityMax(event.currentTarget.value)} placeholder="Any" />
+                </label>
+                <label className={styles.checkFilter}>
+                  <input type="checkbox" checked={hideCostAboveMarket} onChange={(event) => setHideCostAboveMarket(event.currentTarget.checked)} />
+                  <span>Hide cost &gt; market</span>
+                </label>
+                <div className={styles.filterCount}>
+                  Showing {visibleBulkItems.length}/{bulkJob.items?.length ?? 0}
+                </div>
+              </div>
+
               <div className={styles.tableWrap}>
                 <table>
                   <thead>
-                    <tr>
-                      <th>Part</th>
-                      <th>Cost</th>
-                      <th>Market</th>
+	                    <tr>
+	                      <th>Part</th>
+	                      <th>Cost</th>
+	                      <th>Qty</th>
+	                      <th>Market</th>
                       <th>Selling price</th>
                       <th>Margin</th>
                       <th>Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {(bulkJob.items ?? []).map((item) => (
+	                    {visibleBulkItems.map((item) => (
                       <Fragment key={item.id}>
                       <tr className={openMarketItemId === item.id || openCalculatorItemId === item.id ? styles.expandedSourceRow : undefined}>
                         <td>
@@ -889,7 +947,8 @@ export default function PricingWorkspace() {
                             {item.condition}{item.catalogMatch ? " · Catalog match" : ""}
                           </span>
                         </td>
-                        <td>{money(item.costPrice, item.currency)}</td>
+	                        <td>{money(item.costPrice, item.currency)}</td>
+	                        <td>{item.quantity}</td>
                         <td>
                           {item.marketRecommended != null ? (
                             <button
@@ -936,7 +995,7 @@ export default function PricingWorkspace() {
                       </tr>
                       {openMarketItemId === item.id ? (
                         <tr className={styles.expandedDetailRow}>
-                          <td colSpan={6}>
+	                          <td colSpan={7}>
                             <div className={styles.expandedDetail}>
                               <div className={styles.inlineDropdownHead}>
                                 <div>
@@ -971,7 +1030,7 @@ export default function PricingWorkspace() {
                       ) : null}
                       {openCalculatorItemId === item.id ? (
                         <tr className={styles.expandedDetailRow}>
-                          <td colSpan={6}>
+	                          <td colSpan={7}>
                             <div className={styles.expandedDetail}>
                               <div className={styles.inlineDropdownHead}>
                                 <div>

@@ -25,6 +25,7 @@ export type BulkPricingRowInput = {
   partNumber: string;
   brand: string;
   costPrice: number;
+  quantity: number;
   currency: string;
   condition: ListingCondition;
   notes: string | null;
@@ -69,6 +70,8 @@ const headerAliases: Record<string, string> = {
   brand: "brand",
   costprice: "costPrice",
   cost: "costPrice",
+  quantity: "quantity",
+  qty: "quantity",
   currency: "currency",
   condition: "condition",
   notes: "notes",
@@ -89,6 +92,14 @@ function parseCost(value: string) {
   return Number.isFinite(parsed) && parsed >= 0 ? money(parsed) : null;
 }
 
+function parseQuantity(value: string | undefined) {
+  const raw = (value ?? "1").trim().replace(/[,]/g, "");
+  if (!raw) return 1;
+  if (!/^\d+$/.test(raw)) return null;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
 function generatedSku(brand: string, partNumber: string, rowNumber: number) {
   const base = [brand, partNumber]
     .join("-")
@@ -101,9 +112,9 @@ function generatedSku(brand: string, partNumber: string, rowNumber: number) {
 
 export function createBulkPricingTemplateCsv() {
   return [
-    "PartNumber,Brand,CostPrice,Notes",
-    "8K0615301M,Audi,45.00,Example rear caliper",
-    "34116791244,BMW,62.50,",
+    "PartNumber,Brand,CostPrice,Quantity,Notes",
+    "8K0615301M,Audi,45.00,3,Example rear caliper",
+    "34116791244,BMW,62.50,1,",
   ].join("\n");
 }
 
@@ -142,6 +153,8 @@ export function parseBulkPricingCsv(
     if (!brand) throw new BulkPricingError(`Row ${rowLabel}: Brand is required.`);
     const costPrice = parseCost(costRaw);
     if (costPrice === null) throw new BulkPricingError(`Row ${rowLabel}: CostPrice must be a non-negative number.`);
+    const quantity = parseQuantity(mapped.quantity);
+    if (quantity === null) throw new BulkPricingError(`Row ${rowLabel}: Quantity must be a whole number.`);
 
     const sku = mapped.sku || generatedSku(brand, partNumber, index + 1);
 
@@ -151,6 +164,7 @@ export function parseBulkPricingCsv(
       partNumber: partNumber.slice(0, 100),
       brand: brand.slice(0, 100),
       costPrice,
+      quantity,
       currency: defaultCurrency,
       condition: parseCondition(undefined, defaults.condition),
       notes: mapped.notes?.slice(0, 500) || null,
@@ -166,6 +180,7 @@ function numberOrNull(value: Prisma.Decimal | null) {
 
 function serializeItem<T extends {
   costPrice: Prisma.Decimal;
+  quantity: number;
   lowest: Prisma.Decimal | null;
   average: Prisma.Decimal | null;
   median: Prisma.Decimal | null;
@@ -179,6 +194,7 @@ function serializeItem<T extends {
   return {
     ...item,
     costPrice: Number(item.costPrice.toString()),
+    quantity: item.quantity,
     lowest: numberOrNull(item.lowest),
     average: numberOrNull(item.average),
     median: numberOrNull(item.median),
@@ -195,6 +211,7 @@ function serializeJob<T extends {
   targetMarginPercent?: Prisma.Decimal | null;
   items?: Array<{
     costPrice: Prisma.Decimal;
+    quantity: number;
     lowest: Prisma.Decimal | null;
     average: Prisma.Decimal | null;
     median: Prisma.Decimal | null;
@@ -483,6 +500,7 @@ export async function createBulkPricingJob(input: {
             partNumber: row.partNumber,
             brand: row.brand,
             costPrice: row.costPrice,
+            quantity: row.quantity,
             currency: row.currency,
             condition: row.condition,
             notes: row.notes,
@@ -544,7 +562,7 @@ function csvEscape(value: string | number | boolean | null | undefined) {
 export async function exportBulkPricingCsv(organizationId: string, jobId: string) {
   const job = await getBulkPricingJob(organizationId, jobId);
   const header = [
-    "PartNumber", "Brand", "CostPrice", "Currency", "Condition", "Marketplace",
+    "PartNumber", "Brand", "CostPrice", "Quantity", "Currency", "Condition", "Marketplace",
     "MatchCount", "Lowest", "Median", "Highest", "MarketRecommended", "SellingPrice",
     "FloorPrice", "MarginPercent", "Status", "Error", "CatalogMatch", "Notes",
   ];
@@ -554,6 +572,7 @@ export async function exportBulkPricingCsv(organizationId: string, jobId: string
       item.partNumber,
       item.brand,
       item.costPrice,
+      item.quantity,
       item.currency,
       item.condition,
       job.marketplace,

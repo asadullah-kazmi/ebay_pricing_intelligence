@@ -1,0 +1,2 @@
+ALTER TABLE "BulkPricingJobItem"
+ADD COLUMN "quantity" INTEGER NOT NULL DEFAULT 1;

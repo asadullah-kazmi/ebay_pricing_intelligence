@@ -951,6 +951,7 @@ model BulkPricingJobItem {
   partNumber         String
   brand              String
   costPrice          Decimal              @db.Decimal(12, 2)
+  quantity           Int                  @default(1)
   currency           String
   condition          String
   notes              String?
