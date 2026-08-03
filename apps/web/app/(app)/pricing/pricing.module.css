@@ -758,23 +758,23 @@
 .expandedDetailRow td {
   padding: 0;
   border-bottom: 1px solid #dbe5f1;
-  background: #f8fbff;
+  background: #fbfdff;
 }
 
 .expandedDetail {
   margin: 0;
   border-top: 0;
-  background: #fff;
+  background: #fbfdff;
 }
 
 .inlineDropdownHead {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
-  padding: 16px 18px;
-  border-bottom: 1px solid #eef2f7;
-  background: #f8fafc;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #e8eef6;
+  background: #f7faff;
 }
 
 .inlineDropdownHead b,
@@ -784,24 +784,26 @@
 
 .inlineDropdownHead b {
   color: #0c274d;
-  font-size: 14px;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .inlineDropdownHead span {
-  margin-top: 4px;
+  margin-top: 3px;
   color: #64748b;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
 }
 
 .inlineDropdownHead button {
-  padding: 7px 10px;
+  min-height: 30px;
+  padding: 0 10px;
   border: 1px solid #dbe5f1;
-  border-radius: 9px;
+  border-radius: 8px;
   background: #fff;
   color: #0c274d;
-  font-size: 12px;
-  font-weight: 800;
+  font-size: 11px;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -814,7 +816,7 @@
 .formulaBox span {
   display: block;
   color: #64748b;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -822,18 +824,18 @@
 
 .competitorList {
   display: grid;
-  gap: 10px;
-  padding: 16px 18px 18px;
+  gap: 8px;
+  padding: 12px 14px 14px;
 }
 
 .competitorCard {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.7fr);
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(230px, 0.64fr);
+  gap: 10px;
   align-items: center;
-  padding: 12px;
-  border: 1px solid #edf2f7;
-  border-radius: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e7edf5;
+  border-radius: 10px;
   background: #fff;
   color: #0f172a;
   text-decoration: none;
@@ -854,40 +856,46 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: #0052ff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
 }
 
 .competitorInfo small {
   color: #64748b;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
+  line-height: 1.35;
 }
 
 .priceBreakdown {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  gap: 8px;
 }
 
 .priceBreakdown span {
-  padding: 10px;
-  border-radius: 12px;
-  background: #f8fafc;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: #f6f8fb;
   color: #64748b;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
 }
 
 .priceBreakdown b {
   display: block;
-  margin-top: 5px;
+  margin-top: 4px;
   color: #0c274d;
-  font-size: 14px;
+  font-size: 12px;
+  line-height: 1.25;
   text-transform: none;
 }
 
 .costBreakdown {
-  padding: 16px 18px 8px;
+  padding: 12px 14px 6px;
 }
 
 .breakdownLine,
@@ -896,40 +904,43 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  padding: 11px 0;
-  border-bottom: 1px solid #edf2f7;
+  gap: 14px;
+  padding: 8px 0;
+  border-bottom: 1px solid #e8eef6;
 }
 
 .breakdownLine span,
 .breakdownSubLine span,
 .totalLanded span {
   color: #52637a;
-  font-size: 14px;
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .breakdownLine small {
   display: block;
-  margin-top: 3px;
+  margin-top: 2px;
   color: #94a3b8;
-  font-size: 11px;
+  font-size: 10px;
+  line-height: 1.35;
 }
 
 .breakdownLine b,
 .breakdownSubLine b,
 .totalLanded b {
   color: #0c274d;
-  font-size: 15px;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .breakdownSubLine {
-  padding-left: 14px;
+  padding-left: 12px;
 }
 
 .breakdownSubLine span,
 .breakdownSubLine b {
   color: #94a3b8;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -938,21 +949,22 @@
 }
 
 .totalLanded {
-  margin-top: 12px;
-  padding: 12px 14px;
+  margin-top: 10px;
+  padding: 9px 12px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 9px;
   background: #f3f5f9;
 }
 
 .totalLanded span {
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .breakEvenNote {
-  margin: 10px 0 0;
+  margin: 8px 0 0;
   color: #64748b;
-  font-size: 13px;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .breakEvenNote b {
@@ -960,23 +972,26 @@
 }
 
 .formulaBox {
-  margin: 0 18px 18px;
-  padding: 14px;
+  margin: 0 14px 14px;
+  padding: 12px;
   border: 1px solid #bdd7ff;
-  border-radius: 12px;
+  border-radius: 10px;
   background: linear-gradient(135deg, #f4f8ff, #ffffff);
   color: #0c274d;
 }
 
 .formulaBox b {
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .formulaBox p {
-  margin: 0 0 12px;
+  margin: 0 0 10px;
   color: #52637a;
-  line-height: 1.6;
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .inlineEmpty {
