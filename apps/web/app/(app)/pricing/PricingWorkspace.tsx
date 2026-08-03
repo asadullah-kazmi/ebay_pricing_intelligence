@@ -204,8 +204,12 @@ function csvCell(value: string | number | boolean | null | undefined) {
   return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
-function BulkSellingCalculator({ item }: { item: BulkPricingItem }) {
+function BulkSellingCalculator({ item, targetMarginPercent }: { item: BulkPricingItem; targetMarginPercent: number | null }) {
   const breakdown = feeBreakdown(item.sellingPrice, item.costPrice, item.currency);
+  const targetMargin = targetMarginPercent ?? 20;
+  const marginFloorFromTarget = targetMargin >= 100
+    ? null
+    : Math.round((item.costPrice / (1 - targetMargin / 100) + Number.EPSILON) * 100) / 100;
 
   return (
     <>
@@ -221,6 +225,28 @@ function BulkSellingCalculator({ item }: { item: BulkPricingItem }) {
             <small>Not included until courier API is connected</small>
           </span>
           <b>{money(breakdown.shippingEstimate, item.currency)}</b>
+        </div>
+        <div className={styles.breakdownLine}>
+          <span>
+            Target profit margin selected on upload
+            <small>This creates the minimum selling-price floor for this bulk run</small>
+          </span>
+          <b>{targetMargin.toFixed(1).replace(/\.0$/, "")}%</b>
+        </div>
+        <div className={styles.breakdownLine}>
+          <span>
+            Margin floor from target
+            <small>Part cost ÷ (1 - target margin)</small>
+          </span>
+          <b>{marginFloorFromTarget === null ? "—" : money(marginFloorFromTarget, item.currency)}</b>
+        </div>
+        <div className={styles.breakdownLine}>
+          <span>Applied floor price</span>
+          <b>{item.floorPrice === null ? "—" : money(item.floorPrice, item.currency)}</b>
+        </div>
+        <div className={styles.breakdownLine}>
+          <span>Actual margin on selected selling price</span>
+          <b>{item.marginPercent === null ? "—" : `${item.marginPercent.toFixed(1)}%`}</b>
         </div>
         <div className={styles.breakdownSubLine}>
           <span>FVF 11.35% on first {money(1000, item.currency)}</span>
@@ -253,7 +279,7 @@ function BulkSellingCalculator({ item }: { item: BulkPricingItem }) {
       <div className={styles.formulaBox}>
         <b>Selling price decision</b>
         <p>
-          Target margin controls the margin floor for this bulk run. Market still uses competitor selling prices only;
+          Your uploaded target margin was {targetMargin.toFixed(1).replace(/\.0$/, "")}%. It controls the margin floor for this bulk run. Market still uses competitor selling prices only;
           competitor shipping remains visible for review but is not included in the recommendation.
         </p>
         {visibleSellingFormula(item) ? <span>{visibleSellingFormula(item)}</span> : null}
@@ -1039,7 +1065,7 @@ export default function PricingWorkspace() {
                                 </div>
                                 <button type="button" onClick={() => setOpenCalculatorItemId(null)} aria-label="Close calculator details">Close</button>
                               </div>
-                              <BulkSellingCalculator item={item} />
+                              <BulkSellingCalculator item={item} targetMarginPercent={bulkJob.targetMarginPercent} />
                             </div>
                           </td>
                         </tr>
