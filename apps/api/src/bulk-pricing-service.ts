@@ -5,7 +5,6 @@ import { prisma } from "./db.js";
 import { calculateAnalytics } from "./domain/analytics.js";
 import { normalizePartNumber } from "./domain/matching.js";
 import { inlineJobOptions, runWithRetry, type JobRunOptions } from "./job-runtime.js";
-import { calculateGovernedPrice, getOrganizationPricingRule } from "./pricing-governance-service.js";
 import { selectExactCompetitors } from "./pricing-service.js";
 import { searchEbay } from "./providers/ebay.js";
 import type { ListingCondition, Marketplace, MatchedListing } from "./types.js";
@@ -48,6 +47,51 @@ const activeJobs = new Set<string>();
 
 function money(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function ceilMoney(value: number) {
+  return Math.ceil((value - Number.EPSILON) * 100) / 100;
+}
+
+const EBAY_FVF_FIRST_TIER_RATE = 0.1135;
+const EBAY_FVF_SECOND_TIER_RATE = 0.0235;
+const EBAY_FVF_FIRST_TIER_LIMIT = 1000;
+const EXTRA_EXPENSE_RATE = 0.043;
+const EXTRA_EXPENSE_FIXED = 0.4;
+
+export function calculateSimpleBulkSellingPrice(input: {
+  costPrice: number;
+  targetMarginPercent: number;
+}) {
+  const costPrice = money(Math.max(0, input.costPrice));
+  const targetMarginPercent = Math.max(0, Math.min(95, input.targetMarginPercent));
+  const targetProfit = money(costPrice * (targetMarginPercent / 100));
+  const beforeFees = costPrice + targetProfit;
+  const firstTierRate = EBAY_FVF_FIRST_TIER_RATE + EXTRA_EXPENSE_RATE;
+  const firstTierSale = ceilMoney((beforeFees + EXTRA_EXPENSE_FIXED) / (1 - firstTierRate));
+  const sellingPrice = firstTierSale <= EBAY_FVF_FIRST_TIER_LIMIT
+    ? firstTierSale
+    : ceilMoney(
+      (beforeFees + (EBAY_FVF_FIRST_TIER_LIMIT * EBAY_FVF_FIRST_TIER_RATE)
+        - (EBAY_FVF_FIRST_TIER_LIMIT * EBAY_FVF_SECOND_TIER_RATE)
+        + EXTRA_EXPENSE_FIXED)
+      / (1 - EBAY_FVF_SECOND_TIER_RATE - EXTRA_EXPENSE_RATE),
+    );
+  const firstTierBase = Math.min(sellingPrice, EBAY_FVF_FIRST_TIER_LIMIT);
+  const secondTierBase = Math.max(sellingPrice - EBAY_FVF_FIRST_TIER_LIMIT, 0);
+  const ebayFee = money((firstTierBase * EBAY_FVF_FIRST_TIER_RATE) + (secondTierBase * EBAY_FVF_SECOND_TIER_RATE));
+  const extraExpenses = money((sellingPrice * EXTRA_EXPENSE_RATE) + EXTRA_EXPENSE_FIXED);
+  const actualProfit = money(sellingPrice - costPrice - ebayFee - extraExpenses);
+  const actualProfitPercent = costPrice > 0 ? money((actualProfit / costPrice) * 100) : null;
+  return {
+    sellingPrice,
+    formulaFloorPrice: sellingPrice,
+    targetProfit,
+    ebayFee,
+    extraExpenses,
+    actualProfit,
+    actualProfitPercent,
+  };
 }
 
 function marketplaceCurrency(marketplace: Marketplace) {
@@ -287,7 +331,7 @@ async function processBulkItem(
     currency: string;
   },
   marketplace: Marketplace,
-  rule: Awaited<ReturnType<typeof getOrganizationPricingRule>>,
+  targetMarginPercent: number,
   options: JobRunOptions,
 ) {
   await prisma.bulkPricingJobItem.update({
@@ -302,30 +346,23 @@ async function processBulkItem(
 
     const analytics = calculateAnalytics(listings);
     const completedAt = new Date();
+    const cost = Number(item.costPrice.toString());
+    const simplePrice = calculateSimpleBulkSellingPrice({ costPrice: cost, targetMarginPercent });
     if (!analytics) {
       await prisma.bulkPricingJobItem.update({
         where: { id: item.id },
         data: {
           status: "NO_MATCHES",
           competitorCount: 0,
+          sellingPrice: simplePrice.sellingPrice,
+          floorPrice: simplePrice.formulaFloorPrice,
+          marginPercent: simplePrice.actualProfitPercent,
           competitors: [],
           completedAt,
         },
       });
       return;
     }
-
-    const governed = calculateGovernedPrice({
-      marketRecommendedPrice: analytics.recommendedPrice,
-      marketCurrency: analytics.currency,
-      costAmount: Number(item.costPrice.toString()),
-      costCurrency: item.currency,
-      rule,
-    });
-    const cost = Number(item.costPrice.toString());
-    const marginPercent = cost > 0
-      ? money(((governed.proposedPrice - cost) / governed.proposedPrice) * 100)
-      : null;
 
     await prisma.bulkPricingJobItem.update({
       where: { id: item.id },
@@ -337,9 +374,9 @@ async function processBulkItem(
         median: analytics.median,
         highest: analytics.highest,
         marketRecommended: analytics.recommendedPrice,
-        sellingPrice: governed.proposedPrice,
-        floorPrice: governed.floorPrice,
-        marginPercent,
+        sellingPrice: simplePrice.sellingPrice,
+        floorPrice: simplePrice.formulaFloorPrice,
+        marginPercent: simplePrice.actualProfitPercent,
         competitors: serializeCompetitors(listings) as unknown as Prisma.InputJsonValue,
         error: null,
         completedAt,
@@ -386,11 +423,9 @@ async function runBulkPricingJob(jobId: string, options: JobRunOptions = inlineJ
     });
     if (!job) return;
 
-    const baseRule = await getOrganizationPricingRule(job.organizationId);
-    const targetMarginPercent = job.targetMarginPercent === null ? baseRule.minimumMarginPercent : Number(job.targetMarginPercent.toString());
-    const rule = { ...baseRule, minimumMarginPercent: targetMarginPercent };
+    const targetMarginPercent = job.targetMarginPercent === null ? 20 : Number(job.targetMarginPercent.toString());
     for (const item of job.items) {
-      await processBulkItem(item, job.marketplace as Marketplace, rule, options);
+      await processBulkItem(item, job.marketplace as Marketplace, targetMarginPercent, options);
       await refreshJobProgress(jobId);
     }
   } catch (error) {
@@ -564,7 +599,7 @@ export async function exportBulkPricingCsv(organizationId: string, jobId: string
   const header = [
     "PartNumber", "Brand", "CostPrice", "Quantity", "Currency", "Condition", "Marketplace",
     "MatchCount", "Lowest", "Median", "Highest", "MarketRecommended", "SellingPrice",
-    "FloorPrice", "MarginPercent", "Status", "Error", "CatalogMatch", "Notes",
+    "FormulaPrice", "ProfitPercent", "Status", "Error", "CatalogMatch", "Notes",
   ];
   const lines = [header.join(",")];
   for (const item of job.items ?? []) {

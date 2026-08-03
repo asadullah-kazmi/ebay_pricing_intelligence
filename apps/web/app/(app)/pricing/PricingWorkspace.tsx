@@ -152,7 +152,7 @@ function landedAmount(price: number, shipping: number) {
   return Math.round((price + shipping) * 100) / 100;
 }
 
-function feeBreakdown(sellingPrice: number | null, cost: number, currency: string) {
+function feeBreakdown(sellingPrice: number | null, cost: number, currency: string, targetMarginPercent: number) {
   const sale = sellingPrice ?? 0;
   const firstTierBase = Math.min(sale, 1000);
   const secondTierBase = Math.max(sale - 1000, 0);
@@ -160,9 +160,10 @@ function feeBreakdown(sellingPrice: number | null, cost: number, currency: strin
   const ebaySecondTierFee = landedAmount(secondTierBase * 0.0235, 0);
   const ebayFeeTotal = landedAmount(ebayFirstTierFee, ebaySecondTierFee);
   const exportPayoneerBufferFee = landedAmount(sale * 0.043 + (sale > 0 ? 0.4 : 0), 0);
+  const targetProfit = landedAmount(cost * (targetMarginPercent / 100), 0);
   const grossProfitBeforeShipping = landedAmount(sale - cost - ebayFeeTotal - exportPayoneerBufferFee, 0);
   const shippingEstimate = 0;
-  const totalLandedCost = landedAmount(cost, shippingEstimate);
+  const totalExpenses = landedAmount(ebayFeeTotal + exportPayoneerBufferFee + shippingEstimate, 0);
 
   return {
     firstTierBase,
@@ -171,21 +172,24 @@ function feeBreakdown(sellingPrice: number | null, cost: number, currency: strin
     ebaySecondTierFee,
     ebayFeeTotal,
     exportPayoneerBufferFee,
+    targetProfit,
     grossProfitBeforeShipping,
     shippingEstimate,
-    totalLandedCost,
+    totalExpenses,
     breakEvenShipping: grossProfitBeforeShipping,
     currency,
   };
 }
 
-function visibleSellingFormula(item: BulkPricingItem) {
-  if (item.marketRecommended === null || item.floorPrice === null || item.sellingPrice === null) return null;
-  const visibleResult = Math.max(item.marketRecommended, item.floorPrice);
-  if (Math.abs(visibleResult - item.sellingPrice) < 0.01) {
-    return `Result: max(${money(item.marketRecommended, item.currency)}, ${money(item.floorPrice, item.currency)}) = ${money(item.sellingPrice, item.currency)}`;
-  }
-  return `Result: pricing rule output = ${money(item.sellingPrice, item.currency)} after market adjustment and margin-floor checks.`;
+function visibleSellingFormula(item: BulkPricingItem, targetMarginPercent: number) {
+  if (item.sellingPrice === null) return null;
+  const breakdown = feeBreakdown(item.sellingPrice, item.costPrice, item.currency, targetMarginPercent);
+  return [
+    money(item.costPrice, item.currency),
+    money(breakdown.targetProfit, item.currency),
+    money(breakdown.ebayFeeTotal, item.currency),
+    money(breakdown.exportPayoneerBufferFee, item.currency),
+  ].join(" + ") + ` = ${money(item.sellingPrice, item.currency)}`;
 }
 
 function downloadTextFile(filename: string, content: string, mime = "text/csv;charset=utf-8") {
@@ -205,11 +209,8 @@ function csvCell(value: string | number | boolean | null | undefined) {
 }
 
 function BulkSellingCalculator({ item, targetMarginPercent }: { item: BulkPricingItem; targetMarginPercent: number | null }) {
-  const breakdown = feeBreakdown(item.sellingPrice, item.costPrice, item.currency);
   const targetMargin = targetMarginPercent ?? 20;
-  const marginFloorFromTarget = targetMargin >= 100
-    ? null
-    : Math.round((item.costPrice / (1 - targetMargin / 100) + Number.EPSILON) * 100) / 100;
+  const breakdown = feeBreakdown(item.sellingPrice, item.costPrice, item.currency, targetMargin);
 
   return (
     <>
@@ -228,24 +229,24 @@ function BulkSellingCalculator({ item, targetMarginPercent }: { item: BulkPricin
         </div>
         <div className={styles.breakdownLine}>
           <span>
-            Target profit margin selected on upload
-            <small>This creates the minimum selling-price floor for this bulk run</small>
+            Target profit selected on upload
+            <small>{targetMargin.toFixed(1).replace(/\.0$/, "")}% of part cost</small>
           </span>
-          <b>{targetMargin.toFixed(1).replace(/\.0$/, "")}%</b>
+          <b>{money(breakdown.targetProfit, item.currency)}</b>
         </div>
         <div className={styles.breakdownLine}>
           <span>
-            Margin floor from target
-            <small>Part cost ÷ (1 - target margin)</small>
+            Subtotal before fees
+            <small>Part cost + selected profit</small>
           </span>
-          <b>{marginFloorFromTarget === null ? "—" : money(marginFloorFromTarget, item.currency)}</b>
+          <b>{money(item.costPrice + breakdown.targetProfit, item.currency)}</b>
         </div>
         <div className={styles.breakdownLine}>
-          <span>Applied floor price</span>
-          <b>{item.floorPrice === null ? "—" : money(item.floorPrice, item.currency)}</b>
+          <span>Formula selling price</span>
+          <b>{item.sellingPrice === null ? "—" : money(item.sellingPrice, item.currency)}</b>
         </div>
         <div className={styles.breakdownLine}>
-          <span>Actual margin on selected selling price</span>
+          <span>Actual profit percent after fees</span>
           <b>{item.marginPercent === null ? "—" : `${item.marginPercent.toFixed(1)}%`}</b>
         </div>
         <div className={styles.breakdownSubLine}>
@@ -269,8 +270,8 @@ function BulkSellingCalculator({ item, targetMarginPercent }: { item: BulkPricin
           <b>{money(breakdown.grossProfitBeforeShipping, item.currency)}</b>
         </div>
         <div className={styles.totalLanded}>
-          <span>Total landed cost</span>
-          <b>{money(breakdown.totalLandedCost, item.currency)}</b>
+          <span>Total expenses</span>
+          <b>{money(breakdown.totalExpenses, item.currency)}</b>
         </div>
         <p className={styles.breakEvenNote}>
           Stays profitable while your real shipping is ≤ <b>{money(breakdown.breakEvenShipping, item.currency)}</b>.
@@ -279,10 +280,9 @@ function BulkSellingCalculator({ item, targetMarginPercent }: { item: BulkPricin
       <div className={styles.formulaBox}>
         <b>Selling price decision</b>
         <p>
-          Your uploaded target margin was {targetMargin.toFixed(1).replace(/\.0$/, "")}%. It controls the margin floor for this bulk run. Market still uses competitor selling prices only;
-          competitor shipping remains visible for review but is not included in the recommendation.
+          Simple formula: part cost + your selected profit + eBay FVF + export/payment expenses. Market competitors are kept as evidence only and do not change this selling price.
         </p>
-        {visibleSellingFormula(item) ? <span>{visibleSellingFormula(item)}</span> : null}
+        {visibleSellingFormula(item, targetMargin) ? <span>{visibleSellingFormula(item, targetMargin)}</span> : null}
       </div>
     </>
   );
@@ -525,7 +525,7 @@ export default function PricingWorkspace() {
     if (!bulkJob) return;
     setError("");
     try {
-      const header = "PartNumber,Brand,CostPrice,Quantity,Currency,Condition,Marketplace,MatchCount,Lowest,Median,Highest,MarketRecommended,SellingPrice,FloorPrice,MarginPercent,Status,Error,CatalogMatch,Notes";
+      const header = "PartNumber,Brand,CostPrice,Quantity,Currency,Condition,Marketplace,MatchCount,Lowest,Median,Highest,MarketRecommended,SellingPrice,FormulaPrice,ProfitPercent,Status,Error,CatalogMatch,Notes";
       const lines = getVisibleBulkItems().map((item) => [
         item.partNumber, item.brand, item.costPrice, item.quantity, item.currency, item.condition, bulkJob.marketplace,
         item.competitorCount, item.lowest, item.median, item.highest, item.marketRecommended, item.sellingPrice,
@@ -1010,7 +1010,7 @@ export default function PricingWorkspace() {
                             </button>
                           ) : "—"}
                           {item.floorPrice != null ? (
-                            <span className={styles.subtle}>Floor {money(item.floorPrice, item.currency)}</span>
+                            <span className={styles.subtle}>Formula {money(item.floorPrice, item.currency)}</span>
                           ) : null}
                         </td>
                         <td>{item.marginPercent != null ? `${item.marginPercent.toFixed(1)}%` : "—"}</td>

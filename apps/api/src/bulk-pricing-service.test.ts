@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createBulkPricingTemplateCsv, parseBulkPricingCsv } from "./bulk-pricing-service.js";
+import { calculateSimpleBulkSellingPrice, createBulkPricingTemplateCsv, parseBulkPricingCsv } from "./bulk-pricing-service.js";
 
 describe("bulk pricing sheet parser", () => {
   it("parses required columns and defaults currency/condition", () => {
@@ -51,5 +51,18 @@ describe("bulk pricing sheet parser", () => {
     expect(createBulkPricingTemplateCsv()).not.toContain("SKU");
     expect(createBulkPricingTemplateCsv()).not.toContain("Currency");
     expect(createBulkPricingTemplateCsv()).not.toContain("Condition");
+  });
+});
+
+describe("bulk pricing calculator", () => {
+  it("uses cost plus selected profit plus platform/payment expenses", () => {
+    const result = calculateSimpleBulkSellingPrice({ costPrice: 14.54, targetMarginPercent: 20 });
+
+    expect(result.targetProfit).toBe(2.91);
+    expect(result.sellingPrice).toBe(21.17);
+    expect(result.ebayFee).toBe(2.4);
+    expect(result.extraExpenses).toBe(1.31);
+    expect(result.actualProfit).toBe(2.92);
+    expect(result.actualProfitPercent).toBe(20.08);
   });
 });
