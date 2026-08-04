@@ -724,84 +724,48 @@ function getDemoHistoryJobs(): BulkPricingJob[] {
   }
 
 function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPricingJob {
-  return {
-    id: jobId,
-    marketplace: histJob?.marketplace ?? "EBAY_US",
-    defaultCondition: histJob?.defaultCondition ?? "USED",
-    targetMarginPercent: histJob?.targetMarginPercent ?? 20,
-    status: histJob?.status ?? "COMPLETED",
-    totalItems: histJob?.totalItems ?? 6,
-    completedItems: histJob?.completedItems ?? 5,
-    noMatchItems: histJob?.noMatchItems ?? 1,
-    failedItems: histJob?.failedItems ?? 0,
-    sourceFilename: histJob?.sourceFilename ?? "partpulse-bulk-pricing-template.csv",
-    lastError: null,
-    items: [
-      {
-        id: `${jobId}-item-1`,
-        rowNumber: 1,
-        sku: "FEBEST-0282-F15R",
-        partNumber: "0282-F15R",
-        brand: "Febest",
-        costPrice: 135.00,
-        quantity: 3,
+  const totalCount = histJob?.totalItems ?? 249;
+  const noMatchCount = histJob?.noMatchItems ?? Math.round(totalCount * 0.14);
+  const completedCount = totalCount - noMatchCount;
+
+  const sampleParts = [
+    { brand: "Febest", partNumber: "0282-F15R", cost: 135.00, notes: "Wheel Hub-Nismo, FWD, Std Trans fits 12-13 Nissan Juke", compTitle: "Wheel Hub-Nismo Febest 0282-F15R Nissan Juke", price: 180.00, market: 118.28, floor: 161.42, margin: 12.2 },
+    { brand: "Febest", partNumber: "0176-ACU30F", cost: 21.48, notes: "Front axle hub assembly", compTitle: "Febest 0176-ACU30F Front Axle Hub Assembly", price: 31.48, market: 14.44, floor: 26.25, margin: 31.8 },
+    { brand: "Febest", partNumber: "FDAB-035", cost: 14.41, notes: "Control arm bushing", compTitle: "Febest FDAB-035 Control Arm Bushing OEM Replacement", price: 24.41, market: 13.66, floor: 17.80, margin: 41.0 },
+    { brand: "Febest", partNumber: "MM-N43ARR", cost: 37.15, notes: "Engine mount rear", compTitle: "Febest MM-N43ARR Rear Engine Mount Assembly", price: 47.15, market: 32.96, floor: 44.20, margin: 21.2 },
+    { brand: "Febest", partNumber: "0217-C24", cost: 14.54, notes: "Ball joint boot kit", compTitle: "Rear Upper Arm Ball Joint Boot FEBEST 0217-C24", price: 25.97, market: 21.64, floor: 24.54, margin: 44.0 },
+    { brand: "Audi", partNumber: "8K0615301M", cost: 45.00, notes: "Front brake caliper assembly", compTitle: "Audi A4 A5 Q5 Rear Brake Caliper 8K0615301M Left Driver Side", price: 92.00, market: 92.00, floor: 66.25, margin: 51.1 },
+    { brand: "BMW", partNumber: "34116791244", cost: 62.50, notes: "3-Series E90 brake caliper", compTitle: "BMW Brake Caliper 34116791244 OEM Used", price: 115.64, market: 115.64, floor: 88.13, margin: 46.0 },
+    { brand: "Toyota", partNumber: "48790-30052", cost: 18.20, notes: "Rear upper control arm bush", compTitle: "Toyota Rear Upper Arm Bushing OEM 48790-30052", price: 29.80, market: 24.50, floor: 22.10, margin: 38.6 },
+    { brand: "Mercedes-Benz", partNumber: "A2044210912", cost: 78.00, notes: "Front brake disc rotor pair", compTitle: "Mercedes C300 E350 Front Brake Disc Rotor OEM Pair", price: 142.50, market: 135.00, floor: 104.20, margin: 45.2 },
+    { brand: "Nissan", partNumber: "43202-1KA0A", cost: 112.00, notes: "Rear wheel hub assembly", compTitle: "Nissan Juke Leaf NV200 Rear Wheel Hub OEM 43202-1KA0A", price: 168.00, market: 145.00, floor: 138.50, margin: 33.3 },
+  ];
+
+  const noMatchIndices = new Set<number>();
+  if (noMatchCount > 0) {
+    const step = Math.max(1, Math.floor(totalCount / noMatchCount));
+    for (let i = 0; i < noMatchCount; i++) {
+      noMatchIndices.add(Math.min(totalCount - 1, (i * step) + 2));
+    }
+  }
+
+  const generatedItems: BulkPricingItem[] = Array.from({ length: totalCount }, (_, index) => {
+    const rowNum = index + 1;
+    const isNoMatch = noMatchIndices.has(index);
+    const template = sampleParts[index % sampleParts.length];
+
+    if (isNoMatch) {
+      return {
+        id: `${jobId}-item-${rowNum}`,
+        rowNumber: rowNum,
+        sku: `${template.brand.toUpperCase()}-${template.partNumber}-${rowNum}`,
+        partNumber: template.partNumber,
+        brand: template.brand,
+        costPrice: template.cost,
+        quantity: index % 3,
         currency: "USD",
-        condition: "NEW",
-        notes: "Wheel Hub-Nismo, FWD, Std Trans fits 12-13 Nissan Juke",
-        catalogMatch: true,
-        status: "COMPLETED",
-        competitorCount: 4,
-        lowest: 100.95,
-        median: 120.70,
-        highest: 180.77,
-        marketRecommended: 118.28,
-        sellingPrice: 180.00,
-        floorPrice: 161.42,
-        marginPercent: 12.2,
-        competitors: [
-          { listingId: "336012345678", title: "Wheel Hub-Nismo, FWD, Std Trans Febest 0282-F15R fits 12-13 Nissan Juke", seller: "thefinestautoparts", price: 100.95, shipping: 0, currency: "USD", condition: "NEW", marketplace: "EBAY_US", url: "https://www.ebay.com", matchedOn: ["OE/OEM Part Number"] },
-          { listingId: "336098765432", title: "REAR WHEEL HUB FEBEST 0282-F15R OEM 43202-1KA0A", seller: "febestautoparts-usa", price: 128.20, shipping: 0, currency: "USD", condition: "NEW", marketplace: "EBAY_US", url: "https://www.ebay.com", matchedOn: ["Manufacturer Part Number"] },
-          { listingId: "336098765433", title: "Febest 0282-F15R Rear Wheel Hub Fits Infiniti Nissan Esq Juke Leaf Nv200 Evalia", seller: "hfxparts24", price: 113.19, shipping: 67.58, currency: "USD", condition: "NEW", marketplace: "EBAY_US", url: "https://www.ebay.com", matchedOn: ["Manufacturer Part Number"] },
-        ],
-        error: null,
-      },
-      {
-        id: `${jobId}-item-2`,
-        rowNumber: 2,
-        sku: "FEBEST-0176-ACU30F",
-        partNumber: "0176-ACU30F",
-        brand: "Febest",
-        costPrice: 21.48,
-        quantity: 1,
-        currency: "USD",
-        condition: "NEW",
-        notes: "Front axle hub assembly",
-        catalogMatch: false,
-        status: "COMPLETED",
-        competitorCount: 4,
-        lowest: 14.44,
-        median: 14.73,
-        highest: 31.48,
-        marketRecommended: 14.44,
-        sellingPrice: 31.48,
-        floorPrice: 26.25,
-        marginPercent: 31.8,
-        competitors: [
-          { listingId: "335511223344", title: "Febest 0176-ACU30F Front Axle Hub Assembly", seller: "febestautoparts-usa", price: 14.44, shipping: 0, currency: "USD", condition: "NEW", marketplace: "EBAY_US", url: "https://www.ebay.com", matchedOn: ["OE/OEM Part Number"] },
-        ],
-        error: null,
-      },
-      {
-        id: `${jobId}-item-3`,
-        rowNumber: 3,
-        sku: "FEBEST-KSB-PICF",
-        partNumber: "KSB-PICF",
-        brand: "Febest",
-        costPrice: 2.31,
-        quantity: 0,
-        currency: "USD",
-        condition: "NEW",
-        notes: "Stabilizer bush kit",
+        condition: histJob?.defaultCondition ?? "NEW",
+        notes: template.notes,
         catalogMatch: false,
         status: "NO_MATCHES",
         competitorCount: 0,
@@ -810,90 +774,69 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
         highest: null,
         marketRecommended: null,
         sellingPrice: null,
-        floorPrice: 3.20,
+        floorPrice: Math.round((template.cost * 1.25) * 100) / 100,
         marginPercent: null,
         competitors: [],
         error: null,
-      },
-      {
-        id: `${jobId}-item-4`,
-        rowNumber: 4,
-        sku: "FEBEST-FDAB-035",
-        partNumber: "FDAB-035",
-        brand: "Febest",
-        costPrice: 14.41,
-        quantity: 8,
-        currency: "USD",
-        condition: "NEW",
-        notes: "Control arm bushing",
-        catalogMatch: true,
-        status: "COMPLETED",
-        competitorCount: 4,
-        lowest: 13.66,
-        median: 13.93,
-        highest: 24.41,
-        marketRecommended: 13.66,
-        sellingPrice: 24.41,
-        floorPrice: 17.80,
-        marginPercent: 41.0,
-        competitors: [
-          { listingId: "335511223355", title: "Febest FDAB-035 Control Arm Bushing OEM Replacement", seller: "fordparts_direct", price: 13.66, shipping: 0, currency: "USD", condition: "NEW", marketplace: "EBAY_US", url: "https://www.ebay.com", matchedOn: ["OE/OEM Part Number"] },
-        ],
-        error: null,
-      },
-      {
-        id: `${jobId}-item-5`,
-        rowNumber: 5,
-        sku: "FEBEST-MM-N43ARR",
-        partNumber: "MM-N43ARR",
-        brand: "Febest",
-        costPrice: 37.15,
-        quantity: 4,
-        currency: "USD",
-        condition: "NEW",
-        notes: "Engine mount rear",
-        catalogMatch: false,
-        status: "COMPLETED",
-        competitorCount: 2,
-        lowest: 32.96,
-        median: 33.63,
-        highest: 47.15,
-        marketRecommended: 32.96,
-        sellingPrice: 47.15,
-        floorPrice: 44.20,
-        marginPercent: 21.2,
-        competitors: [
-          { listingId: "335511223366", title: "Febest MM-N43ARR Rear Engine Mount Assembly", seller: "mitsubishiparts_us", price: 32.96, shipping: 0, currency: "USD", condition: "NEW", marketplace: "EBAY_US", url: "https://www.ebay.com", matchedOn: ["OE/OEM Part Number"] },
-        ],
-        error: null,
-      },
-      {
-        id: `${jobId}-item-6`,
-        rowNumber: 6,
-        sku: "FEBEST-0217-C24",
-        partNumber: "0217-C24",
-        brand: "Febest",
-        costPrice: 14.54,
-        quantity: 10,
-        currency: "USD",
-        condition: "NEW",
-        notes: "Ball joint boot kit",
-        catalogMatch: false,
-        status: "COMPLETED",
-        competitorCount: 4,
-        lowest: 21.64,
-        median: 22.08,
-        highest: 35.00,
-        marketRecommended: 21.64,
-        sellingPrice: 25.97,
-        floorPrice: 24.54,
-        marginPercent: 44.0,
-        competitors: [
-          { listingId: "222332154638", title: "Rear Upper Arm Ball Joint Boot FEBEST 0217-C24 OEM 48790-30052", seller: "febestautoparts-usa", price: 21.64, shipping: 0, currency: "USD", condition: "NEW", marketplace: "EBAY_US", url: "https://www.ebay.com", matchedOn: ["Manufacturer Part Number"] },
-        ],
-        error: null,
-      },
-    ],
+      };
+    }
+
+    const priceVar = ((index % 5) - 2) * 1.5;
+    const finalPrice = Math.round((template.price + priceVar) * 100) / 100;
+    const finalFloor = Math.round((template.floor + priceVar * 0.5) * 100) / 100;
+
+    return {
+      id: `${jobId}-item-${rowNum}`,
+      rowNumber: rowNum,
+      sku: `${template.brand.toUpperCase()}-${template.partNumber}-${rowNum}`,
+      partNumber: template.partNumber,
+      brand: template.brand,
+      costPrice: template.cost,
+      quantity: ((index * 3) % 11) + 1,
+      currency: "USD",
+      condition: histJob?.defaultCondition ?? "NEW",
+      notes: template.notes,
+      catalogMatch: index % 3 === 0,
+      status: "COMPLETED",
+      competitorCount: 3 + (index % 4),
+      lowest: Math.round((template.market * 0.85) * 100) / 100,
+      median: template.market,
+      highest: Math.round((template.market * 1.45) * 100) / 100,
+      marketRecommended: template.market,
+      sellingPrice: finalPrice,
+      floorPrice: finalFloor,
+      marginPercent: template.margin,
+      competitors: [
+        {
+          listingId: `comp-${rowNum}-1`,
+          title: template.compTitle,
+          seller: "autoparts_express",
+          price: template.market,
+          shipping: 0,
+          currency: "USD",
+          condition: histJob?.defaultCondition ?? "NEW",
+          marketplace: "EBAY_US",
+          url: "https://www.ebay.com",
+          matchedOn: ["OE/OEM Part Number"],
+        },
+      ],
+      error: null,
+    };
+  });
+
+  return {
+    id: jobId,
+    marketplace: histJob?.marketplace ?? "EBAY_US",
+    defaultCondition: histJob?.defaultCondition ?? "NEW",
+    targetMarginPercent: histJob?.targetMarginPercent ?? 20,
+    status: histJob?.status ?? "COMPLETED",
+    totalItems: totalCount,
+    completedItems: completedCount,
+    noMatchItems: noMatchCount,
+    failedItems: 0,
+    sourceFilename: histJob?.sourceFilename ?? "partpulse-bulk-pricing-template.csv",
+    lastError: null,
+    items: generatedItems,
   };
 }
 
