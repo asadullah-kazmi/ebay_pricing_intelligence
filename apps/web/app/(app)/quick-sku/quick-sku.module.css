@@ -264,14 +264,15 @@
   white-space: nowrap;
 }
 
-.segmentActive {
+.segmentActive,
+.segmentActive span,
+.segmentedControl label.segmentActive,
+.segmentedControl label.segmentActive > span,
+.formCard label.segmentActive > span {
   background: linear-gradient(135deg, #315cf6 0%, #7048ee 100%);
-  color: #fff !important;
+  color: #ffffff !important;
+  font-weight: 800 !important;
   box-shadow: 0 8px 18px #315cf626;
-}
-
-.segmentActive span {
-  color: #fff;
 }
 
 .segmentField:disabled .segmentedControl {
