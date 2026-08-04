@@ -521,7 +521,11 @@ function getDemoHistoryJobs(): BulkPricingJob[] {
     setHistoryBusy(true);
     try {
       if (demo) {
-        setBulkHistory(getDemoHistoryJobs());
+        setBulkHistory((prev) => {
+          const demoBase = getDemoHistoryJobs();
+          const customOnly = prev.filter((j) => !demoBase.some((d) => d.id === j.id));
+          return [...customOnly, ...demoBase];
+        });
         return;
       }
 
@@ -535,9 +539,16 @@ function getDemoHistoryJobs(): BulkPricingJob[] {
         window.clearTimeout(timeoutId);
 
         if (Array.isArray(jobs) && jobs.length > 0) {
-          setBulkHistory(jobs);
+          setBulkHistory((prev) => {
+            const customOnly = prev.filter((j) => !jobs.some((d) => d.id === j.id));
+            return [...customOnly, ...jobs];
+          });
         } else {
-          setBulkHistory(getDemoHistoryJobs());
+          setBulkHistory((prev) => {
+            const demoBase = getDemoHistoryJobs();
+            const customOnly = prev.filter((j) => !demoBase.some((d) => d.id === j.id));
+            return [...customOnly, ...demoBase];
+          });
         }
       } catch {
         window.clearTimeout(timeoutId);
@@ -606,74 +617,25 @@ function getDemoHistoryJobs(): BulkPricingJob[] {
     try {
       if (demo) {
         await new Promise((resolve) => window.setTimeout(resolve, 600));
-        setBulkJob({
-          id: "demo-bulk-1",
+        const demoHistJob: BulkPricingJob = {
+          id: `demo-bulk-${Date.now()}`,
           marketplace,
           defaultCondition: condition,
           targetMarginPercent: Number(targetMarginPercent) || 20,
           status: "COMPLETED",
-          totalItems: 2,
-          completedItems: 2,
-          noMatchItems: 0,
+          totalItems: 249,
+          completedItems: 214,
+          noMatchItems: 35,
           failedItems: 0,
           sourceFilename: bulkFile.name,
           lastError: null,
-          items: [
-            {
-              id: "1",
-              rowNumber: 1,
-              sku: "AUDI-8K0615301M",
-              partNumber: "8K0615301M",
-              brand: "Audi",
-              costPrice: 45,
-              quantity: 3,
-              currency: "USD",
-              condition: "USED",
-              notes: "Demo row",
-              catalogMatch: false,
-              status: "COMPLETED",
-              competitorCount: 12,
-              lowest: 74.99,
-              median: 94.5,
-              highest: 139,
-              marketRecommended: 92,
-              sellingPrice: 92,
-              floorPrice: 66.25,
-              marginPercent: 51.09,
-              competitors: [
-                { listingId: "336012345678", title: "Audi A4 A5 Q5 Rear Brake Caliper 8K0615301M Left Driver Side Used", seller: "euroautoparts_us", price: 79.99, shipping: 12.5, currency: "USD", condition: "USED", marketplace: "EBAY_US", url: "https://www.ebay.com", matchedOn: ["OE/OEM Part Number"] },
-                { listingId: "336098765432", title: "OEM Audi Rear Caliper Assembly 8K0615301M Tested", seller: "germanparts_direct", price: 89, shipping: 0, currency: "USD", condition: "USED", marketplace: "EBAY_US", url: "https://www.ebay.com", matchedOn: ["Manufacturer Part Number"] },
-              ],
-              error: null,
-            },
-            {
-              id: "2",
-              rowNumber: 2,
-              sku: "BMW-34116791244",
-              partNumber: "34116791244",
-              brand: "BMW",
-              costPrice: 62.5,
-              quantity: 1,
-              currency: "USD",
-              condition: "USED",
-              notes: null,
-              catalogMatch: true,
-              status: "COMPLETED",
-              competitorCount: 8,
-              lowest: 89,
-              median: 118,
-              highest: 160,
-              marketRecommended: 115.64,
-              sellingPrice: 115.64,
-              floorPrice: 88.13,
-              marginPercent: 45.95,
-              competitors: [
-                { listingId: "335511223344", title: "BMW Brake Caliper 34116791244 OEM Used", seller: "bmw_parts_house", price: 109.95, shipping: 8.99, currency: "USD", condition: "USED", marketplace: "EBAY_US", url: "https://www.ebay.com", matchedOn: ["OE/OEM Part Number"] },
-              ],
-              error: null,
-            },
-          ],
-        });
+          createdAt: new Date().toISOString(),
+          startedAt: new Date().toISOString(),
+          completedAt: new Date().toISOString(),
+        };
+        const fullJob = createDemoJobWithItems(demoHistJob.id, demoHistJob);
+        setBulkJob(fullJob);
+        setBulkHistory((prev) => [demoHistJob, ...prev.filter((j) => j.id !== demoHistJob.id)]);
         return;
       }
 
@@ -690,6 +652,7 @@ function getDemoHistoryJobs(): BulkPricingJob[] {
         },
       ) as BulkPricingJob;
       setBulkJob(job);
+      setBulkHistory((prev) => [job, ...prev.filter((j) => j.id !== job.id)]);
       void loadBulkHistory();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to start bulk pricing");
