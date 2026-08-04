@@ -711,13 +711,22 @@ function getDemoHistoryJobs(): BulkPricingJob[] {
     if (!bulkJob) return;
     setError("");
     try {
+      const itemsToExport = getVisibleBulkItems();
       const header = "PartNumber,Brand,CostPrice,Quantity,Currency,Condition,Marketplace,MatchCount,Lowest,Median,Highest,MarketRecommended,SellingPrice,FormulaPrice,ProfitPercent,Status,Error,CatalogMatch,Notes";
-      const lines = getVisibleBulkItems().map((item) => [
+      const lines = itemsToExport.map((item) => [
         item.partNumber, item.brand, item.costPrice, item.quantity, item.currency, item.condition, bulkJob.marketplace,
         item.competitorCount, item.lowest, item.median, item.highest, item.marketRecommended, item.sellingPrice,
         item.floorPrice, item.marginPercent, item.status, item.error ?? "", item.catalogMatch ? "Yes" : "No", item.notes ?? "",
       ].map(csvCell).join(","));
-      downloadTextFile(`partpulse-bulk-pricing-${bulkJob.id}.csv`, [header, ...lines].join("\n"));
+
+      const baseName = (bulkJob.sourceFilename || "bulk-pricing").replace(/\.csv$/i, "");
+      const totalCount = bulkJob.items?.length ?? 0;
+      const isFiltered = itemsToExport.length < totalCount;
+      const filename = isFiltered
+        ? `${baseName}-filtered-${itemsToExport.length}.csv`
+        : `${baseName}-priced.csv`;
+
+      downloadTextFile(filename, [header, ...lines].join("\n"));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to export results");
     }
@@ -1195,8 +1204,15 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
                   <button type="button" className={styles.ghostBtn} onClick={() => setBulkJob(null)}>
                     Close job view
                   </button>
-                  <button type="button" className={styles.primary} disabled={!bulkDone} onClick={() => void exportBulkResults()}>
-                    Download priced CSV
+                  <button
+                    type="button"
+                    className={styles.primary}
+                    disabled={!bulkDone || visibleBulkItems.length === 0}
+                    onClick={() => void exportBulkResults()}
+                  >
+                    {visibleBulkItems.length < totalBulkItems
+                      ? `Download filtered CSV (${visibleBulkItems.length})`
+                      : "Download priced CSV"}
                   </button>
                 </div>
               </div>
