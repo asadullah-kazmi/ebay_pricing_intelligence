@@ -16,9 +16,9 @@ type QueueItem = {
 };
 
 const demoQueue: QueueItem[] = [
-  { id: "1", fileName: "catalog-intake-week-12.csv", status: "UPLOADED", condition: "USED", uploadedBy: "BA", createdAt: new Date().toISOString() },
-  { id: "2", fileName: "yard-photos-march.zip", status: "PROCESSING", condition: "USED", uploadedBy: "BA", createdAt: new Date(Date.now() - 3600000).toISOString() },
-  { id: "3", fileName: "interchange-batch.xlsx", status: "READY", condition: "NEW", uploadedBy: "OP", createdAt: new Date(Date.now() - 86400000).toISOString() },
+  { id: "imp-7842", fileName: "catalog-intake-week-12.csv", status: "UPLOADED", condition: "USED", uploadedBy: "BA", createdAt: new Date().toISOString() },
+  { id: "imp-7841", fileName: "yard-photos-march.zip", status: "PROCESSING", condition: "USED", uploadedBy: "BA", createdAt: new Date(Date.now() - 3600000).toISOString() },
+  { id: "imp-7840", fileName: "interchange-batch.xlsx", status: "READY", condition: "NEW", uploadedBy: "OP", createdAt: new Date(Date.now() - 86400000).toISOString() },
 ];
 
 export default function PipelineWorkspace() {
@@ -58,7 +58,7 @@ export default function PipelineWorkspace() {
       if (!response.ok) throw new Error(payload.error || "Upload failed");
       setQueue((current) => [
         {
-          id: payload.id || crypto.randomUUID(),
+          id: payload.id || `imp-${Math.floor(1000 + Math.random() * 9000)}`,
           fileName: file.name,
           status: "UPLOADED",
           condition,
@@ -79,7 +79,7 @@ export default function PipelineWorkspace() {
   if (status !== "ready") return null;
 
   return (
-    <>
+    <div className={styles.page}>
       <header className={styles.topbar}>
         <div>
           <h1>Pipeline</h1>
@@ -94,24 +94,51 @@ export default function PipelineWorkspace() {
               window.open(`${apiBase}/api/imports/template`, "_blank");
             }}
           >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
             Download template
           </a>
           <Link className={styles.primary} href="/catalog">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="7" height="7" />
+              <rect x="14" y="3" width="7" height="7" />
+              <rect x="14" y="14" width="7" height="7" />
+              <rect x="3" y="14" width="7" height="7" />
+            </svg>
             Open catalog
           </Link>
         </div>
       </header>
 
-      {notice && <div className={styles.notice}>{notice}</div>}
-      {error && <div className={styles.error}>{error}</div>}
+      {notice && (
+        <div className={styles.notice}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          {notice}
+        </div>
+      )}
+      {error && (
+        <div className={styles.error}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="15" y1="9" x2="9" y2="15" />
+            <line x1="9" y1="9" x2="15" y2="15" />
+          </svg>
+          {error}
+        </div>
+      )}
 
       <section className={styles.uploadGrid}>
         <form className={styles.uploadCard} onSubmit={uploadSpreadsheet}>
           <div className={styles.cardHead}>
-            <div>
-              <span className={styles.eyebrow}>BULK UPLOAD</span>
-              <h2>Stage catalog intake</h2>
-            </div>
+            <span className={styles.eyebrow}>BULK UPLOAD</span>
+            <h2>Stage catalog intake</h2>
           </div>
           <div className={styles.uploadControls}>
             <label>
@@ -136,6 +163,13 @@ export default function PipelineWorkspace() {
               accept=".csv,.xlsx,.xls"
               onChange={(event) => setFile(event.target.files?.[0] ?? null)}
             />
+            <div className={styles.dropzoneIcon}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" />
+                <path d="M12 12v9" />
+                <path d="m16 16-4-4-4 4" />
+              </svg>
+            </div>
             <strong>{file ? file.name : "Drag & drop spreadsheet"}</strong>
             <span>CSV or XLSX · PartPulse intake template v1</span>
           </label>
@@ -149,14 +183,27 @@ export default function PipelineWorkspace() {
         <aside className={styles.rulesCard}>
           <span className={styles.eyebrow}>BULK UPLOAD RULES</span>
           <h2>Before you upload</h2>
-          <ul>
-            <li>Use the current PartPulse catalog intake spreadsheet template.</li>
-            <li>Keep one SKU per row and map photo folders to those SKUs.</li>
-            <li>Image ZIP uploads happen after spreadsheet validation.</li>
-            <li>Review blockers in preview before confirming into the live catalog.</li>
+          <ul className={styles.rulesList}>
+            <li>
+              <span className={styles.ruleCheck}>✓</span>
+              <span>Use the current PartPulse catalog intake spreadsheet template.</span>
+            </li>
+            <li>
+              <span className={styles.ruleCheck}>✓</span>
+              <span>Keep one SKU per row and map photo folders to those SKUs.</span>
+            </li>
+            <li>
+              <span className={styles.ruleCheck}>✓</span>
+              <span>Image ZIP uploads happen after spreadsheet validation.</span>
+            </li>
+            <li>
+              <span className={styles.ruleCheck}>✓</span>
+              <span>Review blockers in preview before confirming into the live catalog.</span>
+            </li>
           </ul>
           <div className={styles.infoBox}>
-            Tip: confirm imports only after image matches and required fields are complete.
+            <span className={styles.infoIcon}>i</span>
+            <span>Tip: confirm imports only after image matches and required fields are complete.</span>
           </div>
         </aside>
       </section>
@@ -183,8 +230,10 @@ export default function PipelineWorkspace() {
               {queue.map((item) => (
                 <tr key={item.id}>
                   <td>
-                    <b>{item.fileName}</b>
-                    <span>{item.id}</span>
+                    <div className={styles.fileMeta}>
+                      <span className={styles.fileName}>{item.fileName}</span>
+                      <span className={styles.fileId}>{item.id}</span>
+                    </div>
                   </td>
                   <td>
                     <span className={styles.pill}>{item.condition}</span>
@@ -195,13 +244,13 @@ export default function PipelineWorkspace() {
                   <td>
                     <span className={styles.avatar}>{item.uploadedBy}</span>
                   </td>
-                  <td>{new Date(item.createdAt).toLocaleString()}</td>
+                  <td className={styles.dateCell}>{new Date(item.createdAt).toLocaleString()}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </section>
-    </>
+    </div>
   );
 }
