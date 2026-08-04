@@ -536,6 +536,27 @@
   font-weight: 600;
 }
 
+.filteredSummary {
+  width: fit-content;
+  margin-top: 9px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 6px 9px;
+  border: 1px solid #dbeafe;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #47617f;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.filteredSummary b {
+  color: #0052ff;
+  font-size: 14px;
+  line-height: 1;
+}
+
 .reviewFilters {
   display: grid;
   grid-template-columns: minmax(220px, 1.3fr) minmax(130px, 0.7fr) minmax(90px, 0.45fr) minmax(90px, 0.45fr) auto auto;
@@ -606,11 +627,28 @@
   height: 34px;
   display: inline-flex;
   align-items: center;
+  gap: 5px;
   justify-content: flex-end;
   color: #64748b;
   font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
+}
+
+.filterCount b {
+  color: #0052ff;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.filterCount span {
+  color: #334155;
+}
+
+.filterCount small {
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 700;
 }
 
 .recommend {

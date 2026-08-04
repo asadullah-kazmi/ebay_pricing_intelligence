@@ -575,6 +575,14 @@ export default function PricingWorkspace() {
     ? Math.round(((bulkJob.completedItems + bulkJob.noMatchItems + bulkJob.failedItems) / Math.max(bulkJob.totalItems, 1)) * 100)
     : 0;
   const visibleBulkItems = getVisibleBulkItems();
+  const totalBulkItems = bulkJob?.items?.length ?? 0;
+  const activeBulkFilterCount = [
+    bulkSearch.trim(),
+    bulkStatusFilter !== "ALL",
+    quantityMin.trim(),
+    quantityMax.trim(),
+    hideCostAboveMarket,
+  ].filter(Boolean).length;
 
   return (
     <div className={styles.page}>
@@ -903,7 +911,15 @@ export default function PricingWorkspace() {
                     {bulkJob.noMatchItems ? ` · ${bulkJob.noMatchItems} no match` : ""}
                     {bulkJob.failedItems ? ` · ${bulkJob.failedItems} failed` : ""}
                   </p>
-                  {!bulkDone && (
+	                  <div className={styles.filteredSummary}>
+	                    <b>{visibleBulkItems.length}</b>
+	                    <span>
+	                      listings after filters
+	                      {totalBulkItems ? ` of ${totalBulkItems} total` : ""}
+	                      {activeBulkFilterCount ? ` · ${activeBulkFilterCount} filter${activeBulkFilterCount === 1 ? "" : "s"} applied` : ""}
+	                    </span>
+	                  </div>
+	                  {!bulkDone && (
                     <div className={styles.bulkProgressTrack} aria-hidden="true">
                       <span style={{ width: `${bulkProgress}%` }} />
                     </div>
@@ -944,11 +960,13 @@ export default function PricingWorkspace() {
                 <label className={styles.checkFilter}>
                   <input type="checkbox" checked={hideCostAboveMarket} onChange={(event) => setHideCostAboveMarket(event.currentTarget.checked)} />
                   <span>Hide cost &gt; market</span>
-                </label>
-                <div className={styles.filterCount}>
-                  Showing {visibleBulkItems.length}/{bulkJob.items?.length ?? 0}
-                </div>
-              </div>
+	                </label>
+	                <div className={styles.filterCount}>
+	                  <b>{visibleBulkItems.length}</b>
+	                  <span>filtered listings</span>
+	                  <small>{totalBulkItems} total</small>
+	                </div>
+	              </div>
 
               <div className={styles.tableWrap}>
                 <table>
