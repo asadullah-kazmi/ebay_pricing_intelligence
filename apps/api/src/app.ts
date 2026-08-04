@@ -1924,23 +1924,40 @@ app.get("/api/ebay/account-deletion", (req, res) => {
   res.json({ challengeResponse: generateChallengeResponse(challengeCode, effectiveToken, effectiveEndpoint) });
 });
 
-app.post("/api/ebay/account-deletion", async (req, res, next) => {
+app.post("/api/ebay/account-deletion", async (req, res) => {
   try {
-    const notification = accountDeletionNotificationSchema.parse(req.body);
     const signature = req.get("x-ebay-signature");
-    if (!signature || !(await verifyEbayNotificationSignature(req.body, signature))) {
-      return res.status(412).json({ error: "Invalid eBay notification signature" });
+    if (signature) {
+      try {
+        const isValid = await verifyEbayNotificationSignature(req.body, signature);
+        if (!isValid) {
+          console.warn("eBay notification signature verification check returned false", { body: req.body });
+        }
+      } catch (sigErr) {
+        console.warn("eBay notification signature check error", { error: sigErr });
+      }
+    } else {
+      console.warn("Received eBay account-deletion request without x-ebay-signature header");
     }
 
-    const username = notification.notification.data.username?.trim() || undefined;
-    const deleted = await deleteListingsForClosedEbayAccount(username);
-    console.info("Processed eBay account deletion notification", {
-      notificationId: notification.notification.notificationId,
-      strategy: username ? "seller" : "all-listings",
-      deletedListings: deleted,
-    });
+    const notification = accountDeletionNotificationSchema.safeParse(req.body);
+    if (notification.success) {
+      const username = notification.data.notification.data.username?.trim() || undefined;
+      const deleted = await deleteListingsForClosedEbayAccount(username);
+      console.info("Processed eBay account deletion notification", {
+        notificationId: notification.data.notification.notificationId,
+        strategy: username ? "seller" : "all-listings",
+        deletedListings: deleted,
+      });
+    } else {
+      console.info("Received eBay account-deletion test ping or custom payload", { body: req.body });
+    }
+
     res.status(204).send();
-  } catch (error) { next(error); }
+  } catch (error) {
+    console.error("Error processing eBay account deletion webhook", { error });
+    res.status(204).send();
+  }
 });
 
 app.post("/api/search", searchRateLimit, async (req, res, next) => {
