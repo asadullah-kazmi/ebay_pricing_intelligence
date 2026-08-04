@@ -24,6 +24,7 @@ import { createPricingJob, getPricingJob, listPricingJobs, PricingJobError, star
 import {
   BulkPricingError,
   bulkPricingTemplateFilename,
+  cancelStuckBulkPricingJobs,
   createBulkPricingJob,
   createBulkPricingTemplateCsv,
   exportBulkPricingCsv,
@@ -1130,6 +1131,13 @@ app.post("/api/pricing/bulk", searchRateLimit, requireTenantContext, pricingRole
     });
     if (getConfig().jobs.executionMode !== "inline") startBulkPricingJob(job.id);
     res.status(202).json(job);
+  } catch (error) { next(error); }
+});
+
+app.post("/api/pricing/bulk/clear-stuck", requireTenantContext, pricingRoles, async (req, res, next) => {
+  try {
+    await cancelStuckBulkPricingJobs(getTenantContext(res).organization.id);
+    res.json({ success: true });
   } catch (error) { next(error); }
 });
 

@@ -502,6 +502,20 @@ export async function resumeInterruptedBulkPricingJobs(options: JobRunOptions = 
   return startQueuedBulkPricingJobs(options);
 }
 
+export async function cancelStuckBulkPricingJobs(organizationId: string) {
+  return prisma.bulkPricingJob.updateMany({
+    where: {
+      organizationId,
+      status: { in: ["QUEUED", "RUNNING"] },
+    },
+    data: {
+      status: "FAILED",
+      lastError: "Cancelled by user to start a new job",
+      completedAt: new Date(),
+    },
+  });
+}
+
 export async function createBulkPricingJob(input: {
   organizationId: string;
   userId: string;
@@ -512,6 +526,21 @@ export async function createBulkPricingJob(input: {
   sourceFilename?: string | null;
 }) {
   if (!input.rows.length) throw new BulkPricingError("At least one row is required.");
+
+  // Auto-expire stale running/queued jobs older than 5 minutes to prevent lockout
+  const staleThreshold = new Date(Date.now() - 5 * 60 * 1000);
+  await prisma.bulkPricingJob.updateMany({
+    where: {
+      organizationId: input.organizationId,
+      status: { in: ["QUEUED", "RUNNING"] },
+      createdAt: { lt: staleThreshold },
+    },
+    data: {
+      status: "FAILED",
+      lastError: "Job timed out or was interrupted",
+      completedAt: new Date(),
+    },
+  });
 
   const active = await prisma.bulkPricingJob.findFirst({
     where: { organizationId: input.organizationId, status: { in: ["QUEUED", "RUNNING"] } },

@@ -693,6 +693,25 @@ function getDemoHistoryJobs(): BulkPricingJob[] {
     }
   }
 
+  const [clearingStuck, setClearingStuck] = useState(false);
+
+  async function clearStuckJob() {
+    setClearingStuck(true);
+    try {
+      if (demo) {
+        setError("");
+        return;
+      }
+      await apiFetch("/api/pricing/bulk/clear-stuck", { method: "POST" });
+      setError("");
+      void loadBulkHistory();
+    } catch {
+      setError("Failed to clear stuck job");
+    } finally {
+      setClearingStuck(false);
+    }
+  }
+
   function getVisibleBulkItems() {
     const min = quantityMin.trim() ? Number(quantityMin) : null;
     const max = quantityMax.trim() ? Number(quantityMax) : null;
@@ -1177,7 +1196,22 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
           </section>
           )}
 
-          {error && <div className={styles.error}>{error}</div>}
+          {error && (
+            <div className={styles.error} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <span>{error}</span>
+              {error.includes("already running") && (
+                <button
+                  type="button"
+                  className={styles.ghostBtn}
+                  style={{ height: 28, fontSize: 12, padding: "0 12px", whiteSpace: "nowrap", flexShrink: 0 }}
+                  disabled={clearingStuck}
+                  onClick={() => void clearStuckJob()}
+                >
+                  {clearingStuck ? "Resetting…" : "Reset stuck job"}
+                </button>
+              )}
+            </div>
+          )}
           {demo && !bulkJob && (
             <div className={styles.notice}>Development preview — upload any CSV to see sample bulk results.</div>
           )}
