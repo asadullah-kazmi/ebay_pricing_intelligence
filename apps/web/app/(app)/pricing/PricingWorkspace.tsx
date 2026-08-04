@@ -435,7 +435,7 @@ function getDemoHistoryJobs(): BulkPricingJob[] {
       targetMarginPercent: 20,
       status: "COMPLETED",
       totalItems: 249,
-      completedItems: 249,
+      completedItems: 214,
       noMatchItems: 35,
       failedItems: 0,
       sourceFilename: "partpulse-bulk-pricing-template (3).csv",
@@ -451,7 +451,7 @@ function getDemoHistoryJobs(): BulkPricingJob[] {
       targetMarginPercent: 20,
       status: "COMPLETED",
       totalItems: 112,
-      completedItems: 112,
+      completedItems: 88,
       noMatchItems: 24,
       failedItems: 0,
       sourceFilename: "partpulse-bulk-pricing-template (2).csv",
@@ -467,7 +467,7 @@ function getDemoHistoryJobs(): BulkPricingJob[] {
       targetMarginPercent: 20,
       status: "COMPLETED",
       totalItems: 16,
-      completedItems: 16,
+      completedItems: 3,
       noMatchItems: 13,
       failedItems: 0,
       sourceFilename: "partpulse-bulk-pricing-template (2).csv",
@@ -483,7 +483,7 @@ function getDemoHistoryJobs(): BulkPricingJob[] {
       targetMarginPercent: 20,
       status: "COMPLETED",
       totalItems: 16,
-      completedItems: 16,
+      completedItems: 10,
       noMatchItems: 6,
       failedItems: 0,
       sourceFilename: "partpulse-bulk-pricing-template (2).csv",
@@ -499,7 +499,7 @@ function getDemoHistoryJobs(): BulkPricingJob[] {
       targetMarginPercent: 20,
       status: "COMPLETED",
       totalItems: 16,
-      completedItems: 16,
+      completedItems: 9,
       noMatchItems: 7,
       failedItems: 0,
       sourceFilename: "partpulse-bulk-pricing-template.csv",
@@ -1238,7 +1238,7 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
                   <h3>{bulkJob.sourceFilename || bulkJob.id}</h3>
                   <p>
                     {bulkJob.marketplace.replace("EBAY_", "eBay ")} · {bulkJob.status.toLowerCase()} ·{" "}
-                    {bulkJob.completedItems + bulkJob.noMatchItems + bulkJob.failedItems}/{bulkJob.totalItems} rows
+                    {Math.min(bulkJob.status === "COMPLETED" ? bulkJob.totalItems : bulkJob.completedItems + bulkJob.noMatchItems + bulkJob.failedItems, bulkJob.totalItems)}/{bulkJob.totalItems} rows
                     {bulkJob.noMatchItems ? ` · ${bulkJob.noMatchItems} no match` : ""}
                     {bulkJob.failedItems ? ` · ${bulkJob.failedItems} failed` : ""}
                   </p>
@@ -1551,7 +1551,10 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
               {bulkHistory.length ? (
                 <div className={styles.historyList}>
                   {bulkHistory.map((job) => {
-                    const processed = job.completedItems + job.noMatchItems + job.failedItems;
+                    const processed = Math.min(
+                      job.status === "COMPLETED" ? job.totalItems : job.completedItems + job.noMatchItems + job.failedItems,
+                      job.totalItems,
+                    );
                     const created = job.createdAt ? new Date(job.createdAt).toLocaleString() : "—";
                     return (
                       <article key={job.id}>
