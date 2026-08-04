@@ -301,6 +301,33 @@
   cursor: default;
 }
 
+.ghostBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 38px;
+  padding: 0 16px;
+  border: 1px solid #dbeafe;
+  border-radius: 9px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font: 600 12.5px/1 "Plus Jakarta Sans", sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 140ms ease;
+}
+
+.ghostBtn:hover:not(:disabled) {
+  border-color: #2563eb;
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.ghostBtn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .error,
 .notice,
 .warn {
@@ -447,54 +474,94 @@
   display: block;
 }
 
-.historyList b {
-  color: #0f172a;
-  font-size: 12.5px;
-  font-weight: 650;
-  letter-spacing: -0.05px;
+.historyFilename {
+  color: #0f172a !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.1px;
 }
 
-.historyList span {
+.historyMetaInfo {
   margin-top: 3px;
-  color: #64748b;
-  font-size: 11.5px;
+  color: #64748b !important;
+  font-size: 11.5px !important;
+  font-weight: 400 !important;
   line-height: 1.35;
+}
+
+.historyRatio {
+  color: #1e293b !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+}
+
+.historyRatioLabel {
+  margin-top: 3px;
+  color: #64748b !important;
+  font-size: 11.5px !important;
+  font-weight: 400 !important;
 }
 
 .historyDate {
   margin-top: 0 !important;
-  color: #334155 !important;
-  font-weight: 600;
+  color: #64748b !important;
+  font-size: 11.5px !important;
+  font-weight: 400 !important;
 }
 
 .historyStatus {
   display: inline-flex !important;
   width: fit-content;
-  margin-top: 5px !important;
-  padding: 3px 7px;
-  border-radius: 999px;
-  background: #eef2f7;
+  margin-top: 4px !important;
+  padding: 2px 8px !important;
+  border-radius: 999px !important;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
   color: #475569 !important;
   font-size: 10.5px !important;
-  font-weight: 700;
+  font-weight: 600 !important;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
 }
 
-.historyList button {
-  min-height: 30px;
-  padding: 0 11px;
-  border: 1px solid #c7d7ff;
+.status_completed {
+  background: #f0fdf4 !important;
+  border-color: #dcfce7 !important;
+  color: #15803d !important;
+}
+
+.status_running {
+  background: #eff6ff !important;
+  border-color: #dbeafe !important;
+  color: #1d4ed8 !important;
+}
+
+.status_failed {
+  background: #fef2f2 !important;
+  border-color: #fee2e2 !important;
+  color: #b91c1c !important;
+}
+
+.openJobBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid #cbd5e1;
   border-radius: 8px;
-  background: #eff6ff;
-  color: #0052ff;
-  font-size: 11.5px;
-  font-weight: 700;
+  background: #ffffff;
+  color: #1e293b;
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
+  transition: all 120ms ease;
 }
 
-.historyList button:hover {
-  border-color: #0052ff;
+.openJobBtn:hover {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
 }
 
 .historyEmpty {
@@ -512,11 +579,39 @@
   animation: rise 380ms ease both;
 }
 
+.bulkActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  align-self: center;
+}
+
+.bulkActions .ghostBtn,
+.bulkActions .primary {
+  height: 38px;
+  min-height: 38px;
+  max-height: 38px;
+  margin: 0;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 9px;
+  line-height: 1;
+}
+
+.bulkActions .primary {
+  padding: 0 18px;
+  box-shadow: 0 4px 14px rgba(0, 82, 255, 0.22);
+}
+
 .resultHead {
   display: flex;
   justify-content: space-between;
   gap: 20px;
-  align-items: flex-start;
+  align-items: center;
   padding: 16px 18px;
   border-bottom: 1px solid #e2e8f0;
   background: linear-gradient(180deg, #f8fafc 0%, #fff 100%);
@@ -801,53 +896,103 @@
 
 .expandedDetail {
   margin: 0;
-  border-top: 0;
-  background: #fbfdff;
+  border-top: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+  box-shadow: inset 0 2px 4px rgba(15, 23, 42, 0.03);
 }
 
 .inlineDropdownHead {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
-  border-bottom: 1px solid #e8eef6;
-  background: #f7faff;
+  gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #ffffff;
 }
 
-.inlineDropdownHead b,
-.inlineDropdownHead span {
-  display: block;
+.drawerHeaderTitleGroup {
+  display: grid;
+  gap: 4px;
 }
 
-.inlineDropdownHead b {
-  color: #0c274d;
-  font-size: 12px;
-  font-weight: 800;
+.drawerTitleBadgeRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
-.inlineDropdownHead span {
-  margin-top: 3px;
-  color: #64748b;
-  font-size: 11px;
+.drawerTitleBadgeRow b {
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.1px;
+}
+
+.countBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+  color: #1d4ed8;
+  font-size: 10.5px;
   font-weight: 600;
 }
 
-.inlineDropdownHead button {
-  min-height: 30px;
-  padding: 0 10px;
-  border: 1px solid #dbe5f1;
-  border-radius: 8px;
-  background: #fff;
-  color: #0c274d;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
+.marketBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #15803d;
+  font-size: 10.5px;
+  font-weight: 600;
 }
 
-.inlineDropdownHead button:hover {
-  border-color: #0052ff;
-  color: #0052ff;
+.partBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.drawerSubtitle {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.closeDrawerBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.closeDrawerBtn:hover {
+  border-color: #0f172a;
+  background: #0f172a;
+  color: #ffffff;
 }
 
 .breakdownEyebrow,
@@ -856,80 +1001,122 @@
   color: #64748b;
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.5px;
   text-transform: uppercase;
 }
 
-.competitorList {
-  display: grid;
-  gap: 8px;
-  padding: 12px 14px 14px;
+.competitorTableWrap {
+  padding: 10px 16px 14px;
+  background: #ffffff;
 }
 
-.competitorCard {
+.competitorHeaderRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(230px, 0.64fr);
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) 100px 100px 100px;
+  gap: 14px;
   align-items: center;
-  padding: 10px 12px;
-  border: 1px solid #e7edf5;
-  border-radius: 10px;
-  background: #fff;
+  padding: 6px 10px;
+  border-bottom: 1px solid #e2e8f0;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.colSelling,
+.colShipping,
+.colLanded {
+  text-align: right;
+}
+
+.competitorListSimple {
+  display: grid;
+}
+
+.competitorRowSimple {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 100px 100px 100px;
+  gap: 14px;
+  align-items: center;
+  padding: 10px;
+  border-bottom: 1px solid #f1f5f9;
   color: #0f172a;
-  text-decoration: none;
+  text-decoration: none !important;
+  transition: background 120ms ease;
 }
 
-.competitorCard:hover {
-  border-color: #b9cdf5;
-  background: #f8fbff;
-  text-decoration: none;
+.competitorRowSimple:hover {
+  background: #f8fafc;
+  text-decoration: none !important;
 }
 
-.competitorInfo b,
-.competitorInfo small {
-  display: block;
+.competitorRowSimple:last-child {
+  border-bottom: 0;
 }
 
-.competitorInfo b {
+.compMainCol {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.compTitle {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #0052ff;
+  color: #0f172a;
   font-size: 12px;
-  font-weight: 700;
-  line-height: 1.35;
-}
-
-.competitorInfo small {
-  color: #64748b;
-  font-size: 10px;
   font-weight: 600;
   line-height: 1.35;
+  transition: color 120ms ease;
+  text-decoration: none !important;
 }
 
-.priceBreakdown {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+.competitorRowSimple:hover .compTitle {
+  color: #2563eb;
+  text-decoration: none !important;
 }
 
-.priceBreakdown span {
-  padding: 8px 10px;
-  border-radius: 9px;
-  background: #f6f8fb;
+.compSubtitle {
   color: #64748b;
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 400;
 }
 
-.priceBreakdown b {
-  display: block;
-  margin-top: 4px;
-  color: #0c274d;
+.compSellingCol,
+.compShippingCol,
+.compLandedCol {
+  text-align: right;
   font-size: 12px;
-  line-height: 1.25;
-  text-transform: none;
+  font-weight: 500;
+  color: #334155;
+}
+
+.freeText {
+  color: #15803d;
+  font-weight: 600;
+}
+
+.compLandedCol b {
+  color: #0f172a;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.landedPill {
+  background: #eff6ff;
+  border-color: #dbeafe;
+  min-width: 105px;
+}
+
+.landedPill .pillLabel {
+  color: #1d4ed8;
+}
+
+.landedPill .pillValue {
+  color: #1e3a8a;
+  font-size: 14px;
 }
 
 .costBreakdown {
@@ -982,8 +1169,80 @@
   font-weight: 700;
 }
 
-.profitLine b {
-  color: #059669;
+.simpleCalculator {
+  padding: 0;
+  background: #fff;
+}
+
+.costBreakdownSimple {
+  padding: 12px 16px 16px;
+  display: grid;
+  gap: 4px;
+}
+
+.breakdownRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 9px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  border-radius: 6px;
+  transition: background 120ms ease;
+}
+
+.breakdownRow:hover {
+  background: #f8fafc;
+}
+
+.breakdownRow span {
+  color: #475569;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.breakdownRow b {
+  color: #0f172a;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.profitRow {
+  background: #f0fdf4 !important;
+  border-color: #dcfce7 !important;
+}
+
+.profitRow span {
+  color: #166534 !important;
+  font-weight: 700 !important;
+}
+
+.profitRow b {
+  color: #15803d !important;
+  font-size: 13px !important;
+  font-weight: 800 !important;
+}
+
+.landedRow {
+  background: #eff6ff !important;
+  border-color: #dbeafe !important;
+  margin-top: 4px;
+}
+
+.landedRow span {
+  color: #1e40af !important;
+  font-weight: 700 !important;
+}
+
+.landedRow small {
+  color: #3b82f6;
+  font-size: 10px;
+}
+
+.landedRow b {
+  color: #1e3a8a !important;
+  font-size: 13.5px !important;
+  font-weight: 800 !important;
 }
 
 .totalLanded {
@@ -996,6 +1255,37 @@
 
 .totalLanded span {
   font-size: 11px;
+}
+
+.totalLandedPrice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+}
+
+.totalLandedPrice span {
+  color: #1e40af;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.totalLandedPrice small {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  color: #3b82f6;
+}
+
+.totalLandedPrice b {
+  color: #1e3a8a;
+  font-size: 14px;
+  font-weight: 800;
 }
 
 .breakEvenNote {
@@ -1167,6 +1457,36 @@
     width: 100%;
     text-align: left;
   }
+}
+
+.sellingPriceCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.inlineEditTrigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: all 120ms ease;
+}
+
+.sellingPriceCell:hover .inlineEditTrigger,
+.inlineEditTrigger:hover {
+  opacity: 1;
+  background: #eff6ff;
+  border-color: #dbeafe;
+  color: #2563eb;
 }
 
 .priceCellWrap {
