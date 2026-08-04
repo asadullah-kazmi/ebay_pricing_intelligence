@@ -1168,3 +1168,164 @@
     text-align: left;
   }
 }
+
+.priceCellWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.priceMainLine {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.editPriceBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #475569;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 140ms ease, background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.priceCellWrap:hover .editPriceBtn,
+.editPriceBtn:hover {
+  opacity: 1;
+  background: #eff6ff;
+  border-color: #0052ff;
+  color: #0052ff;
+}
+
+.inlineEditWrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.inlineInputGroup {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.currencyPrefix {
+  position: absolute;
+  left: 8px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.inlinePriceInput {
+  width: 90px;
+  height: 30px;
+  padding: 0 6px 0 20px;
+  border: 1.5px solid #0052ff;
+  border-radius: 6px;
+  background: #fff;
+  color: #0f172a;
+  font: 700 12px/1 "Plus Jakarta Sans", sans-serif;
+  outline: none;
+  box-shadow: 0 0 0 3px #0052ff22;
+}
+
+.inlineSaveBtn,
+.inlineCancelBtn,
+.inlineResetBtn {
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font: 700 11px/1 "Plus Jakarta Sans", sans-serif;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.inlineSaveBtn {
+  border: 0;
+  background: #10b981;
+  color: #fff;
+}
+
+.inlineSaveBtn:hover {
+  background: #059669;
+}
+
+.inlineCancelBtn {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #64748b;
+}
+
+.inlineCancelBtn:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.inlineResetBtn {
+  border: 1px solid #fed7aa;
+  background: #fff7ed;
+  color: #c2410c;
+  font-size: 10px;
+}
+
+.inlineResetBtn:hover {
+  background: #ffedd5;
+}
+
+.customPriceBadge {
+  color: #c2410c;
+  font-weight: 700;
+}
+
+.calculatorEditHeader {
+  padding: 14px 16px;
+  border-bottom: 1px solid #e8eef6;
+  background: #f0f7ff;
+}
+
+.calculatorPriceInputGroup {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.calculatorPriceInputGroup label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.calculatorPriceInputGroup label span {
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+}
+
+.calculatorPriceInputGroup .primary {
+  min-height: 34px;
+  padding: 0 14px;
+  font-size: 12px;
+}
+
+.calculatorPriceInputGroup .ghostBtn {
+  margin-top: 0;
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 11px;
+}
+

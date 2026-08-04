@@ -208,12 +208,82 @@ function csvCell(value: string | number | boolean | null | undefined) {
   return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
-function BulkSellingCalculator({ item, targetMarginPercent }: { item: BulkPricingItem; targetMarginPercent: number | null }) {
+function BulkSellingCalculator({
+  item,
+  targetMarginPercent,
+  onSavePrice,
+}: {
+  item: BulkPricingItem;
+  targetMarginPercent: number | null;
+  onSavePrice: (itemId: string, newPrice: number | string | null) => Promise<void>;
+}) {
   const targetMargin = targetMarginPercent ?? 20;
   const breakdown = feeBreakdown(item.sellingPrice, item.costPrice, item.currency, targetMargin);
+  const [customPrice, setCustomPrice] = useState(item.sellingPrice !== null ? String(item.sellingPrice) : "");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setCustomPrice(item.sellingPrice !== null ? String(item.sellingPrice) : "");
+  }, [item.sellingPrice]);
+
+  const isCustom = item.floorPrice != null && item.sellingPrice !== null && Math.abs(item.sellingPrice - item.floorPrice) > 0.001;
 
   return (
     <>
+      <div className={styles.calculatorEditHeader}>
+        <div className={styles.calculatorPriceInputGroup}>
+          <label htmlFor={`calc-price-${item.id}`}>
+            <span>Override selling price</span>
+            <div className={styles.inlineInputGroup}>
+              <span className={styles.currencyPrefix}>$</span>
+              <input
+                id={`calc-price-${item.id}`}
+                type="number"
+                step="0.01"
+                min="0"
+                className={styles.inlinePriceInput}
+                value={customPrice}
+                onChange={(e) => setCustomPrice(e.target.value)}
+                placeholder="0.00"
+              />
+            </div>
+          </label>
+          <button
+            type="button"
+            className={styles.primary}
+            disabled={saving || !customPrice.trim() || Number(customPrice) === item.sellingPrice}
+            onClick={async () => {
+              const val = Number(customPrice);
+              if (!Number.isFinite(val) || val < 0) return;
+              setSaving(true);
+              try {
+                await onSavePrice(item.id, val);
+              } finally {
+                setSaving(false);
+              }
+            }}
+          >
+            {saving ? "Saving…" : "Save price"}
+          </button>
+          {isCustom && (
+            <button
+              type="button"
+              className={styles.ghostBtn}
+              disabled={saving}
+              onClick={async () => {
+                setSaving(true);
+                try {
+                  await onSavePrice(item.id, null);
+                } finally {
+                  setSaving(false);
+                }
+              }}
+            >
+              Reset to formula ({money(item.floorPrice!, item.currency)})
+            </button>
+          )}
+        </div>
+      </div>
       <div className={styles.costBreakdown}>
         <span className={styles.breakdownEyebrow}>Cost breakdown</span>
         <div className={styles.breakdownLine}>
@@ -243,6 +313,10 @@ function BulkSellingCalculator({ item, targetMarginPercent }: { item: BulkPricin
         </div>
         <div className={styles.breakdownLine}>
           <span>Formula selling price</span>
+          <b>{item.floorPrice === null ? "—" : money(item.floorPrice, item.currency)}</b>
+        </div>
+        <div className={styles.breakdownLine}>
+          <span>Active selling price</span>
           <b>{item.sellingPrice === null ? "—" : money(item.sellingPrice, item.currency)}</b>
         </div>
         <div className={styles.breakdownLine}>
@@ -311,8 +385,64 @@ export default function PricingWorkspace() {
   const [hideCostAboveMarket, setHideCostAboveMarket] = useState(false);
   const [openMarketItemId, setOpenMarketItemId] = useState<string | null>(null);
   const [openCalculatorItemId, setOpenCalculatorItemId] = useState<string | null>(null);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editingPriceValue, setEditingPriceValue] = useState<string>("");
+  const [savingItemId, setSavingItemId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bulkResultsRef = useRef<HTMLElement>(null);
+
+  async function saveItemSellingPrice(itemId: string, newPrice: number | string | null) {
+    setSavingItemId(itemId);
+    setError("");
+    try {
+      const val = newPrice === null ? null : (typeof newPrice === "number" ? newPrice : Number(newPrice));
+      if (val !== null && (!Number.isFinite(val) || val < 0)) {
+        setEditingItemId(null);
+        return;
+      }
+
+      if (demo) {
+        setBulkJob((prev) => {
+          if (!prev || !prev.items) return prev;
+          const updatedItems = prev.items.map((it) => {
+            if (it.id !== itemId) return it;
+            const cost = it.costPrice;
+            const floor = it.floorPrice;
+            const price = val === null ? floor : Math.round((val + Number.EPSILON) * 100) / 100;
+            let marginPercent: number | null = null;
+            if (price !== null && cost > 0) {
+              const breakdown = feeBreakdown(price, cost, it.currency, prev.targetMarginPercent ?? 20);
+              marginPercent = Math.round(((breakdown.grossProfitBeforeShipping / cost) * 100 + Number.EPSILON) * 100) / 100;
+            }
+            return {
+              ...it,
+              sellingPrice: price,
+              marginPercent,
+            };
+          });
+          return { ...prev, items: updatedItems };
+        });
+        setEditingItemId(null);
+        return;
+      }
+
+      const updated = await apiFetch(`/api/pricing/bulk/items/${itemId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ sellingPrice: val }),
+      }) as BulkPricingItem;
+
+      setBulkJob((prev) => {
+        if (!prev || !prev.items) return prev;
+        const updatedItems = prev.items.map((it) => (it.id === itemId ? { ...it, ...updated } : it));
+        return { ...prev, items: updatedItems };
+      });
+      setEditingItemId(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Failed to update selling price");
+    } finally {
+      setSavingItemId(null);
+    }
+  }
 
   useEffect(() => {
     if (!bulkJob || demo) return;
@@ -1013,23 +1143,105 @@ export default function PricingWorkspace() {
                           ) : null}
                         </td>
                         <td>
-                          {item.sellingPrice != null ? (
-                            <button
-                              type="button"
-                              className={`${styles.priceAction} ${styles.sellingPriceAction}`}
-                              onClick={() => {
-                                setOpenCalculatorItemId((current) => current === item.id ? null : item.id);
-                                setOpenMarketItemId(null);
-                              }}
-                              aria-expanded={openCalculatorItemId === item.id}
-                              aria-label={`View selling price calculation for ${item.brand} ${item.partNumber}`}
-                            >
-                              {money(item.sellingPrice, item.currency)}
-                            </button>
-                          ) : "—"}
-                          {item.floorPrice != null ? (
-                            <span className={styles.subtle}>Formula {money(item.floorPrice, item.currency)}</span>
-                          ) : null}
+                          {editingItemId === item.id ? (
+                            <div className={styles.inlineEditWrap}>
+                              <div className={styles.inlineInputGroup}>
+                                <span className={styles.currencyPrefix}>$</span>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  className={styles.inlinePriceInput}
+                                  value={editingPriceValue}
+                                  onChange={(e) => setEditingPriceValue(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                      e.preventDefault();
+                                      void saveItemSellingPrice(item.id, editingPriceValue);
+                                    } else if (e.key === "Escape") {
+                                      setEditingItemId(null);
+                                    }
+                                  }}
+                                  autoFocus
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                className={styles.inlineSaveBtn}
+                                disabled={savingItemId === item.id}
+                                onClick={() => void saveItemSellingPrice(item.id, editingPriceValue)}
+                                title="Save price"
+                                aria-label="Save price"
+                              >
+                                ✓
+                              </button>
+                              <button
+                                type="button"
+                                className={styles.inlineCancelBtn}
+                                disabled={savingItemId === item.id}
+                                onClick={() => setEditingItemId(null)}
+                                title="Cancel"
+                                aria-label="Cancel"
+                              >
+                                ✕
+                              </button>
+                              {item.floorPrice != null && item.sellingPrice !== null && Math.abs(item.sellingPrice - item.floorPrice) > 0.001 && (
+                                <button
+                                  type="button"
+                                  className={styles.inlineResetBtn}
+                                  onClick={() => void saveItemSellingPrice(item.id, null)}
+                                  title={`Reset to formula (${money(item.floorPrice, item.currency)})`}
+                                >
+                                  Reset
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <div className={styles.priceCellWrap}>
+                              <div className={styles.priceMainLine}>
+                                {item.sellingPrice != null ? (
+                                  <button
+                                    type="button"
+                                    className={`${styles.priceAction} ${styles.sellingPriceAction}`}
+                                    onClick={() => {
+                                      setOpenCalculatorItemId((current) => current === item.id ? null : item.id);
+                                      setOpenMarketItemId(null);
+                                    }}
+                                    aria-expanded={openCalculatorItemId === item.id}
+                                    aria-label={`View selling price calculation for ${item.brand} ${item.partNumber}`}
+                                  >
+                                    {money(item.sellingPrice, item.currency)}
+                                  </button>
+                                ) : "—"}
+                                <button
+                                  type="button"
+                                  className={styles.editPriceBtn}
+                                  onClick={() => {
+                                    setEditingItemId(item.id);
+                                    setEditingPriceValue(item.sellingPrice != null ? String(item.sellingPrice) : "");
+                                  }}
+                                  title="Edit selling price"
+                                  aria-label={`Edit selling price for ${item.brand} ${item.partNumber}`}
+                                >
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M12 20h9" />
+                                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                                  </svg>
+                                </button>
+                              </div>
+                              {item.floorPrice != null ? (
+                                <div className={styles.subtlePriceLine}>
+                                  <span className={styles.subtle}>
+                                    {item.sellingPrice !== null && Math.abs(item.sellingPrice - item.floorPrice) > 0.001 ? (
+                                      <span className={styles.customPriceBadge}>Custom · Formula {money(item.floorPrice, item.currency)}</span>
+                                    ) : (
+                                      `Formula ${money(item.floorPrice, item.currency)}`
+                                    )}
+                                  </span>
+                                </div>
+                              ) : null}
+                            </div>
+                          )}
                         </td>
                         <td>{item.marginPercent != null ? `${item.marginPercent.toFixed(1)}%` : "—"}</td>
                         <td>
@@ -1083,7 +1295,7 @@ export default function PricingWorkspace() {
                                 </div>
                                 <button type="button" onClick={() => setOpenCalculatorItemId(null)} aria-label="Close calculator details">Close</button>
                               </div>
-                              <BulkSellingCalculator item={item} targetMarginPercent={bulkJob.targetMarginPercent} />
+                              <BulkSellingCalculator item={item} targetMarginPercent={bulkJob.targetMarginPercent} onSavePrice={saveItemSellingPrice} />
                             </div>
                           </td>
                         </tr>

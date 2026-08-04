@@ -59,6 +59,16 @@ const EBAY_FVF_FIRST_TIER_LIMIT = 1000;
 const EXTRA_EXPENSE_RATE = 0.043;
 const EXTRA_EXPENSE_FIXED = 0.4;
 
+export function calculateBulkMarginPercent(costPrice: number, sellingPrice: number): number | null {
+  if (costPrice <= 0 || sellingPrice <= 0) return null;
+  const firstTierBase = Math.min(sellingPrice, EBAY_FVF_FIRST_TIER_LIMIT);
+  const secondTierBase = Math.max(sellingPrice - EBAY_FVF_FIRST_TIER_LIMIT, 0);
+  const ebayFee = money((firstTierBase * EBAY_FVF_FIRST_TIER_RATE) + (secondTierBase * EBAY_FVF_SECOND_TIER_RATE));
+  const extraExpenses = money((sellingPrice * EXTRA_EXPENSE_RATE) + EXTRA_EXPENSE_FIXED);
+  const actualProfit = money(sellingPrice - costPrice - ebayFee - extraExpenses);
+  return money((actualProfit / costPrice) * 100);
+}
+
 export function calculateSimpleBulkSellingPrice(input: {
   costPrice: number;
   targetMarginPercent: number;
@@ -627,3 +637,41 @@ export async function exportBulkPricingCsv(organizationId: string, jobId: string
   }
   return lines.join("\n");
 }
+
+export async function updateBulkPricingItemSellingPrice(input: {
+  organizationId: string;
+  itemId: string;
+  sellingPrice: number | null;
+}) {
+  const item = await prisma.bulkPricingJobItem.findFirst({
+    where: { id: input.itemId, organizationId: input.organizationId },
+    include: { bulkPricingJob: { select: { targetMarginPercent: true } } },
+  });
+  if (!item) throw new BulkPricingError("Bulk pricing item not found", 404);
+
+  const cost = Number(item.costPrice.toString());
+  let newSellingPrice: number | null = null;
+  let newMarginPercent: number | null = null;
+
+  if (input.sellingPrice === null) {
+    const targetMargin = item.bulkPricingJob.targetMarginPercent === null ? 20 : Number(item.bulkPricingJob.targetMarginPercent.toString());
+    const simple = calculateSimpleBulkSellingPrice({ costPrice: cost, targetMarginPercent: targetMargin });
+    newSellingPrice = simple.sellingPrice;
+    newMarginPercent = simple.actualProfitPercent;
+  } else {
+    const rawPrice = money(Math.max(0, input.sellingPrice));
+    newSellingPrice = rawPrice;
+    newMarginPercent = calculateBulkMarginPercent(cost, rawPrice);
+  }
+
+  const updated = await prisma.bulkPricingJobItem.update({
+    where: { id: item.id },
+    data: {
+      sellingPrice: newSellingPrice,
+      marginPercent: newMarginPercent,
+    },
+  });
+
+  return serializeItem(updated);
+}
+

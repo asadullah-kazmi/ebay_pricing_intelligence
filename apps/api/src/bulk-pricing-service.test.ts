@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateSimpleBulkSellingPrice, createBulkPricingTemplateCsv, parseBulkPricingCsv } from "./bulk-pricing-service.js";
+import { calculateBulkMarginPercent, calculateSimpleBulkSellingPrice, createBulkPricingTemplateCsv, parseBulkPricingCsv } from "./bulk-pricing-service.js";
 
 describe("bulk pricing sheet parser", () => {
   it("parses required columns and defaults currency/condition", () => {
@@ -64,5 +64,10 @@ describe("bulk pricing calculator", () => {
     expect(result.extraExpenses).toBe(1.31);
     expect(result.actualProfit).toBe(2.92);
     expect(result.actualProfitPercent).toBe(20.08);
+  });
+
+  it("calculates margin percent for custom selling price", () => {
+    const margin = calculateBulkMarginPercent(14.54, 25.97);
+    expect(margin).toBe(47.87);
   });
 });

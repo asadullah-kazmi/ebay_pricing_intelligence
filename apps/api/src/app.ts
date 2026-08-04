@@ -31,6 +31,7 @@ import {
   listBulkPricingJobs,
   parseBulkPricingCsv,
   startBulkPricingJob,
+  updateBulkPricingItemSellingPrice,
 } from "./bulk-pricing-service.js";
 import { approveFitmentCandidate, createFitmentJob, FitmentJobError, getFitmentJob, listFitmentJobs, startFitmentJob } from "./fitment-service.js";
 import { completeEbayAuthorization, createEbayAuthorization, disconnectEbayConnection, EbaySellerOAuthError, ebayOAuthRedirectMessage, ebayOAuthRedirectReason, getEbayConnection } from "./ebay-seller-oauth.js";
@@ -184,6 +185,7 @@ const bulkPricingUploadQuerySchema = z.object({
   targetMarginPercent: z.coerce.number().min(0).max(95).default(20),
 });
 const bulkPricingFilenameSchema = z.string().trim().min(1).max(255).regex(/\.csv$/i, "Only .csv files are supported for bulk pricing");
+const updateBulkItemPriceSchema = z.object({ sellingPrice: z.number().nonnegative().nullable() });
 const pricingRoles = requireOrganizationRoles(...organizationPermissionRoles.pricing);
 const pricingRuleRoles = requireOrganizationRoles(...organizationPermissionRoles.pricingRule);
 const pricingRuleSchema = z.object({
@@ -1157,6 +1159,20 @@ app.get("/api/pricing/bulk/:id/export", requireTenantContext, pricingRoles, asyn
       "Cache-Control": "no-store",
     });
     res.send(csv);
+  } catch (error) { next(error); }
+});
+
+app.patch("/api/pricing/bulk/items/:id", writeRateLimit, requireTenantContext, pricingRoles, async (req, res, next) => {
+  try {
+    const itemId = req.params.id;
+    if (typeof itemId !== "string") return res.status(400).json({ error: "Invalid item ID" });
+    const tenant = getTenantContext(res);
+    const { sellingPrice } = updateBulkItemPriceSchema.parse(req.body);
+    res.json(await updateBulkPricingItemSellingPrice({
+      organizationId: tenant.organization.id,
+      itemId,
+      sellingPrice,
+    }));
   } catch (error) { next(error); }
 });
 
