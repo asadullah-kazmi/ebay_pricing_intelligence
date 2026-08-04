@@ -104,9 +104,10 @@ export default function InventoryWorkspace() {
   const [warehouseId, setWarehouseId] = useState("");
   const [condition, setCondition] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   const queryString = useMemo(() => {
-    const query = new URLSearchParams({ page: String(page), pageSize: "25", sort: "updated" });
+    const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize), sort: "updated" });
     if (search.trim()) query.set("q", search.trim());
     if (condition) query.set("condition", condition);
     if (warehouseId) query.set("warehouseId", warehouseId);
@@ -114,7 +115,7 @@ export default function InventoryWorkspace() {
     if (stockFilter === "low") { query.set("minQuantity", "1"); query.set("maxQuantity", "5"); }
     if (stockFilter === "out") { query.set("maxQuantity", "0"); }
     return query.toString();
-  }, [condition, page, search, stockFilter, warehouseId]);
+  }, [condition, page, pageSize, search, stockFilter, warehouseId]);
 
   const load = useCallback(async () => {
     if (authStatus !== "ready") return;
@@ -310,7 +311,21 @@ export default function InventoryWorkspace() {
           </span>
           <div className={styles.pageSize}>
             <span>Rows per page</span>
-            <strong>25</strong>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+              style={{ border: "1px solid #e2e8f0", borderRadius: 8, height: 30, padding: "0 8px", background: "#fff", color: "#0f172a", font: '700 12px/1 "Plus Jakarta Sans", sans-serif', cursor: "pointer", outline: "none" }}
+              aria-label="Rows per page"
+            >
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={250}>250</option>
+            </select>
             <button type="button" disabled={page <= 1} onClick={() => setPage((value) => value - 1)} aria-label="Previous">‹</button>
             <em className={styles.pageCurrent}>{catalog.pagination.page}</em>
             <button type="button" disabled={page >= catalog.pagination.totalPages} onClick={() => setPage((value) => value + 1)} aria-label="Next">›</button>

@@ -1251,11 +1251,23 @@
   font-weight: 700;
 }
 
-.pageSize select {
+.pageSize select,
+.pageSizeSelect {
   border: 1px solid #e2e8f0;
   border-radius: 8px;
-  padding: 8px 10px;
+  height: 30px;
+  padding: 0 10px;
   background: #fff;
+  color: #0f172a;
+  font: 700 12px/1 "Plus Jakarta Sans", sans-serif;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.pageSizeSelect:focus {
+  border-color: #0052ff;
+  box-shadow: 0 0 0 3px #0052ff18;
 }
 
 .pageCurrent {

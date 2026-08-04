@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
@@ -234,6 +234,7 @@ export default function CatalogWorkspace() {
     return value === "oldest" || value === "updated" || value === "sku" ? value : "newest";
   });
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [view, setView] = useState<"table" | "gallery">("table");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detail, setDetail] = useState<CatalogPartDetail | null>(null);
@@ -365,7 +366,7 @@ export default function CatalogWorkspace() {
   }, [authStatus, demo, request, searchParams]);
 
   const queryString = useMemo(() => {
-    const query = new URLSearchParams({ page: String(page), pageSize: "25", sort });
+    const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize), sort });
     if (deferredSearch.trim()) query.set("q", deferredSearch.trim());
     if (brand) query.set("brand", brand);
     if (status) query.set("status", status);
@@ -385,7 +386,7 @@ export default function CatalogWorkspace() {
     if (createdFrom) query.set("createdFrom", `${createdFrom}T00:00:00.000Z`);
     if (createdTo) query.set("createdTo", `${createdTo}T23:59:59.999Z`);
     return query.toString();
-  }, [brand, condition, createdFrom, createdTo, deferredSearch, hasFitment, hasImages, hasPricing, hasShippingPolicy, listingState, marketplaceFilter, maxCost, maxQuantity, minCost, minQuantity, page, sort, status, warehouseId]);
+  }, [brand, condition, createdFrom, createdTo, deferredSearch, hasFitment, hasImages, hasPricing, hasShippingPolicy, listingState, marketplaceFilter, maxCost, maxQuantity, minCost, minQuantity, page, pageSize, sort, status, warehouseId]);
 
   const catalogRequestId = useRef(0);
 
@@ -1531,7 +1532,21 @@ export default function CatalogWorkspace() {
           <span>Showing {catalog.parts.length ? ((catalog.pagination.page - 1) * catalog.pagination.pageSize) + 1 : 0} to {Math.min(catalog.pagination.page * catalog.pagination.pageSize, catalog.pagination.total)} of {catalog.pagination.total} results</span>
           <div className={styles.pageSize}>
             <span>Rows per page</span>
-            <strong>25</strong>
+            <select
+              value={pageSize}
+              onChange={(event) => {
+                setPageSize(Number(event.target.value));
+                setPage(1);
+              }}
+              className={styles.pageSizeSelect}
+              aria-label="Rows per page"
+            >
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={250}>250</option>
+            </select>
             <button type="button" disabled={page <= 1} onClick={() => setPage((value) => value - 1)} aria-label="Previous page">‹</button>
             <em className={styles.pageCurrent}>{catalog.pagination.page}</em>
             <button type="button" disabled={page >= catalog.pagination.totalPages} onClick={() => setPage((value) => value + 1)} aria-label="Next page">›</button>
