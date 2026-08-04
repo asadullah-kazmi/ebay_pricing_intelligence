@@ -354,6 +354,8 @@ export default function PricingWorkspace() {
   const [quantityMin, setQuantityMin] = useState("");
   const [quantityMax, setQuantityMax] = useState("");
   const [hideCostAboveMarket, setHideCostAboveMarket] = useState(false);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [currentPage, setCurrentPage] = useState<number>(1);
   const [openMarketItemId, setOpenMarketItemId] = useState<string | null>(null);
   const [openCalculatorItemId, setOpenCalculatorItemId] = useState<string | null>(null);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -361,6 +363,10 @@ export default function PricingWorkspace() {
   const [savingItemId, setSavingItemId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bulkResultsRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [bulkSearch, bulkStatusFilter, quantityMin, quantityMax, hideCostAboveMarket, bulkJob?.id]);
 
   async function saveItemSellingPrice(itemId: string, newPrice: number | string | null) {
     setSavingItemId(itemId);
@@ -918,6 +924,13 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
     : 0;
   const visibleBulkItems = getVisibleBulkItems();
   const totalBulkItems = bulkJob?.items?.length ?? 0;
+  const totalBulkCount = visibleBulkItems.length;
+  const totalPages = Math.max(1, Math.ceil(totalBulkCount / pageSize));
+  const safePage = Math.max(1, Math.min(currentPage, totalPages));
+  const startIndex = totalBulkCount > 0 ? (safePage - 1) * pageSize : 0;
+  const endIndex = Math.min(startIndex + pageSize, totalBulkCount);
+  const paginatedBulkItems = visibleBulkItems.slice(startIndex, endIndex);
+
   const activeBulkFilterCount = [
     bulkSearch.trim(),
     bulkStatusFilter !== "ALL",
@@ -1301,7 +1314,7 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
                     </tr>
                   </thead>
                   <tbody>
-                    {visibleBulkItems.map((item) => (
+                    {paginatedBulkItems.map((item) => (
                       <Fragment key={item.id}>
                       <tr className={openMarketItemId === item.id || openCalculatorItemId === item.id ? styles.expandedSourceRow : undefined}>
                         <td>
@@ -1525,6 +1538,77 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
                     ))}
                   </tbody>
                 </table>
+              </div>
+              <div className={styles.paginationBar}>
+                <div className={styles.paginationInfo}>
+                  {totalBulkCount > 0 ? (
+                    <span>
+                      Showing <b>{startIndex + 1}–{endIndex}</b> of <b>{totalBulkCount}</b> listings
+                    </span>
+                  ) : (
+                    <span>No listings match active filters</span>
+                  )}
+                </div>
+
+                <div className={styles.paginationControls}>
+                  <label className={styles.pageSizeSelect}>
+                    <span>Listings per page:</span>
+                    <select
+                      value={pageSize}
+                      onChange={(e) => {
+                        setPageSize(Number(e.target.value));
+                        setCurrentPage(1);
+                      }}
+                    >
+                      <option value={10}>10</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                      <option value={250}>250</option>
+                    </select>
+                  </label>
+
+                  <div className={styles.pageButtons}>
+                    <button
+                      type="button"
+                      className={styles.pageBtn}
+                      disabled={safePage <= 1}
+                      onClick={() => setCurrentPage(1)}
+                      title="First page"
+                    >
+                      «
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.pageBtn}
+                      disabled={safePage <= 1}
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      title="Previous page"
+                    >
+                      ‹ Prev
+                    </button>
+                    <span className={styles.pageIndicator}>
+                      Page <b>{safePage}</b> of <b>{totalPages}</b>
+                    </span>
+                    <button
+                      type="button"
+                      className={styles.pageBtn}
+                      disabled={safePage >= totalPages}
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      title="Next page"
+                    >
+                      Next ›
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.pageBtn}
+                      disabled={safePage >= totalPages}
+                      onClick={() => setCurrentPage(totalPages)}
+                      title="Last page"
+                    >
+                      »
+                    </button>
+                  </div>
+                </div>
               </div>
             </section>
           )}
