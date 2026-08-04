@@ -66,7 +66,7 @@ export function calculateBulkMarginPercent(costPrice: number, sellingPrice: numb
   const ebayFee = money((firstTierBase * EBAY_FVF_FIRST_TIER_RATE) + (secondTierBase * EBAY_FVF_SECOND_TIER_RATE));
   const extraExpenses = money((sellingPrice * EXTRA_EXPENSE_RATE) + EXTRA_EXPENSE_FIXED);
   const actualProfit = money(sellingPrice - costPrice - ebayFee - extraExpenses);
-  return money((actualProfit / costPrice) * 100);
+  return money((actualProfit / sellingPrice) * 100);
 }
 
 export function calculateSimpleBulkSellingPrice(input: {
@@ -75,24 +75,28 @@ export function calculateSimpleBulkSellingPrice(input: {
 }) {
   const costPrice = money(Math.max(0, input.costPrice));
   const targetMarginPercent = Math.max(0, Math.min(95, input.targetMarginPercent));
-  const targetProfit = money(costPrice * (targetMarginPercent / 100));
-  const beforeFees = costPrice + targetProfit;
-  const firstTierRate = EBAY_FVF_FIRST_TIER_RATE + EXTRA_EXPENSE_RATE;
-  const firstTierSale = ceilMoney((beforeFees + EXTRA_EXPENSE_FIXED) / (1 - firstTierRate));
-  const sellingPrice = firstTierSale <= EBAY_FVF_FIRST_TIER_LIMIT
-    ? firstTierSale
-    : ceilMoney(
-      (beforeFees + (EBAY_FVF_FIRST_TIER_LIMIT * EBAY_FVF_FIRST_TIER_RATE)
-        - (EBAY_FVF_FIRST_TIER_LIMIT * EBAY_FVF_SECOND_TIER_RATE)
-        + EXTRA_EXPENSE_FIXED)
-      / (1 - EBAY_FVF_SECOND_TIER_RATE - EXTRA_EXPENSE_RATE),
-    );
+  const marginMultiplier = 1 + (targetMarginPercent / 100);
+  const firstTierFeeRate = EBAY_FVF_FIRST_TIER_RATE + EXTRA_EXPENSE_RATE;
+  const breakEvenFirstTier = (costPrice + EXTRA_EXPENSE_FIXED) / (1 - firstTierFeeRate);
+
+  let sellingPrice = 0;
+  if (breakEvenFirstTier <= EBAY_FVF_FIRST_TIER_LIMIT) {
+    sellingPrice = ceilMoney(breakEvenFirstTier * marginMultiplier);
+  } else {
+    const secondTierFeeRate = EBAY_FVF_SECOND_TIER_RATE + EXTRA_EXPENSE_RATE;
+    const tierAdjustment = (EBAY_FVF_FIRST_TIER_LIMIT * EBAY_FVF_FIRST_TIER_RATE) - (EBAY_FVF_FIRST_TIER_LIMIT * EBAY_FVF_SECOND_TIER_RATE);
+    const breakEvenSecondTier = (costPrice + tierAdjustment + EXTRA_EXPENSE_FIXED) / (1 - secondTierFeeRate);
+    sellingPrice = ceilMoney(breakEvenSecondTier * marginMultiplier);
+  }
+
   const firstTierBase = Math.min(sellingPrice, EBAY_FVF_FIRST_TIER_LIMIT);
   const secondTierBase = Math.max(sellingPrice - EBAY_FVF_FIRST_TIER_LIMIT, 0);
   const ebayFee = money((firstTierBase * EBAY_FVF_FIRST_TIER_RATE) + (secondTierBase * EBAY_FVF_SECOND_TIER_RATE));
   const extraExpenses = money((sellingPrice * EXTRA_EXPENSE_RATE) + EXTRA_EXPENSE_FIXED);
   const actualProfit = money(sellingPrice - costPrice - ebayFee - extraExpenses);
-  const actualProfitPercent = costPrice > 0 ? money((actualProfit / costPrice) * 100) : null;
+  const actualProfitPercent = sellingPrice > 0 ? money((actualProfit / sellingPrice) * 100) : null;
+  const targetProfit = money((costPrice + ebayFee + extraExpenses) * (targetMarginPercent / 100));
+
   return {
     sellingPrice,
     formulaFloorPrice: sellingPrice,

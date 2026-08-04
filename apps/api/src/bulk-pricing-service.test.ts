@@ -55,19 +55,19 @@ describe("bulk pricing sheet parser", () => {
 });
 
 describe("bulk pricing calculator", () => {
-  it("uses cost plus selected profit plus platform/payment expenses", () => {
+  it("uses cost plus total fees base then adds selected profit percentage", () => {
     const result = calculateSimpleBulkSellingPrice({ costPrice: 14.54, targetMarginPercent: 20 });
 
-    expect(result.targetProfit).toBe(2.91);
-    expect(result.sellingPrice).toBe(21.17);
-    expect(result.ebayFee).toBe(2.4);
+    expect(result.targetProfit).toBe(3.65);
+    expect(result.sellingPrice).toBe(21.26);
+    expect(result.ebayFee).toBe(2.41);
     expect(result.extraExpenses).toBe(1.31);
-    expect(result.actualProfit).toBe(2.92);
-    expect(result.actualProfitPercent).toBe(20.08);
+    expect(result.actualProfit).toBe(3);
+    expect(result.actualProfitPercent).toBe(14.11);
   });
 
-  it("calculates margin percent for custom selling price", () => {
+  it("calculates dynamic net profit percent on selling price for custom price", () => {
     const margin = calculateBulkMarginPercent(14.54, 25.97);
-    expect(margin).toBe(47.87);
+    expect(margin).toBe(26.8);
   });
 });
