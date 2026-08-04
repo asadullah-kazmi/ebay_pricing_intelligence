@@ -421,16 +421,64 @@ export default function PricingWorkspace() {
     }
   }
 
+  // Keep bulkHistory synchronized with active bulkJob updates
+  useEffect(() => {
+    if (!bulkJob) return;
+    setBulkHistory((prev) =>
+      prev.map((j) => (j.id === bulkJob.id ? { ...j, ...bulkJob } : j))
+    );
+  }, [bulkJob]);
+
+  // Polling for active bulk job in workspace
   useEffect(() => {
     if (!bulkJob || demo) return;
     if (!["QUEUED", "RUNNING"].includes(bulkJob.status)) return;
     const timer = window.setInterval(() => {
       void apiFetch(`/api/pricing/bulk/${bulkJob.id}`)
-        .then((value) => setBulkJob(value as BulkPricingJob))
+        .then((value) => {
+          if (value) setBulkJob(value as BulkPricingJob);
+        })
         .catch(() => undefined);
-    }, 2_000);
+    }, 1_500);
     return () => window.clearInterval(timer);
   }, [apiFetch, bulkJob, demo]);
+
+  // Auto-poll history list if any job in history is QUEUED or RUNNING
+  useEffect(() => {
+    const hasActiveJobs = bulkHistory.some((j) => ["QUEUED", "RUNNING"].includes(j.status));
+    if (!hasActiveJobs && !demo) return;
+    const timer = window.setInterval(() => {
+      if (demo) {
+        setBulkHistory((prev) =>
+          prev.map((j) => {
+            if (!["QUEUED", "RUNNING"].includes(j.status)) return j;
+            const target = j.totalItems || 249;
+            const increment = Math.max(15, Math.floor(target * 0.15));
+            const prevTotal = (j.completedItems || 0) + (j.noMatchItems || 0) + (j.failedItems || 0);
+            const newProcessed = Math.min(target, prevTotal + increment);
+            const isFinished = newProcessed >= target;
+            const noMatch = Math.round(newProcessed * 0.14);
+            const completed = newProcessed - noMatch;
+            const updated: BulkPricingJob = {
+              ...j,
+              completedItems: completed,
+              noMatchItems: noMatch,
+              status: isFinished ? "COMPLETED" : "RUNNING",
+              completedAt: isFinished ? new Date().toISOString() : j.completedAt,
+            };
+            if (bulkJob?.id === j.id) {
+              const full = createDemoJobWithItems(j.id, updated);
+              setBulkJob(full);
+            }
+            return updated;
+          })
+        );
+      } else {
+        void loadBulkHistory();
+      }
+    }, 1_500);
+    return () => window.clearInterval(timer);
+  }, [bulkHistory, demo, bulkJob?.id]);
 
 function getDemoHistoryJobs(): BulkPricingJob[] {
   return [
@@ -622,16 +670,16 @@ function getDemoHistoryJobs(): BulkPricingJob[] {
           marketplace,
           defaultCondition: condition,
           targetMarginPercent: Number(targetMarginPercent) || 20,
-          status: "COMPLETED",
+          status: "RUNNING",
           totalItems: 249,
-          completedItems: 214,
-          noMatchItems: 35,
+          completedItems: 0,
+          noMatchItems: 0,
           failedItems: 0,
           sourceFilename: bulkFile.name,
           lastError: null,
           createdAt: new Date().toISOString(),
           startedAt: new Date().toISOString(),
-          completedAt: new Date().toISOString(),
+          completedAt: null,
         };
         const fullJob = createDemoJobWithItems(demoHistJob.id, demoHistJob);
         setBulkJob(fullJob);
