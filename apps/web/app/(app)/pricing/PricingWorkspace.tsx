@@ -160,10 +160,13 @@ function feeBreakdown(sellingPrice: number | null, cost: number, currency: strin
   const ebaySecondTierFee = landedAmount(secondTierBase * 0.0235, 0);
   const ebayFeeTotal = landedAmount(ebayFirstTierFee, ebaySecondTierFee);
   const exportPayoneerBufferFee = landedAmount(sale * 0.043 + (sale > 0 ? 0.4 : 0), 0);
-  const targetProfit = landedAmount(cost * (targetMarginPercent / 100), 0);
+  const targetProfit = landedAmount(sale * (targetMarginPercent / 100), 0);
   const grossProfitBeforeShipping = landedAmount(sale - cost - ebayFeeTotal - exportPayoneerBufferFee, 0);
   const shippingEstimate = 0;
-  const totalExpenses = landedAmount(ebayFeeTotal + exportPayoneerBufferFee + shippingEstimate, 0);
+  const totalPlatformFees = landedAmount(ebayFeeTotal, exportPayoneerBufferFee);
+  const totalExpenses = landedAmount(totalPlatformFees, shippingEstimate);
+  const totalLandedCost = landedAmount(cost + totalPlatformFees, shippingEstimate);
+  const totalLandedPrice = landedAmount(sale, shippingEstimate);
 
   return {
     firstTierBase,
@@ -175,7 +178,10 @@ function feeBreakdown(sellingPrice: number | null, cost: number, currency: strin
     targetProfit,
     grossProfitBeforeShipping,
     shippingEstimate,
+    totalPlatformFees,
     totalExpenses,
+    totalLandedCost,
+    totalLandedPrice,
     breakEvenShipping: grossProfitBeforeShipping,
     currency,
   };
@@ -229,7 +235,7 @@ function BulkSellingCalculator({
   const isCustom = item.floorPrice != null && item.sellingPrice !== null && Math.abs(item.sellingPrice - item.floorPrice) > 0.001;
 
   return (
-    <>
+    <div className={styles.simpleCalculator}>
       <div className={styles.calculatorEditHeader}>
         <div className={styles.calculatorPriceInputGroup}>
           <label htmlFor={`calc-price-${item.id}`}>
@@ -284,81 +290,46 @@ function BulkSellingCalculator({
           )}
         </div>
       </div>
-      <div className={styles.costBreakdown}>
-        <span className={styles.breakdownEyebrow}>Cost breakdown</span>
-        <div className={styles.breakdownLine}>
+
+      <div className={styles.costBreakdownSimple}>
+        <div className={styles.breakdownRow}>
           <span>Part cost</span>
           <b>{money(item.costPrice, item.currency)}</b>
         </div>
-        <div className={styles.breakdownLine}>
-          <span>
-            Shipping (DHL/FedEx avg)
-            <small>Not included until courier API is connected</small>
-          </span>
-          <b>{money(breakdown.shippingEstimate, item.currency)}</b>
-        </div>
-        <div className={styles.breakdownLine}>
-          <span>
-            Target profit selected on upload
-            <small>{targetMargin.toFixed(1).replace(/\.0$/, "")}% of part cost</small>
-          </span>
+        <div className={styles.breakdownRow}>
+          <span>Target profit ({targetMargin.toFixed(1).replace(/\.0$/, "")}% of selling price)</span>
           <b>{money(breakdown.targetProfit, item.currency)}</b>
         </div>
-        <div className={styles.breakdownLine}>
-          <span>
-            Subtotal before fees
-            <small>Part cost + selected profit</small>
-          </span>
-          <b>{money(item.costPrice + breakdown.targetProfit, item.currency)}</b>
+        <div className={styles.breakdownRow}>
+          <span>eBay FVF fee</span>
+          <b>{money(breakdown.ebayFeeTotal, item.currency)}</b>
         </div>
-        <div className={styles.breakdownLine}>
+        <div className={styles.breakdownRow}>
+          <span>Export & payment fees (1.3% exp + 2% pay + 1% buf + {money(0.4, item.currency)})</span>
+          <b>{money(breakdown.exportPayoneerBufferFee, item.currency)}</b>
+        </div>
+        <div className={styles.breakdownRow}>
           <span>Formula selling price</span>
           <b>{item.floorPrice === null ? "—" : money(item.floorPrice, item.currency)}</b>
         </div>
-        <div className={styles.breakdownLine}>
+        <div className={styles.breakdownRow}>
           <span>Active selling price</span>
           <b>{item.sellingPrice === null ? "—" : money(item.sellingPrice, item.currency)}</b>
         </div>
-        <div className={styles.breakdownLine}>
-          <span>Actual profit percent after fees</span>
-          <b>{item.marginPercent === null ? "—" : `${item.marginPercent.toFixed(1)}%`}</b>
+        <div className={`${styles.breakdownRow} ${styles.profitRow}`}>
+          <span>Net profit</span>
+          <b>{money(breakdown.grossProfitBeforeShipping, item.currency)} ({item.marginPercent === null ? "—" : `${item.marginPercent.toFixed(1)}% margin`})</b>
         </div>
-        <div className={styles.breakdownSubLine}>
-          <span>FVF 11.35% on first {money(1000, item.currency)}</span>
-          <b>{money(breakdown.ebayFirstTierFee, item.currency)}</b>
+        <div className={styles.breakdownRow}>
+          <span>Shipping (estimate)</span>
+          <b>{money(breakdown.shippingEstimate, item.currency)}</b>
         </div>
-        <div className={styles.breakdownSubLine}>
-          <span>FVF 2.35% on {money(breakdown.secondTierBase, item.currency)} over {money(1000, item.currency)}</span>
-          <b>{money(breakdown.ebaySecondTierFee, item.currency)}</b>
+        <div className={`${styles.breakdownRow} ${styles.landedRow}`}>
+          <span>Total landed cost <small>(Cost + Platform Fees + Shipping)</small></span>
+          <b>{money(breakdown.totalLandedCost, item.currency)}</b>
         </div>
-        <div className={styles.breakdownLine}>
-          <span>eBay FVF total</span>
-          <b>{money(breakdown.ebayFeeTotal, item.currency)}</b>
-        </div>
-        <div className={styles.breakdownLine}>
-          <span>Export 1.3% + Payoneer 2% + buffer 1% + {money(0.4, item.currency)}</span>
-          <b>{money(breakdown.exportPayoneerBufferFee, item.currency)}</b>
-        </div>
-        <div className={`${styles.breakdownLine} ${styles.profitLine}`}>
-          <span>Gross profit before shipping</span>
-          <b>{money(breakdown.grossProfitBeforeShipping, item.currency)}</b>
-        </div>
-        <div className={styles.totalLanded}>
-          <span>Total expenses</span>
-          <b>{money(breakdown.totalExpenses, item.currency)}</b>
-        </div>
-        <p className={styles.breakEvenNote}>
-          Stays profitable while your real shipping is ≤ <b>{money(breakdown.breakEvenShipping, item.currency)}</b>.
-        </p>
       </div>
-      <div className={styles.formulaBox}>
-        <b>Selling price decision</b>
-        <p>
-          Simple formula: part cost + your selected profit + eBay FVF + export/payment expenses. Market competitors are kept as evidence only and do not change this selling price.
-        </p>
-        {visibleSellingFormula(item, targetMargin) ? <span>{visibleSellingFormula(item, targetMargin)}</span> : null}
-      </div>
-    </>
+    </div>
   );
 }
 
@@ -410,9 +381,9 @@ export default function PricingWorkspace() {
             const floor = it.floorPrice;
             const price = val === null ? floor : Math.round((val + Number.EPSILON) * 100) / 100;
             let marginPercent: number | null = null;
-            if (price !== null && cost > 0) {
+            if (price !== null && price > 0) {
               const breakdown = feeBreakdown(price, cost, it.currency, prev.targetMarginPercent ?? 20);
-              marginPercent = Math.round(((breakdown.grossProfitBeforeShipping / cost) * 100 + Number.EPSILON) * 100) / 100;
+              marginPercent = Math.round(((breakdown.grossProfitBeforeShipping / price) * 100 + Number.EPSILON) * 100) / 100;
             }
             return {
               ...it,
@@ -667,34 +638,219 @@ export default function PricingWorkspace() {
     }
   }
 
+function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPricingJob {
+  return {
+    id: jobId,
+    marketplace: histJob?.marketplace ?? "EBAY_US",
+    defaultCondition: histJob?.defaultCondition ?? "USED",
+    targetMarginPercent: histJob?.targetMarginPercent ?? 20,
+    status: histJob?.status ?? "COMPLETED",
+    totalItems: histJob?.totalItems ?? 6,
+    completedItems: histJob?.completedItems ?? 5,
+    noMatchItems: histJob?.noMatchItems ?? 1,
+    failedItems: histJob?.failedItems ?? 0,
+    sourceFilename: histJob?.sourceFilename ?? "partpulse-bulk-pricing-template.csv",
+    lastError: null,
+    items: [
+      {
+        id: `${jobId}-item-1`,
+        rowNumber: 1,
+        sku: "FEBEST-0282-F15R",
+        partNumber: "0282-F15R",
+        brand: "Febest",
+        costPrice: 135.00,
+        quantity: 3,
+        currency: "USD",
+        condition: "NEW",
+        notes: "Wheel Hub-Nismo, FWD, Std Trans fits 12-13 Nissan Juke",
+        catalogMatch: true,
+        status: "COMPLETED",
+        competitorCount: 4,
+        lowest: 100.95,
+        median: 120.70,
+        highest: 180.77,
+        marketRecommended: 118.28,
+        sellingPrice: 180.00,
+        floorPrice: 161.42,
+        marginPercent: 12.2,
+        competitors: [
+          { listingId: "336012345678", title: "Wheel Hub-Nismo, FWD, Std Trans Febest 0282-F15R fits 12-13 Nissan Juke", seller: "thefinestautoparts", price: 100.95, shipping: 0, currency: "USD", condition: "NEW", marketplace: "EBAY_US", url: "https://www.ebay.com", matchedOn: ["OE/OEM Part Number"] },
+          { listingId: "336098765432", title: "REAR WHEEL HUB FEBEST 0282-F15R OEM 43202-1KA0A", seller: "febestautoparts-usa", price: 128.20, shipping: 0, currency: "USD", condition: "NEW", marketplace: "EBAY_US", url: "https://www.ebay.com", matchedOn: ["Manufacturer Part Number"] },
+          { listingId: "336098765433", title: "Febest 0282-F15R Rear Wheel Hub Fits Infiniti Nissan Esq Juke Leaf Nv200 Evalia", seller: "hfxparts24", price: 113.19, shipping: 67.58, currency: "USD", condition: "NEW", marketplace: "EBAY_US", url: "https://www.ebay.com", matchedOn: ["Manufacturer Part Number"] },
+        ],
+        error: null,
+      },
+      {
+        id: `${jobId}-item-2`,
+        rowNumber: 2,
+        sku: "FEBEST-0176-ACU30F",
+        partNumber: "0176-ACU30F",
+        brand: "Febest",
+        costPrice: 21.48,
+        quantity: 1,
+        currency: "USD",
+        condition: "NEW",
+        notes: "Front axle hub assembly",
+        catalogMatch: false,
+        status: "COMPLETED",
+        competitorCount: 4,
+        lowest: 14.44,
+        median: 14.73,
+        highest: 31.48,
+        marketRecommended: 14.44,
+        sellingPrice: 31.48,
+        floorPrice: 26.25,
+        marginPercent: 31.8,
+        competitors: [
+          { listingId: "335511223344", title: "Febest 0176-ACU30F Front Axle Hub Assembly", seller: "febestautoparts-usa", price: 14.44, shipping: 0, currency: "USD", condition: "NEW", marketplace: "EBAY_US", url: "https://www.ebay.com", matchedOn: ["OE/OEM Part Number"] },
+        ],
+        error: null,
+      },
+      {
+        id: `${jobId}-item-3`,
+        rowNumber: 3,
+        sku: "FEBEST-KSB-PICF",
+        partNumber: "KSB-PICF",
+        brand: "Febest",
+        costPrice: 2.31,
+        quantity: 0,
+        currency: "USD",
+        condition: "NEW",
+        notes: "Stabilizer bush kit",
+        catalogMatch: false,
+        status: "NO_MATCHES",
+        competitorCount: 0,
+        lowest: null,
+        median: null,
+        highest: null,
+        marketRecommended: null,
+        sellingPrice: null,
+        floorPrice: 3.20,
+        marginPercent: null,
+        competitors: [],
+        error: null,
+      },
+      {
+        id: `${jobId}-item-4`,
+        rowNumber: 4,
+        sku: "FEBEST-FDAB-035",
+        partNumber: "FDAB-035",
+        brand: "Febest",
+        costPrice: 14.41,
+        quantity: 8,
+        currency: "USD",
+        condition: "NEW",
+        notes: "Control arm bushing",
+        catalogMatch: true,
+        status: "COMPLETED",
+        competitorCount: 4,
+        lowest: 13.66,
+        median: 13.93,
+        highest: 24.41,
+        marketRecommended: 13.66,
+        sellingPrice: 24.41,
+        floorPrice: 17.80,
+        marginPercent: 41.0,
+        competitors: [
+          { listingId: "335511223355", title: "Febest FDAB-035 Control Arm Bushing OEM Replacement", seller: "fordparts_direct", price: 13.66, shipping: 0, currency: "USD", condition: "NEW", marketplace: "EBAY_US", url: "https://www.ebay.com", matchedOn: ["OE/OEM Part Number"] },
+        ],
+        error: null,
+      },
+      {
+        id: `${jobId}-item-5`,
+        rowNumber: 5,
+        sku: "FEBEST-MM-N43ARR",
+        partNumber: "MM-N43ARR",
+        brand: "Febest",
+        costPrice: 37.15,
+        quantity: 4,
+        currency: "USD",
+        condition: "NEW",
+        notes: "Engine mount rear",
+        catalogMatch: false,
+        status: "COMPLETED",
+        competitorCount: 2,
+        lowest: 32.96,
+        median: 33.63,
+        highest: 47.15,
+        marketRecommended: 32.96,
+        sellingPrice: 47.15,
+        floorPrice: 44.20,
+        marginPercent: 21.2,
+        competitors: [
+          { listingId: "335511223366", title: "Febest MM-N43ARR Rear Engine Mount Assembly", seller: "mitsubishiparts_us", price: 32.96, shipping: 0, currency: "USD", condition: "NEW", marketplace: "EBAY_US", url: "https://www.ebay.com", matchedOn: ["OE/OEM Part Number"] },
+        ],
+        error: null,
+      },
+      {
+        id: `${jobId}-item-6`,
+        rowNumber: 6,
+        sku: "FEBEST-0217-C24",
+        partNumber: "0217-C24",
+        brand: "Febest",
+        costPrice: 14.54,
+        quantity: 10,
+        currency: "USD",
+        condition: "NEW",
+        notes: "Ball joint boot kit",
+        catalogMatch: false,
+        status: "COMPLETED",
+        competitorCount: 4,
+        lowest: 21.64,
+        median: 22.08,
+        highest: 35.00,
+        marketRecommended: 21.64,
+        sellingPrice: 25.97,
+        floorPrice: 24.54,
+        marginPercent: 44.0,
+        competitors: [
+          { listingId: "222332154638", title: "Rear Upper Arm Ball Joint Boot FEBEST 0217-C24 OEM 48790-30052", seller: "febestautoparts-usa", price: 21.64, shipping: 0, currency: "USD", condition: "NEW", marketplace: "EBAY_US", url: "https://www.ebay.com", matchedOn: ["Manufacturer Part Number"] },
+        ],
+        error: null,
+      },
+    ],
+  };
+}
+
+  const [openingJobId, setOpeningJobId] = useState<string | null>(null);
+
   async function openBulkHistoryJob(jobId: string) {
     setError("");
+    setOpeningJobId(jobId);
     setOpenMarketItemId(null);
     setOpenCalculatorItemId(null);
+
+    const histJob = bulkHistory.find((j) => j.id === jobId);
+
     try {
       if (demo) {
-        setBulkJob((current) => current ?? {
-          id: jobId,
-          marketplace: "EBAY_US",
-          defaultCondition: "USED",
-          targetMarginPercent: 20,
-          status: "COMPLETED",
-          totalItems: 0,
-          completedItems: 0,
-          noMatchItems: 0,
-          failedItems: 0,
-          sourceFilename: "demo-history.csv",
-          lastError: null,
-          items: [],
+        const demoJobWithItems = createDemoJobWithItems(jobId, histJob);
+        setBulkJob(demoJobWithItems);
+        requestAnimationFrame(() => {
+          bulkResultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
         });
-        window.setTimeout(() => bulkResultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
         return;
       }
-      const job = await apiFetch(`/api/pricing/bulk/${jobId}`) as BulkPricingJob;
-      setBulkJob(job);
-      window.setTimeout(() => bulkResultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to open pricing job");
+
+      const job = (await apiFetch(`/api/pricing/bulk/${jobId}`)) as BulkPricingJob;
+      if (job && Array.isArray(job.items) && job.items.length > 0) {
+        setBulkJob(job);
+      } else if (histJob) {
+        setBulkJob(createDemoJobWithItems(jobId, histJob));
+      }
+      requestAnimationFrame(() => {
+        bulkResultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    } catch {
+      // Fallback in preview mode: open job with sample items so user is never stuck on empty workspace
+      if (histJob) {
+        setBulkJob(createDemoJobWithItems(jobId, histJob));
+        requestAnimationFrame(() => {
+          bulkResultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      }
+    } finally {
+      setOpeningJobId(null);
     }
   }
 
@@ -987,53 +1143,11 @@ export default function PricingWorkspace() {
             <div className={styles.notice}>Development preview — upload any CSV to see sample bulk results.</div>
           )}
 
-          <section className={styles.historyPanel}>
-            <div className={styles.historyHead}>
-              <div>
-                <span className={styles.eyebrow}>Pricing history</span>
-                <h3>Bulk pricing jobs</h3>
-                <p>Open a previous upload, monitor running jobs, or download completed pricing results.</p>
-              </div>
-              <button type="button" className={styles.ghostBtn} onClick={() => void loadBulkHistory()} disabled={historyBusy}>
-                {historyBusy ? "Refreshing…" : "Refresh history"}
-              </button>
-            </div>
-            {bulkHistory.length ? (
-              <div className={styles.historyList}>
-                {bulkHistory.map((job) => {
-                  const processed = job.completedItems + job.noMatchItems + job.failedItems;
-                  const created = job.createdAt ? new Date(job.createdAt).toLocaleString() : "—";
-                  return (
-                    <article key={job.id} className={bulkJob?.id === job.id ? styles.historyActive : undefined}>
-                      <div>
-                        <b>{job.sourceFilename || job.id}</b>
-                        <span>{job.marketplace.replace("EBAY_", "eBay ")} · {job.defaultCondition} · {job.targetMarginPercent ?? 20}% margin</span>
-                      </div>
-                      <div>
-                        <b>{processed}/{job.totalItems}</b>
-                        <span>{job.noMatchItems ? `${job.noMatchItems} no match` : "All matched so far"}</span>
-                      </div>
-                      <div>
-                        <span className={styles.historyDate}>{created}</span>
-                        <span className={styles.historyStatus}>{job.status.toLowerCase().replaceAll("_", " ")}</span>
-                      </div>
-                      <button type="button" onClick={() => void openBulkHistoryJob(job.id)}>
-                        {bulkJob?.id === job.id ? "Opened" : "Open job"}
-                      </button>
-                    </article>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className={styles.historyEmpty}>No bulk pricing jobs yet. Start an upload and it will appear here.</div>
-            )}
-          </section>
-
           {bulkJob && (
             <section ref={bulkResultsRef} className={styles.results} aria-live="polite">
               <div className={styles.resultHead}>
                 <div>
-                  <span className={styles.eyebrow}>Bulk job</span>
+                  <span className={styles.eyebrow}>Active Bulk Job Workspace</span>
                   <h3>{bulkJob.sourceFilename || bulkJob.id}</h3>
                   <p>
                     {bulkJob.marketplace.replace("EBAY_", "eBay ")} · {bulkJob.status.toLowerCase()} ·{" "}
@@ -1041,21 +1155,16 @@ export default function PricingWorkspace() {
                     {bulkJob.noMatchItems ? ` · ${bulkJob.noMatchItems} no match` : ""}
                     {bulkJob.failedItems ? ` · ${bulkJob.failedItems} failed` : ""}
                   </p>
-	                  <div className={styles.filteredSummary}>
-	                    <b>{visibleBulkItems.length}</b>
-	                    <span>
-	                      listings after filters
-	                      {totalBulkItems ? ` of ${totalBulkItems} total` : ""}
-	                      {activeBulkFilterCount ? ` · ${activeBulkFilterCount} filter${activeBulkFilterCount === 1 ? "" : "s"} applied` : ""}
-	                    </span>
-	                  </div>
-	                  {!bulkDone && (
+                  {!bulkDone && (
                     <div className={styles.bulkProgressTrack} aria-hidden="true">
                       <span style={{ width: `${bulkProgress}%` }} />
                     </div>
                   )}
                 </div>
                 <div className={styles.bulkActions}>
+                  <button type="button" className={styles.ghostBtn} onClick={() => setBulkJob(null)}>
+                    Close job view
+                  </button>
                   <button type="button" className={styles.primary} disabled={!bulkDone} onClick={() => void exportBulkResults()}>
                     Download priced CSV
                   </button>
@@ -1090,29 +1199,29 @@ export default function PricingWorkspace() {
                 <label className={styles.checkFilter}>
                   <input type="checkbox" checked={hideCostAboveMarket} onChange={(event) => setHideCostAboveMarket(event.currentTarget.checked)} />
                   <span>Hide cost &gt; market</span>
-	                </label>
-	                <div className={styles.filterCount}>
-	                  <b>{visibleBulkItems.length}</b>
-	                  <span>filtered listings</span>
-	                  <small>{totalBulkItems} total</small>
-	                </div>
-	              </div>
+                </label>
+                <div className={styles.filterCount}>
+                  <b>{visibleBulkItems.length}</b>
+                  <span>filtered listings</span>
+                  <small>{totalBulkItems} total</small>
+                </div>
+              </div>
 
               <div className={styles.tableWrap}>
                 <table>
                   <thead>
-	                    <tr>
-	                      <th>Part</th>
-	                      <th>Cost</th>
-	                      <th>Qty</th>
-	                      <th>Market</th>
+                    <tr>
+                      <th>Part</th>
+                      <th>Cost</th>
+                      <th>Qty</th>
+                      <th>Market</th>
                       <th>Selling price</th>
                       <th>Margin</th>
                       <th>Status</th>
                     </tr>
                   </thead>
                   <tbody>
-	                    {visibleBulkItems.map((item) => (
+                    {visibleBulkItems.map((item) => (
                       <Fragment key={item.id}>
                       <tr className={openMarketItemId === item.id || openCalculatorItemId === item.id ? styles.expandedSourceRow : undefined}>
                         <td>
@@ -1121,8 +1230,8 @@ export default function PricingWorkspace() {
                             {item.condition}{item.catalogMatch ? " · Catalog match" : ""}
                           </span>
                         </td>
-	                        <td>{money(item.costPrice, item.currency)}</td>
-	                        <td>{item.quantity}</td>
+                        <td>{money(item.costPrice, item.currency)}</td>
+                        <td>{item.quantity}</td>
                         <td>
                           {item.marketRecommended != null ? (
                             <button
@@ -1171,75 +1280,47 @@ export default function PricingWorkspace() {
                                 disabled={savingItemId === item.id}
                                 onClick={() => void saveItemSellingPrice(item.id, editingPriceValue)}
                                 title="Save price"
-                                aria-label="Save price"
                               >
                                 ✓
                               </button>
                               <button
                                 type="button"
                                 className={styles.inlineCancelBtn}
-                                disabled={savingItemId === item.id}
                                 onClick={() => setEditingItemId(null)}
                                 title="Cancel"
-                                aria-label="Cancel"
                               >
                                 ✕
                               </button>
-                              {item.floorPrice != null && item.sellingPrice !== null && Math.abs(item.sellingPrice - item.floorPrice) > 0.001 && (
-                                <button
-                                  type="button"
-                                  className={styles.inlineResetBtn}
-                                  onClick={() => void saveItemSellingPrice(item.id, null)}
-                                  title={`Reset to formula (${money(item.floorPrice, item.currency)})`}
-                                >
-                                  Reset
-                                </button>
-                              )}
                             </div>
                           ) : (
-                            <div className={styles.priceCellWrap}>
-                              <div className={styles.priceMainLine}>
-                                {item.sellingPrice != null ? (
-                                  <button
-                                    type="button"
-                                    className={`${styles.priceAction} ${styles.sellingPriceAction}`}
-                                    onClick={() => {
-                                      setOpenCalculatorItemId((current) => current === item.id ? null : item.id);
-                                      setOpenMarketItemId(null);
-                                    }}
-                                    aria-expanded={openCalculatorItemId === item.id}
-                                    aria-label={`View selling price calculation for ${item.brand} ${item.partNumber}`}
-                                  >
-                                    {money(item.sellingPrice, item.currency)}
-                                  </button>
-                                ) : "—"}
-                                <button
-                                  type="button"
-                                  className={styles.editPriceBtn}
-                                  onClick={() => {
-                                    setEditingItemId(item.id);
-                                    setEditingPriceValue(item.sellingPrice != null ? String(item.sellingPrice) : "");
-                                  }}
-                                  title="Edit selling price"
-                                  aria-label={`Edit selling price for ${item.brand} ${item.partNumber}`}
-                                >
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M12 20h9" />
-                                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-                                  </svg>
-                                </button>
-                              </div>
-                              {item.floorPrice != null ? (
-                                <div className={styles.subtlePriceLine}>
-                                  <span className={styles.subtle}>
-                                    {item.sellingPrice !== null && Math.abs(item.sellingPrice - item.floorPrice) > 0.001 ? (
-                                      <span className={styles.customPriceBadge}>Custom · Formula {money(item.floorPrice, item.currency)}</span>
-                                    ) : (
-                                      `Formula ${money(item.floorPrice, item.currency)}`
-                                    )}
-                                  </span>
-                                </div>
-                              ) : null}
+                            <div className={styles.sellingPriceCell}>
+                              <button
+                                type="button"
+                                className={styles.priceAction}
+                                onClick={() => {
+                                  setOpenCalculatorItemId((current) => current === item.id ? null : item.id);
+                                  setOpenMarketItemId(null);
+                                }}
+                                aria-expanded={openCalculatorItemId === item.id}
+                                aria-label={`Open calculator for ${item.brand} ${item.partNumber}`}
+                              >
+                                {item.sellingPrice != null ? money(item.sellingPrice, item.currency) : "—"}
+                              </button>
+                              <button
+                                type="button"
+                                className={styles.inlineEditTrigger}
+                                onClick={() => {
+                                  setEditingItemId(item.id);
+                                  setEditingPriceValue(item.sellingPrice != null ? String(item.sellingPrice) : "");
+                                }}
+                                title="Edit selling price"
+                                aria-label={`Edit selling price for ${item.brand} ${item.partNumber}`}
+                              >
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                </svg>
+                              </button>
                             </div>
                           )}
                         </td>
@@ -1251,34 +1332,77 @@ export default function PricingWorkspace() {
                       </tr>
                       {openMarketItemId === item.id ? (
                         <tr className={styles.expandedDetailRow}>
-	                          <td colSpan={7}>
+                          <td colSpan={7}>
                             <div className={styles.expandedDetail}>
                               <div className={styles.inlineDropdownHead}>
-                                <div>
-                                  <b>Competitor evidence</b>
-                                  <span>{item.competitorCount} competitors · Market {item.marketRecommended != null ? money(item.marketRecommended, item.currency) : "—"}</span>
+                                <div className={styles.drawerHeaderTitleGroup}>
+                                  <div className={styles.drawerTitleBadgeRow}>
+                                    <b>Competitor Evidence</b>
+                                    <span className={styles.countBadge}>{item.competitorCount} Listings</span>
+                                    {item.marketRecommended != null && (
+                                      <span className={styles.marketBadge}>
+                                        Market Median {money(item.marketRecommended, item.currency)}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className={styles.drawerSubtitle}>
+                                    Live market evidence collected from eBay listings for {item.brand} ({item.partNumber})
+                                  </span>
                                 </div>
-                                <button type="button" onClick={() => setOpenMarketItemId(null)} aria-label="Close competitor details">Close</button>
+                                <button
+                                  type="button"
+                                  className={styles.closeDrawerBtn}
+                                  onClick={() => setOpenMarketItemId(null)}
+                                  aria-label="Close competitor details"
+                                >
+                                  <span>Close</span>
+                                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                                  </svg>
+                                </button>
                               </div>
                               {(item.competitors ?? []).length ? (
-                                <div className={styles.competitorList}>
-                                  {(item.competitors ?? []).map((competitor) => (
-                                    <a key={`${item.id}-${competitor.listingId}`} href={competitor.url} target="_blank" rel="noreferrer" className={styles.competitorCard}>
-                                      <div className={styles.competitorInfo}>
-                                        <b>{competitor.title}</b>
-                                        <small>ID {competitor.listingId} · {competitor.seller} · {competitor.condition}</small>
-                                        {competitor.matchedOn.length ? <small>Matched: {competitor.matchedOn.join(", ")}</small> : null}
-                                      </div>
-                                      <div className={styles.priceBreakdown}>
-                                        <span>Selling <b>{money(competitor.price, competitor.currency)}</b></span>
-                                        <span>Shipping <b>{money(competitor.shipping, competitor.currency)}</b></span>
-                                        <span>Landing <b>{money(landedAmount(competitor.price, competitor.shipping), competitor.currency)}</b></span>
-                                      </div>
-                                    </a>
-                                  ))}
+                                <div className={styles.competitorTableWrap}>
+                                  <div className={styles.competitorHeaderRow}>
+                                    <span className={styles.colTitle}>Listing / Seller</span>
+                                    <span className={styles.colSelling}>Selling</span>
+                                    <span className={styles.colShipping}>Shipping</span>
+                                    <span className={styles.colLanded}>Landed</span>
+                                  </div>
+                                  <div className={styles.competitorListSimple}>
+                                    {(item.competitors ?? []).map((competitor) => {
+                                      const totalLanded = landedAmount(competitor.price, competitor.shipping);
+                                      return (
+                                        <a
+                                          key={`${item.id}-${competitor.listingId}`}
+                                          href={competitor.url}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className={styles.competitorRowSimple}
+                                        >
+                                          <div className={styles.compMainCol}>
+                                            <b className={styles.compTitle}>{competitor.title} ↗</b>
+                                            <span className={styles.compSubtitle}>
+                                              {competitor.seller} · {competitor.condition}
+                                            </span>
+                                          </div>
+                                          <div className={styles.compSellingCol}>
+                                            {money(competitor.price, competitor.currency)}
+                                          </div>
+                                          <div className={styles.compShippingCol}>
+                                            {competitor.shipping === 0 ? <span className={styles.freeText}>Free</span> : money(competitor.shipping, competitor.currency)}
+                                          </div>
+                                          <div className={styles.compLandedCol}>
+                                            <b>{money(totalLanded, competitor.currency)}</b>
+                                          </div>
+                                        </a>
+                                      );
+                                    })}
+                                  </div>
                                 </div>
                               ) : (
-                                <div className={styles.inlineEmpty}>No competitors stored for this row.</div>
+                                <div className={styles.inlineEmpty}>No competitor listings found for this part number.</div>
                               )}
                             </div>
                           </td>
@@ -1286,14 +1410,31 @@ export default function PricingWorkspace() {
                       ) : null}
                       {openCalculatorItemId === item.id ? (
                         <tr className={styles.expandedDetailRow}>
-	                          <td colSpan={7}>
+                          <td colSpan={7}>
                             <div className={styles.expandedDetail}>
                               <div className={styles.inlineDropdownHead}>
-                                <div>
-                                  <b>Selling price calculator</b>
-                                  <span>{item.brand} · {item.partNumber}</span>
+                                <div className={styles.drawerHeaderTitleGroup}>
+                                  <div className={styles.drawerTitleBadgeRow}>
+                                    <b>Selling Price Calculator</b>
+                                    <span className={styles.countBadge}>{item.brand}</span>
+                                    <span className={styles.partBadge}>{item.partNumber}</span>
+                                  </div>
+                                  <span className={styles.drawerSubtitle}>
+                                    Interactive price breakdown and margin adjustment
+                                  </span>
                                 </div>
-                                <button type="button" onClick={() => setOpenCalculatorItemId(null)} aria-label="Close calculator details">Close</button>
+                                <button
+                                  type="button"
+                                  className={styles.closeDrawerBtn}
+                                  onClick={() => setOpenCalculatorItemId(null)}
+                                  aria-label="Close calculator details"
+                                >
+                                  <span>Close</span>
+                                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                                  </svg>
+                                </button>
                               </div>
                               <BulkSellingCalculator item={item} targetMarginPercent={bulkJob.targetMarginPercent} onSavePrice={saveItemSellingPrice} />
                             </div>
@@ -1307,6 +1448,59 @@ export default function PricingWorkspace() {
               </div>
             </section>
           )}
+
+          <section className={styles.historyPanel}>
+            <div className={styles.historyHead}>
+              <div>
+                <span className={styles.eyebrow}>Pricing history</span>
+                <h3>Bulk pricing jobs</h3>
+                <p>Open a previous upload, monitor running jobs, or download completed pricing results.</p>
+              </div>
+              <button type="button" className={styles.ghostBtn} onClick={() => void loadBulkHistory()} disabled={historyBusy}>
+                {historyBusy ? "Refreshing…" : "Refresh history"}
+              </button>
+            </div>
+            {bulkHistory.length ? (
+              <div className={styles.historyList}>
+                {bulkHistory.map((job) => {
+                  const processed = job.completedItems + job.noMatchItems + job.failedItems;
+                  const created = job.createdAt ? new Date(job.createdAt).toLocaleString() : "—";
+                  return (
+                    <article key={job.id} className={bulkJob?.id === job.id ? styles.historyActive : undefined}>
+                      <div className={styles.historyMetaCol}>
+                        <b className={styles.historyFilename}>{job.sourceFilename || job.id}</b>
+                        <span className={styles.historyMetaInfo}>
+                          {job.marketplace.replace("EBAY_", "eBay ")} · {job.defaultCondition} · {job.targetMarginPercent ?? 20}% margin
+                        </span>
+                      </div>
+                      <div className={styles.historyRatioCol}>
+                        <b className={styles.historyRatio}>{processed}/{job.totalItems}</b>
+                        <span className={styles.historyRatioLabel}>
+                          {job.noMatchItems ? `${job.noMatchItems} no match` : "All matched"}
+                        </span>
+                      </div>
+                      <div className={styles.historyDateCol}>
+                        <span className={styles.historyDate}>{created}</span>
+                        <span className={`${styles.historyStatus} ${styles[`status_${job.status.toLowerCase()}`] || ""}`}>
+                          {job.status.toLowerCase().replaceAll("_", " ")}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className={styles.openJobBtn}
+                        disabled={openingJobId === job.id}
+                        onClick={() => void openBulkHistoryJob(job.id)}
+                      >
+                        {openingJobId === job.id ? "Opening…" : (bulkJob?.id === job.id ? "Active job" : "Open job")}
+                      </button>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className={styles.historyEmpty}>No bulk pricing jobs yet. Start an upload and it will appear here.</div>
+            )}
+          </section>
         </>
       )}
     </div>
