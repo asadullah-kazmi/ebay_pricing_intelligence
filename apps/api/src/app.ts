@@ -1918,8 +1918,10 @@ app.get("/api/ebay/account-deletion", (req, res) => {
   const challengeCode = typeof req.query.challenge_code === "string" ? req.query.challenge_code : undefined;
   const { endpoint, verificationToken } = getConfig().ebay.notifications;
   if (!challengeCode) return res.status(400).json({ error: "Missing challenge_code" });
-  if (!endpoint || !verificationToken) return res.status(503).json({ error: "eBay notifications are not configured" });
-  res.json({ challengeResponse: generateChallengeResponse(challengeCode, verificationToken, endpoint) });
+  const effectiveEndpoint = endpoint || process.env.EBAY_NOTIFICATION_ENDPOINT || "https://price-intelapi-production.up.railway.app/api/ebay/account-deletion";
+  const effectiveToken = verificationToken || process.env.EBAY_NOTIFICATION_VERIFICATION_TOKEN;
+  if (!effectiveToken) return res.status(503).json({ error: "eBay notification verification token is not configured" });
+  res.json({ challengeResponse: generateChallengeResponse(challengeCode, effectiveToken, effectiveEndpoint) });
 });
 
 app.post("/api/ebay/account-deletion", async (req, res, next) => {
