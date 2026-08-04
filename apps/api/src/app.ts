@@ -31,6 +31,7 @@ import {
   getBulkPricingJob,
   listBulkPricingJobs,
   parseBulkPricingCsv,
+  resumeBulkPricingJob,
   startBulkPricingJob,
   updateBulkPricingItemSellingPrice,
 } from "./bulk-pricing-service.js";
@@ -1153,6 +1154,15 @@ app.get("/api/pricing/bulk/:id", requireTenantContext, pricingRoles, async (req,
     const jobId = req.params.id;
     if (typeof jobId !== "string") return res.status(400).json({ error: "Invalid bulk pricing job ID" });
     res.json(await getBulkPricingJob(getTenantContext(res).organization.id, jobId));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/pricing/bulk/:id/resume", requireTenantContext, pricingRoles, async (req, res, next) => {
+  try {
+    const jobId = req.params.id;
+    if (typeof jobId !== "string") return res.status(400).json({ error: "Invalid bulk pricing job ID" });
+    const job = await resumeBulkPricingJob(getTenantContext(res).organization.id, jobId);
+    res.json(job);
   } catch (error) { next(error); }
 });
 

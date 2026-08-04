@@ -397,6 +397,7 @@ async function processBulkItem(
       },
     });
   } catch (error) {
+    if (isRateLimitError(error)) throw error;
     const message = error instanceof Error ? error.message.slice(0, 500) : "Unknown bulk pricing error";
     await prisma.bulkPricingJobItem.update({
       where: { id: item.id },
@@ -405,12 +406,52 @@ async function processBulkItem(
   }
 }
 
+function isRateLimitError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message.toLowerCase();
+  return msg.includes("429") || msg.includes("rate limit") || msg.includes("request limit");
+}
+
+export async function resumeBulkPricingJob(organizationId: string, jobId: string) {
+  const job = await prisma.bulkPricingJob.findFirst({
+    where: { id: jobId, organizationId },
+  });
+  if (!job) throw new BulkPricingError("Bulk pricing job not found", 404);
+
+  // Reset 429 failed items back to QUEUED for retry
+  await prisma.bulkPricingJobItem.updateMany({
+    where: {
+      bulkPricingJobId: jobId,
+      status: "FAILED",
+      error: { contains: "429" },
+    },
+    data: { status: "QUEUED", error: null },
+  });
+
+  await prisma.bulkPricingJob.update({
+    where: { id: jobId },
+    data: {
+      status: "QUEUED",
+      lastError: null,
+      completedAt: null,
+    },
+  });
+
+  if (getConfig().jobs.executionMode !== "inline") {
+    startBulkPricingJob(jobId);
+  } else {
+    void runBulkPricingJob(jobId);
+  }
+
+  return getBulkPricingJob(organizationId, jobId);
+}
+
 async function runBulkPricingJob(jobId: string, options: JobRunOptions = inlineJobOptions) {
   if (activeJobs.has(jobId)) return;
   activeJobs.add(jobId);
   try {
     const claimed = await prisma.bulkPricingJob.updateMany({
-      where: { id: jobId, status: "QUEUED" },
+      where: { id: jobId, status: { in: ["QUEUED", "PAUSED" as any] } },
       data: { status: "RUNNING", startedAt: new Date(), completedAt: null, lastError: null },
     });
     if (!claimed.count) return;
@@ -439,8 +480,27 @@ async function runBulkPricingJob(jobId: string, options: JobRunOptions = inlineJ
 
     const targetMarginPercent = job.targetMarginPercent === null ? 20 : Number(job.targetMarginPercent.toString());
     for (const item of job.items) {
-      await processBulkItem(item, job.marketplace as Marketplace, targetMarginPercent, options);
-      await refreshJobProgress(jobId);
+      try {
+        await processBulkItem(item, job.marketplace as Marketplace, targetMarginPercent, options);
+        await refreshJobProgress(jobId);
+      } catch (err) {
+        if (isRateLimitError(err)) {
+          await prisma.bulkPricingJobItem.update({
+            where: { id: item.id },
+            data: { status: "QUEUED", error: null },
+          });
+          const pauseMsg = "Paused: eBay API rate limit reached (HTTP 429). Please wait before resuming.";
+          await prisma.bulkPricingJob.update({
+            where: { id: jobId },
+            data: {
+              status: "PAUSED" as any,
+              lastError: pauseMsg,
+            },
+          });
+          await refreshJobProgress(jobId);
+          return;
+        }
+      }
     }
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 500) : "Unknown bulk pricing job error";

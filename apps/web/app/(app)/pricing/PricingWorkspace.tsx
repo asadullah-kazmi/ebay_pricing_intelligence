@@ -711,6 +711,7 @@ function getDemoHistoryJobs(): BulkPricingJob[] {
   }
 
   const [clearingStuck, setClearingStuck] = useState(false);
+  const [resumingJobId, setResumingJobId] = useState<string | null>(null);
 
   async function clearStuckJob() {
     setClearingStuck(true);
@@ -726,6 +727,30 @@ function getDemoHistoryJobs(): BulkPricingJob[] {
       setError("Failed to clear stuck job");
     } finally {
       setClearingStuck(false);
+    }
+  }
+
+  async function resumeJob(jobId: string) {
+    setResumingJobId(jobId);
+    setError("");
+    try {
+      if (demo) {
+        setBulkHistory((prev) =>
+          prev.map((j) => (j.id === jobId ? { ...j, status: "RUNNING", lastError: null } : j))
+        );
+        if (bulkJob?.id === jobId) {
+          setBulkJob((prev) => (prev ? { ...prev, status: "RUNNING", lastError: null } : prev));
+        }
+        return;
+      }
+      const updated = (await apiFetch(`/api/pricing/bulk/${jobId}/resume`, { method: "POST" })) as BulkPricingJob;
+      setBulkJob((prev) => (prev?.id === jobId ? { ...prev, ...updated } : prev));
+      setBulkHistory((prev) => prev.map((j) => (j.id === jobId ? { ...j, ...updated } : j)));
+      void loadBulkHistory();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to resume job");
+    } finally {
+      setResumingJobId(null);
     }
   }
 
@@ -1259,6 +1284,17 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
                   )}
                 </div>
                 <div className={styles.bulkActions}>
+                  {bulkJob.status === "PAUSED" && (
+                    <button
+                      type="button"
+                      className={styles.resumeBannerBtn}
+                      style={{ height: 38, padding: "0 16px", background: "#d97706" }}
+                      disabled={resumingJobId === bulkJob.id}
+                      onClick={() => void resumeJob(bulkJob.id)}
+                    >
+                      {resumingJobId === bulkJob.id ? "Resuming…" : "▶ Resume job"}
+                    </button>
+                  )}
                   <button type="button" className={styles.ghostBtn} onClick={() => setBulkJob(null)}>
                     Close job view
                   </button>
@@ -1274,7 +1310,23 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
                   </button>
                 </div>
               </div>
-              {bulkJob.lastError && <div className={styles.error}>{bulkJob.lastError}</div>}
+              {bulkJob.status === "PAUSED" && (
+                <div className={styles.pausedBanner}>
+                  <div>
+                    <b>⚠️ Bulk Job Paused (Rate Limit Reached)</b>
+                    <p>{bulkJob.lastError || "Processing stopped because the eBay API request limit was reached (HTTP 429). Wait a few moments, then click Resume job to continue."}</p>
+                  </div>
+                  <button
+                    type="button"
+                    className={styles.resumeBannerBtn}
+                    disabled={resumingJobId === bulkJob.id}
+                    onClick={() => void resumeJob(bulkJob.id)}
+                  >
+                    {resumingJobId === bulkJob.id ? "Resuming…" : "Resume job now"}
+                  </button>
+                </div>
+              )}
+              {bulkJob.lastError && bulkJob.status !== "PAUSED" && <div className={styles.error}>{bulkJob.lastError}</div>}
 
               <div className={styles.reviewFilters}>
                 <label>
@@ -1430,8 +1482,14 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
                         </td>
                         <td>{item.marginPercent != null ? `${item.marginPercent.toFixed(1)}%` : "—"}</td>
                         <td>
-                          <span className={styles.pill}>{item.status.replaceAll("_", " ")}</span>
-                          {item.error ? <span className={styles.subtle}>{item.error}</span> : null}
+                          <span className={`${styles.pill} ${styles[`status_${item.status.toLowerCase()}`] || ""}`}>
+                            {item.status.replaceAll("_", " ")}
+                          </span>
+                          {item.error ? (
+                            <span className={styles.itemErrorText} title={item.error}>
+                              {item.error.includes("429") ? "Rate limit reached (429)" : item.error}
+                            </span>
+                          ) : null}
                         </td>
                       </tr>
                       {openMarketItemId === item.id ? (
@@ -1664,14 +1722,26 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
                             {job.status.toLowerCase().replaceAll("_", " ")}
                           </span>
                         </div>
-                        <button
-                          type="button"
-                          className={styles.openJobBtn}
-                          disabled={openingJobId === job.id}
-                          onClick={() => void openBulkHistoryJob(job.id)}
-                        >
-                          {openingJobId === job.id ? "Opening…" : "Open job"}
-                        </button>
+                        <div className={styles.historyActionsCol} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          {job.status === "PAUSED" && (
+                            <button
+                              type="button"
+                              className={styles.resumeJobBtn}
+                              disabled={resumingJobId === job.id}
+                              onClick={() => void resumeJob(job.id)}
+                            >
+                              {resumingJobId === job.id ? "Resuming…" : "Resume job"}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className={styles.openJobBtn}
+                            disabled={openingJobId === job.id}
+                            onClick={() => void openBulkHistoryJob(job.id)}
+                          >
+                            {openingJobId === job.id ? "Opening…" : "Open job"}
+                          </button>
+                        </div>
                       </article>
                     );
                   })}
