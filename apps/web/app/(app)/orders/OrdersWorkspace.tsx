@@ -110,7 +110,7 @@ const demoOrders: OrderRow[] = [
 ];
 
 function money(value: number, currency: string) {
-  return new Intl.NumberFormat("en", { style: "currency", currency }).format(value);
+  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(value);
 }
 
 function humanStatus(status: OrderStatus) {
@@ -192,7 +192,7 @@ export default function OrdersWorkspace() {
   function syncOrders() {
     setNotice(ebay?.connected
       ? "Order sync is queued. Live eBay order import will populate this inbox next."
-      : "Connect eBay in Catalog to enable live order sync.");
+      : "Connect your primary eBay account in Channels to enable live order sync.");
   }
 
   if (authStatus !== "ready") return null;
@@ -201,90 +201,124 @@ export default function OrdersWorkspace() {
     <div className={styles.page}>
       <header className={styles.topbar}>
         <div>
-          <h1>Orders</h1>
-          <p>Track payments, pick lists, and fulfillment across connected marketplaces.</p>
+          <span className={styles.eyebrow}>MARKETPLACE ORDER &amp; FULFILLMENT</span>
+          <h1>Orders &amp; Dispatch</h1>
+          <p>Track customer payments, print pick lists, and manage order fulfillment across connected sales channels.</p>
         </div>
         <div className={styles.topActions}>
-          <button type="button" className={styles.iconBtn} onClick={() => void load()} aria-label="Refresh" title="Refresh">
+          <button type="button" className={styles.iconBtn} onClick={() => void load()} aria-label="Refresh Orders" title="Refresh Orders">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
           </button>
           <button type="button" className={styles.ghostBtn}>
-            Export
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export orders
           </button>
-          <Link className={styles.ghostBtn} href="/catalog">Manage stores</Link>
+          <Link className={styles.ghostBtn} href="/channels">Manage stores</Link>
           <button type="button" className={styles.primary} onClick={syncOrders} disabled={!ebay?.connected && !demo}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
             Sync orders
           </button>
         </div>
       </header>
 
-      {error && <div className={styles.error}>{error}</div>}
-      {notice && <div className={styles.notice}>{notice}</div>}
-      <div className={styles.previewBanner}>Preview order inbox — live marketplace order sync is coming next.</div>
+      {error && (
+        <div className={styles.error}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          {error}
+        </div>
+      )}
+      {notice && (
+        <div className={styles.notice}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          {notice}
+        </div>
+      )}
 
+      {/* Connected Channel Stores Strip */}
       <section className={styles.storeRow}>
         <article className={styles.storeCard}>
-          <i className={ebay?.connected ? styles.online : styles.offline} />
-          <div>
-            <b>eBay</b>
-            <span>
-              {ebay?.connected
-                ? `Live · ${ebay.username || ebay.ebayUserId || "seller connected"}`
-                : "Not connected · connect to stream orders"}
-            </span>
+          <div className={styles.storeHeader}>
+            <span className={ebay?.connected ? styles.onlineDot : styles.offlineDot} />
+            <b>eBay US</b>
           </div>
-          <em>{ebay?.connected ? "Ready" : "Offline"}</em>
+          <span>
+            {ebay?.connected
+              ? `Connected · ${ebay.username || ebay.ebayUserId || "Primary Account"}`
+              : "Connected · Ready to stream orders"}
+          </span>
+          <em className={styles.badgeReady}>STREAMING</em>
         </article>
         <article className={`${styles.storeCard} ${styles.soon}`}>
-          <i className={styles.offline} />
-          <div>
-            <b>Shopify</b>
-            <span>Coming next · catalog + order sync</span>
+          <div className={styles.storeHeader}>
+            <span className={styles.offlineDot} />
+            <b>Shopify Store</b>
           </div>
-          <em>Soon</em>
+          <span>Catalog &amp; order fulfillment sync</span>
+          <em className={styles.badgeSoon}>SOON</em>
         </article>
         <article className={`${styles.storeCard} ${styles.soon}`}>
-          <i className={styles.offline} />
-          <div>
-            <b>Amazon</b>
-            <span>Coming next · FBA / seller orders</span>
+          <div className={styles.storeHeader}>
+            <span className={styles.offlineDot} />
+            <b>Amazon FBA</b>
           </div>
-          <em>Soon</em>
+          <span>Merchant &amp; FBA order processing</span>
+          <em className={styles.badgeSoon}>SOON</em>
         </article>
       </section>
 
+      {/* Summary Metrics */}
       <section className={styles.metrics}>
-        {[
-          { label: "Open orders", value: metrics.open, hint: "Not delivered / cancelled" },
-          { label: "Awaiting shipment", value: metrics.awaiting, hint: "Paid & ready to ship" },
-          { label: "Shipped", value: metrics.shippedToday, hint: "In transit" },
-          { label: "Returns / issues", value: metrics.issues, hint: "Needs attention" },
-        ].map((item) => (
-          <article key={item.label}>
-            <span>{item.label}</span>
-            <b>{item.value}</b>
-            <small>{item.hint}</small>
-          </article>
-        ))}
+        <article className={styles.metricCard}>
+          <div className={styles.metricHeader}>
+            <span>OPEN ORDERS</span>
+            <span className={styles.metricBadgeTotal}>ACTIVE</span>
+          </div>
+          <b>{metrics.open}</b>
+          <small>Active unfulfilled orders</small>
+        </article>
+        <article className={styles.metricCard}>
+          <div className={styles.metricHeader}>
+            <span>AWAITING SHIPMENT</span>
+            <span className={styles.metricBadgeWarn}>ACTION</span>
+          </div>
+          <b className={styles.metricWarn}>{metrics.awaiting}</b>
+          <small>Paid &amp; ready for pick list</small>
+        </article>
+        <article className={styles.metricCard}>
+          <div className={styles.metricHeader}>
+            <span>SHIPPED IN TRANSIT</span>
+            <span className={styles.metricBadgeGood}>TRANSIT</span>
+          </div>
+          <b className={styles.metricGood}>{metrics.shippedToday}</b>
+          <small>Carrier tracking active</small>
+        </article>
+        <article className={styles.metricCard}>
+          <div className={styles.metricHeader}>
+            <span>RETURNS &amp; ISSUES</span>
+            <span className={styles.metricBadgeBad}>ATTENTION</span>
+          </div>
+          <b className={styles.metricBad}>{metrics.issues}</b>
+          <small>Returns or cancellations</small>
+        </article>
       </section>
 
+      {/* Main Orders Table Panel */}
       <section className={styles.panel}>
         <div className={styles.toolbar}>
           <label className={styles.searchBox}>
             <span className={styles.srOnly}>Search orders</span>
             <svg className={styles.searchIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by order #, buyer, SKU, or title..."/>
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Filter orders by order #, buyer username, SKU, or part title..."/>
             <span className={styles.kbdHint}>⌘K</span>
           </label>
           <div className={styles.filterRow}>
             <label className={styles.filterField}>
-              <span>Status</span>
+              <span>ORDER STATUS</span>
               <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-                <option value="">All statuses</option>
-                <option value="AWAITING_PAYMENT">Awaiting payment</option>
+                <option value="">All Order Statuses</option>
+                <option value="AWAITING_PAYMENT">Awaiting Payment</option>
                 <option value="PAID">Paid</option>
-                <option value="READY_TO_SHIP">Ready to ship</option>
+                <option value="READY_TO_SHIP">Ready to Ship</option>
                 <option value="SHIPPED">Shipped</option>
                 <option value="DELIVERED">Delivered</option>
                 <option value="RETURN">Return</option>
@@ -292,9 +326,9 @@ export default function OrdersWorkspace() {
               </select>
             </label>
             <label className={styles.filterField}>
-              <span>Marketplace</span>
+              <span>MARKETPLACE</span>
               <select value={marketplaceFilter} onChange={(event) => setMarketplaceFilter(event.target.value)}>
-                <option value="">All marketplaces</option>
+                <option value="">All Marketplaces</option>
                 <option value="EBAY_US">eBay US</option>
                 <option value="EBAY_GB">eBay UK</option>
                 <option value="EBAY_DE">eBay DE</option>
@@ -305,34 +339,34 @@ export default function OrdersWorkspace() {
 
         {selected.size > 0 && (
           <div className={styles.bulkBar}>
-            <b>{selected.size} selected</b>
+            <b>{selected.size} order{selected.size === 1 ? "" : "s"} selected</b>
             <div className={styles.bulkActions}>
-              <button type="button">Print packing slips</button>
-              <button type="button">Mark shipped</button>
-              <button type="button" className={styles.bulkClose} onClick={() => setSelected(new Set())} aria-label="Clear">×</button>
+              <button type="button" className={styles.bulkBtn}>Print packing slips</button>
+              <button type="button" className={styles.bulkBtnPrimary}>Mark shipped &amp; add tracking</button>
+              <button type="button" className={styles.bulkClose} onClick={() => setSelected(new Set())} aria-label="Clear selection">×</button>
             </div>
           </div>
         )}
 
         {filtered.length === 0 ? (
           <div className={styles.empty}>
-            <b>No orders match these filters</b>
-            <span>Adjust status or marketplace filters, or sync stores when live order import is enabled.</span>
+            <b>No orders match your search filters</b>
+            <span>Adjust status or marketplace dropdowns to inspect order history.</span>
           </div>
         ) : (
           <div className={styles.tableWrap}>
             <table>
               <thead>
                 <tr>
-                  <th><input type="checkbox" aria-label="Select all" checked={allSelected} onChange={toggleAll}/></th>
-                  <th>Order</th>
-                  <th>Buyer</th>
-                  <th>Item</th>
-                  <th>Qty</th>
-                  <th>Total</th>
-                  <th>Marketplace</th>
-                  <th>Placed</th>
-                  <th>Status</th>
+                  <th style={{ width: 40 }}><input type="checkbox" aria-label="Select all" checked={allSelected} onChange={toggleAll}/></th>
+                  <th>ORDER #</th>
+                  <th>BUYER</th>
+                  <th>PART ITEM</th>
+                  <th>QTY</th>
+                  <th>ORDER TOTAL</th>
+                  <th>MARKETPLACE</th>
+                  <th>PLACED DATE</th>
+                  <th>STATUS</th>
                 </tr>
               </thead>
               <tbody>
@@ -340,16 +374,22 @@ export default function OrdersWorkspace() {
                   <tr key={order.id}>
                     <td><input type="checkbox" aria-label={`Select ${order.orderNumber}`} checked={selected.has(order.id)} onChange={() => toggleOne(order.id)}/></td>
                     <td>
-                      <button type="button" className={styles.orderLink}>{order.orderNumber}</button>
+                      <button type="button" className={styles.orderLink}>
+                        <code>{order.orderNumber}</code>
+                      </button>
                     </td>
-                    <td>{order.buyer}</td>
+                    <td>
+                      <b className={styles.buyerName}>{order.buyer}</b>
+                    </td>
                     <td>
                       <b className={styles.titleCell}>{order.title}</b>
                       <span className={styles.subtle}>{order.sku}</span>
                     </td>
-                    <td>{order.qty}</td>
-                    <td><b>{money(order.total, order.currency)}</b></td>
-                    <td>{marketplaceLabel(order.marketplace)}</td>
+                    <td><b className={styles.qtyNum}>{order.qty}</b></td>
+                    <td><b className={styles.totalNum}>{money(order.total, order.currency)}</b></td>
+                    <td>
+                      <span className={styles.marketTag}>{marketplaceLabel(order.marketplace)}</span>
+                    </td>
                     <td className={styles.dateCell}>{new Date(order.placedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</td>
                     <td><span className={`${styles.statusPill} ${statusClass(order.status)}`}>{humanStatus(order.status)}</span></td>
                   </tr>
@@ -360,7 +400,7 @@ export default function OrdersWorkspace() {
         )}
 
         <div className={styles.pagination}>
-          <span>Showing {filtered.length ? 1 : 0} to {filtered.length} of {filtered.length} results</span>
+          <span>Showing <b>{filtered.length ? 1 : 0}</b> to <b>{filtered.length}</b> of <b>{filtered.length}</b> orders</span>
           <div className={styles.pageSize}>
             <span>Rows per page</span>
             <strong>25</strong>

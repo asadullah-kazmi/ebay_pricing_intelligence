@@ -1,0 +1,6 @@
+{
+  "watch": ["apps/api/src"],
+  "ext": "ts,json",
+  "ignore": ["node_modules", ".git", "dist"],
+  "exec": "npm run dev:nodemon -w @price-intel/api"
+}

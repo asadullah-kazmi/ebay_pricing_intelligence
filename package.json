@@ -4,9 +4,12 @@
   "engines": {
     "node": ">=22 <25"
   },
-  "workspaces": ["apps/*"],
+  "workspaces": [
+    "apps/*"
+  ],
   "scripts": {
     "dev": "concurrently -n api,web -c cyan,magenta \"npm run dev -w @price-intel/api\" \"npm run dev -w @price-intel/web\"",
+    "dev:nodemon": "concurrently -n api,web -c cyan,magenta \"npm run dev:nodemon -w @price-intel/api\" \"npm run dev -w @price-intel/web\"",
     "dev:services": "concurrently -n api,worker,web -c cyan,yellow,magenta \"npm run dev -w @price-intel/api\" \"npm run dev -w @price-intel/worker\" \"npm run dev -w @price-intel/web\"",
     "build": "npm run build -w @price-intel/api && npm run build -w @price-intel/web",
     "build:worker": "npm run build -w @price-intel/api && npm run build -w @price-intel/worker",
@@ -24,6 +27,7 @@
     "db:migrate": "npm run db:migrate -w @price-intel/api"
   },
   "devDependencies": {
-    "concurrently": "^9.2.0"
+    "concurrently": "^9.2.0",
+    "nodemon": "^3.1.14"
   }
 }
