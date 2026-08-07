@@ -194,13 +194,12 @@
 }
 
 .searchForm {
-  background:
-    radial-gradient(ellipse 90% 70% at 100% 0%, #1a4a8a55, transparent 50%),
-    linear-gradient(160deg, #0f335f 0%, #0c274d 55%, #091e3c 100%);
-  color: #fff;
+  background: #ffffff;
+  color: #0f172a;
+  border: 1px solid #e2e8f0;
   border-radius: 16px;
   padding: 24px;
-  box-shadow: 0 18px 44px #0b142628;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.05);
   display: grid;
   gap: 16px;
   align-content: center;
@@ -210,15 +209,15 @@
 
 .searchForm label {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
 }
 
 .searchForm label > span {
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.55px;
-  color: #93c5fd;
+  letter-spacing: 0.5px;
+  color: #475569;
   text-transform: uppercase;
 }
 
@@ -227,22 +226,22 @@
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
-  height: 46px;
-  border: 1px solid #2a4d78;
+  height: 42px;
+  border: 1px solid #cbd5e1;
   border-radius: 10px;
-  background: #0a2244;
-  color: #fff;
+  background: #f8fafc;
+  color: #0f172a;
   padding: 0 14px;
   outline: none;
-  font: 600 14px/1 "Plus Jakarta Sans", sans-serif;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
+  font: 600 13.5px/1 "Plus Jakarta Sans", sans-serif;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
 }
 
 .searchForm select {
   appearance: none;
   background-image:
-    linear-gradient(45deg, transparent 50%, #93c5fd 50%),
-    linear-gradient(135deg, #93c5fd 50%, transparent 50%);
+    linear-gradient(45deg, transparent 50%, #64748b 50%),
+    linear-gradient(135deg, #64748b 50%, transparent 50%);
   background-position:
     calc(100% - 18px) calc(50% - 2px),
     calc(100% - 12px) calc(50% - 2px);
@@ -253,8 +252,9 @@
 
 .searchForm input:focus,
 .searchForm select:focus {
-  border-color: #60a5fa;
-  box-shadow: 0 0 0 3px #0052ff44;
+  background: #ffffff;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
 .searchRow {
@@ -272,6 +272,218 @@
   width: fit-content;
   min-width: 180px;
   grid-column: 1 / -1;
+}
+
+/* Minimal File Upload Drop Zone */
+.fileDropZone {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 16px;
+  border: 2px dashed #cbd5e1;
+  border-radius: 12px;
+  background: #f8fafc;
+  cursor: pointer;
+  text-align: center;
+  transition: all 160ms ease;
+}
+
+.fileDropZone:hover {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.fileDropZone input[type="file"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.fileDropIcon {
+  width: 36px;
+  height: 36px;
+  margin-bottom: 8px;
+  color: #2563eb;
+}
+
+.fileDropTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+}
+
+.fileDropSubtext {
+  font-size: 11.5px;
+  color: #64748b;
+  margin: 2px 0 0;
+}
+
+.fileSelectedBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+  font-size: 12.5px;
+  font-weight: 600;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fileSelectedBadge svg {
+  flex-shrink: 0;
+  color: #16a34a;
+}
+
+.bulkFormGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.bulkFormGrid2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.bulkActionsRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.calcTriggerBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid #dbeafe;
+  border-radius: 9px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font: 600 12.5px/1 "Plus Jakarta Sans", sans-serif;
+  cursor: pointer;
+  transition: all 140ms ease;
+}
+
+.calcTriggerBtn:hover {
+  background: #dbeafe;
+  border-color: #bfdbfe;
+  color: #1e40af;
+}
+
+/* Calculator Modal & Drawer */
+.calculatorModalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fadeIn 200ms ease;
+}
+
+.calculatorModalCard {
+  width: 100%;
+  max-width: 580px;
+  background: #ffffff;
+  border-radius: 20px;
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.2);
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+  animation: slideUp 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.calculatorModalHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid #eef2f7;
+  background: #f8fafc;
+}
+
+.calculatorModalHead h3 {
+  margin: 0;
+  font: 750 18px/1.2 "Plus Jakarta Sans", sans-serif;
+  color: #0c274d;
+}
+
+.calculatorModalHead p {
+  margin: 2px 0 0;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.calculatorModalBody {
+  padding: 24px;
+  display: grid;
+  gap: 20px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.calculatorPriceInputGroup {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.calculatorPriceInputGroup label {
+  display: grid;
+  gap: 6px;
+}
+
+.calculatorPriceInputGroup label > span {
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.calculatorPriceInputGroup input {
+  width: 100%;
+  height: 40px;
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 0 10px;
+  font: 600 13px/1 "Plus Jakarta Sans", sans-serif;
+  background: #f8fafc;
+}
+
+.calculatorPriceInputGroup input:focus {
+  border-color: #2563eb;
+  background: #fff;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .primary {

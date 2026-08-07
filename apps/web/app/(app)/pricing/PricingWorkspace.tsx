@@ -203,18 +203,24 @@ function formulaSellingPrice(cost: number, totalMarginPercent: number) {
   return Math.ceil((breakEvenSecondTier * multiplier - Number.EPSILON) * 100) / 100;
 }
 
-function BulkFormulaCalculator({
+function CalculatorModal({
+  isOpen,
+  onClose,
   targetMarginPercent,
   bufferPercent,
   onMarginChange,
   onBufferChange,
 }: {
+  isOpen: boolean;
+  onClose: () => void;
   targetMarginPercent: string;
   bufferPercent: string;
   onMarginChange: (value: string) => void;
   onBufferChange: (value: string) => void;
 }) {
   const [sampleCost, setSampleCost] = useState("45");
+  if (!isOpen) return null;
+
   const margin = Math.max(0, Math.min(95, Number(targetMarginPercent) || 0));
   const buffer = Math.max(0, Math.min(95, Number(bufferPercent) || 0));
   const totalMargin = Math.min(95, margin + buffer);
@@ -223,76 +229,89 @@ function BulkFormulaCalculator({
   const breakdown = feeBreakdown(price, cost, "USD", totalMargin);
 
   return (
-    <div className={styles.simpleCalculator}>
-      <div className={styles.calculatorEditHeader}>
-        <div className={styles.calculatorPriceInputGroup}>
-          <label>
-            <span>Profit margin %</span>
-            <input
-              type="number"
-              min="0"
-              max="95"
-              step="0.1"
-              value={targetMarginPercent}
-              onChange={(event) => onMarginChange(event.currentTarget.value)}
-              placeholder="20"
-              required
-            />
-          </label>
-          <label>
-            <span>Buffer % (extra margin)</span>
-            <input
-              type="number"
-              min="0"
-              max="95"
-              step="0.1"
-              value={bufferPercent}
-              onChange={(event) => onBufferChange(event.currentTarget.value)}
-              placeholder="0"
-            />
-          </label>
-          <label>
-            <span>Sample cost (preview)</span>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={sampleCost}
-              onChange={(event) => setSampleCost(event.currentTarget.value)}
-              placeholder="45.00"
-            />
-          </label>
+    <div className={styles.calculatorModalOverlay} onClick={onClose}>
+      <div className={styles.calculatorModalCard} onClick={(e) => e.stopPropagation()}>
+        <div className={styles.calculatorModalHead}>
+          <div>
+            <h3>🧮 Fee & Selling Price Calculator</h3>
+            <p>Calculate exact eBay selling price, FVF fees, export costs, and net margin.</p>
+          </div>
+          <button type="button" className={styles.closeDrawerBtn} onClick={onClose} aria-label="Close calculator">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
         </div>
-      </div>
+        <div className={styles.calculatorModalBody}>
+          <div className={styles.calculatorPriceInputGroup}>
+            <label>
+              <span>Profit Margin %</span>
+              <input
+                type="number"
+                min="0"
+                max="95"
+                step="0.1"
+                value={targetMarginPercent}
+                onChange={(event) => onMarginChange(event.currentTarget.value)}
+                placeholder="20"
+              />
+            </label>
+            <label>
+              <span>Buffer % (Extra)</span>
+              <input
+                type="number"
+                min="0"
+                max="95"
+                step="0.1"
+                value={bufferPercent}
+                onChange={(event) => onBufferChange(event.currentTarget.value)}
+                placeholder="0"
+              />
+            </label>
+            <label>
+              <span>Sample Cost ($)</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={sampleCost}
+                onChange={(event) => setSampleCost(event.currentTarget.value)}
+                placeholder="45.00"
+              />
+            </label>
+          </div>
 
-      <div className={styles.costBreakdownSimple}>
-        <div className={styles.breakdownRow}>
-          <span>Part cost</span>
-          <b>{money(cost, "USD")}</b>
-        </div>
-        <div className={styles.breakdownRow}>
-          <span>Target profit ({totalMargin.toFixed(1).replace(/\.0$/, "")}% of selling price = margin + buffer)</span>
-          <b>{money(breakdown.targetProfit, "USD")}</b>
-        </div>
-        <div className={styles.breakdownRow}>
-          <span>eBay FVF fee</span>
-          <b>{money(breakdown.ebayFeeTotal, "USD")}</b>
-        </div>
-        <div className={styles.breakdownRow}>
-          <span>Export & payment fees (1.3% exp + 2% pay + 1% buf + {money(0.4, "USD")})</span>
-          <b>{money(breakdown.exportPayoneerBufferFee, "USD")}</b>
-        </div>
-        <div className={`${styles.breakdownRow} ${styles.profitRow}`}>
-          <span>Formula selling price</span>
-          <b>{money(price, "USD")}</b>
-        </div>
-        <div className={styles.breakdownRow}>
-          <span>Net profit</span>
-          <b>{money(breakdown.grossProfitBeforeShipping, "USD")} ({price > 0 ? `${((breakdown.grossProfitBeforeShipping / price) * 100).toFixed(1)}% margin` : "—"})</b>
-        </div>
-        <div className={styles.breakdownRow}>
-          <span>Formula</span>
-          <b>Selling = Break-even × (1 + (margin + buffer)% )</b>
+          <div className={styles.costBreakdownSimple}>
+            <div className={styles.breakdownRow}>
+              <span>Part cost</span>
+              <b>{money(cost, "USD")}</b>
+            </div>
+            <div className={styles.breakdownRow}>
+              <span>Target profit ({totalMargin.toFixed(1).replace(/\.0$/, "")}% target of selling price)</span>
+              <b>{money(breakdown.targetProfit, "USD")}</b>
+            </div>
+            <div className={styles.breakdownRow}>
+              <span>eBay FVF fee</span>
+              <b>{money(breakdown.ebayFeeTotal, "USD")}</b>
+            </div>
+            <div className={styles.breakdownRow}>
+              <span>Export & payment fees (1.3% exp + 2% pay + 1% buf + {money(0.4, "USD")})</span>
+              <b>{money(breakdown.exportPayoneerBufferFee, "USD")}</b>
+            </div>
+            <div className={`${styles.breakdownRow} ${styles.profitRow}`}>
+              <span>Formula selling price</span>
+              <b>{money(price, "USD")}</b>
+            </div>
+            <div className={styles.breakdownRow}>
+              <span>Net profit</span>
+              <b>{money(breakdown.grossProfitBeforeShipping, "USD")} ({price > 0 ? `${((breakdown.grossProfitBeforeShipping / price) * 100).toFixed(1)}% margin` : "—"})</b>
+            </div>
+            <div className={`${styles.breakdownRow} ${styles.landedRow}`}>
+              <span>Selling formula</span>
+              <b style={{ fontSize: 11.5 }}>Selling = Break-even × (1 + (margin + buffer)% )</b>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -478,6 +497,7 @@ export default function PricingWorkspace() {
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingPriceValue, setEditingPriceValue] = useState<string>("");
   const [savingItemId, setSavingItemId] = useState<string | null>(null);
+  const [showCalculatorModal, setShowCalculatorModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bulkResultsRef = useRef<HTMLElement>(null);
 
@@ -1113,6 +1133,15 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
           <button type="button" role="tab" aria-selected={mode === "bulk"} className={mode === "bulk" ? styles.modeActive : undefined} onClick={() => setMode("bulk")}>
             Bulk pricing
           </button>
+          <button
+            type="button"
+            className={styles.calcTriggerBtn}
+            style={{ height: 36, marginLeft: 4, padding: "0 10px", fontSize: 12 }}
+            onClick={() => setShowCalculatorModal(true)}
+            title="Open formula & fee calculator"
+          >
+            🧮 Calculator
+          </button>
         </div>
       </header>
 
@@ -1305,8 +1334,7 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
             </div>
 
             <form className={styles.searchForm} onSubmit={startBulk}>
-              <label className={styles.oemField}>
-                <span>Pricing sheet (.csv)</span>
+              <div className={styles.fileDropZone} onClick={() => fileInputRef.current?.click()}>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -1314,14 +1342,65 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
                   onChange={(event) => setBulkFile(event.target.files?.[0] ?? null)}
                   required={!bulkFile}
                 />
-              </label>
-              <BulkFormulaCalculator
-                targetMarginPercent={targetMarginPercent}
-                bufferPercent={bulkBufferPercent}
-                onMarginChange={setTargetMarginPercent}
-                onBufferChange={setBulkBufferPercent}
-              />
-              <div className={styles.searchRow}>
+                {bulkFile ? (
+                  <div className={styles.fileSelectedBadge}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    <span>{bulkFile.name} ({(bulkFile.size / 1024).toFixed(1)} KB)</span>
+                  </div>
+                ) : (
+                  <>
+                    <svg className={styles.fileDropIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="17 8 12 3 7 8" />
+                      <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                    <p className={styles.fileDropTitle}>Upload Pricing Sheet (.CSV)</p>
+                    <p className={styles.fileDropSubtext}>Click to browse or drag & drop your CSV file here</p>
+                  </>
+                )}
+              </div>
+
+              <div className={styles.bulkFormGrid}>
+                <label>
+                  <span>Profit margin %</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="95"
+                    step="0.1"
+                    value={targetMarginPercent}
+                    onChange={(event) => setTargetMarginPercent(event.currentTarget.value)}
+                    placeholder="20"
+                    required
+                  />
+                </label>
+                <label>
+                  <span>Buffer %</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="95"
+                    step="0.1"
+                    value={bulkBufferPercent}
+                    onChange={(event) => setBulkBufferPercent(event.currentTarget.value)}
+                    placeholder="0"
+                  />
+                </label>
+                <label>
+                  <span>Currency</span>
+                  <input
+                    value={bulkCurrency}
+                    onChange={(event) => setBulkCurrency(event.currentTarget.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3))}
+                    placeholder="USD"
+                    maxLength={3}
+                    required
+                  />
+                </label>
+              </div>
+
+              <div className={styles.bulkFormGrid2}>
                 <label>
                   <span>Marketplace</span>
                   <select value={marketplace ?? "EBAY_US"} onChange={(event) => setMarketplace(event.currentTarget.value || "EBAY_US")}>
@@ -1341,22 +1420,18 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
                     <option value="USED">Used only</option>
                   </select>
                 </label>
-                <label>
-                  <span>Currency</span>
-                  <input
-                    value={bulkCurrency}
-                    onChange={(event) => setBulkCurrency(event.currentTarget.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3))}
-                    placeholder="USD"
-                    maxLength={3}
-                    required
-                  />
-                </label>
+              </div>
+
+              <div className={styles.bulkActionsRow}>
+                <button type="button" className={styles.calcTriggerBtn} onClick={() => setShowCalculatorModal(true)}>
+                  🧮 Fee Calculator
+                </button>
                 <button type="submit" className={styles.primary} disabled={bulkBusy || !bulkFile}>
                   {bulkBusy ? "Uploading…" : "Run bulk pricing"}
                 </button>
               </div>
               <p className={styles.bulkHint}>
-                Required columns: PartNumber, Brand, CostPrice, Quantity. Optional: Notes. Currency and condition are applied from this upload form.
+                Required columns: PartNumber, Brand, CostPrice, Quantity. Optional: Notes.
               </p>
             </form>
           </section>
@@ -1870,6 +1945,14 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
           )}
         </>
       )}
+      <CalculatorModal
+        isOpen={showCalculatorModal}
+        onClose={() => setShowCalculatorModal(false)}
+        targetMarginPercent={targetMarginPercent}
+        bufferPercent={bulkBufferPercent}
+        onMarginChange={setTargetMarginPercent}
+        onBufferChange={setBulkBufferPercent}
+      />
     </div>
   );
 }
