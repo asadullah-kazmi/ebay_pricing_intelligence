@@ -9,6 +9,7 @@ type WorkspaceKey =
   | "inventory"
   | "pricing"
   | "fitment"
+  | "mediaDrive"
   | "shipping"
   | "pipeline"
   | "orders"
@@ -18,6 +19,7 @@ type WorkspaceKey =
 
 function resolveWorkspace(pathname: string): WorkspaceKey {
   const path = pathname.split("#")[0] ?? pathname;
+  if (path.startsWith("/media-drive")) return "mediaDrive";
   if (path.startsWith("/pipeline")) return "pipeline";
   if (path.startsWith("/orders")) return "orders";
   if (path.startsWith("/channels")) return "channels";
@@ -41,6 +43,7 @@ export default function WorkspaceViews({ pathname }: { pathname: string }) {
     inventory: active === "inventory",
     pricing: active === "pricing",
     fitment: active === "fitment",
+    mediaDrive: active === "mediaDrive",
     shipping: active === "shipping",
     pipeline: active === "pipeline",
     orders: active === "orders",
@@ -55,6 +58,7 @@ export default function WorkspaceViews({ pathname }: { pathname: string }) {
   const [Inventory, setInventory] = useState<ComponentType | null>(null);
   const [Pricing, setPricing] = useState<ComponentType | null>(null);
   const [Fitment, setFitment] = useState<ComponentType | null>(null);
+  const [MediaDrive, setMediaDrive] = useState<ComponentType | null>(null);
   const [Shipping, setShipping] = useState<ComponentType | null>(null);
   const [Pipeline, setPipeline] = useState<ComponentType | null>(null);
   const [Orders, setOrders] = useState<ComponentType | null>(null);
@@ -133,6 +137,17 @@ export default function WorkspaceViews({ pathname }: { pathname: string }) {
   }, [Fitment, mounted.fitment]);
 
   useEffect(() => {
+    if (!mounted.mediaDrive || MediaDrive) return;
+    let cancelled = false;
+    void import("../(app)/media-drive/MediaDriveWorkspace").then((mod) => {
+      if (!cancelled) setMediaDrive(() => mod.default);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [MediaDrive, mounted.mediaDrive]);
+
+  useEffect(() => {
     if (!mounted.shipping || Shipping) return;
     let cancelled = false;
     void import("../(app)/shipping/ShippingWorkspace").then((mod) => {
@@ -199,39 +214,25 @@ export default function WorkspaceViews({ pathname }: { pathname: string }) {
   }, [Settings, mounted.settings]);
 
   useEffect(() => {
-    const ready =
-      (active === "dashboard" && Dashboard) ||
-      (active === "catalog" && Catalog) ||
-      (active === "quickSku" && QuickSku) ||
-      (active === "inventory" && Inventory) ||
-      (active === "pricing" && Pricing) ||
-      (active === "fitment" && Fitment) ||
-      (active === "shipping" && Shipping) ||
-      (active === "pipeline" && Pipeline) ||
-      (active === "orders" && Orders) ||
-      (active === "channels" && Channels) ||
-      (active === "reports" && Reports) ||
-      (active === "settings" && Settings);
-    if (ready) setShown(active);
-  }, [Dashboard, Catalog, QuickSku, Inventory, Pricing, Fitment, Shipping, Pipeline, Orders, Channels, Reports, Settings, active]);
+    if (!mounted[active]) return;
+    setShown(active);
+  }, [active, mounted]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void import("../(app)/dashboard/DashboardWorkspace");
-      void import("../(app)/catalog/CatalogWorkspace");
-      void import("../(app)/quick-sku/QuickSkuWorkspace");
-      void import("../(app)/inventory/InventoryWorkspace");
-      void import("../(app)/pricing/PricingWorkspace");
-      void import("../(app)/fitment/FitmentWorkspace");
-      void import("../(app)/shipping/ShippingWorkspace");
-      void import("../(app)/pipeline/PipelineWorkspace");
-      void import("../(app)/orders/OrdersWorkspace");
-      void import("../(app)/channels/ChannelsWorkspace");
-      void import("../(app)/reports/ReportsWorkspace");
-      void import("../(app)/settings/SettingsWorkspace");
-    }, 400);
-    return () => window.clearTimeout(timer);
-  }, []);
+    if (active === "dashboard") void import("../(app)/dashboard/DashboardWorkspace");
+    if (active === "catalog") void import("../(app)/catalog/CatalogWorkspace");
+    if (active === "quickSku") void import("../(app)/quick-sku/QuickSkuWorkspace");
+    if (active === "inventory") void import("../(app)/inventory/InventoryWorkspace");
+    if (active === "pricing") void import("../(app)/pricing/PricingWorkspace");
+    if (active === "fitment") void import("../(app)/fitment/FitmentWorkspace");
+    if (active === "mediaDrive") void import("../(app)/media-drive/MediaDriveWorkspace");
+    if (active === "shipping") void import("../(app)/shipping/ShippingWorkspace");
+    if (active === "pipeline") void import("../(app)/pipeline/PipelineWorkspace");
+    if (active === "orders") void import("../(app)/orders/OrdersWorkspace");
+    if (active === "channels") void import("../(app)/channels/ChannelsWorkspace");
+    if (active === "reports") void import("../(app)/reports/ReportsWorkspace");
+    if (active === "settings") void import("../(app)/settings/SettingsWorkspace");
+  }, [active]);
 
   return (
     <>
@@ -263,6 +264,11 @@ export default function WorkspaceViews({ pathname }: { pathname: string }) {
       {mounted.fitment && Fitment ? (
         <div hidden={shown !== "fitment"}>
           <Fitment />
+        </div>
+      ) : null}
+      {mounted.mediaDrive && MediaDrive ? (
+        <div hidden={shown !== "mediaDrive"}>
+          <MediaDrive />
         </div>
       ) : null}
       {mounted.shipping && Shipping ? (

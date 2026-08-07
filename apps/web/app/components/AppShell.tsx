@@ -12,6 +12,7 @@ export type NavKey =
   | "inventory"
   | "orders"
   | "channels"
+  | "mediaDrive"
   | "listings"
   | "pricing"
   | "fitment"
@@ -28,6 +29,7 @@ const navItems: Array<{ key: NavKey; href: string; label: string; icon: string }
   { key: "pipeline", href: "/pipeline", label: "Pipeline", icon: "M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" },
   { key: "catalog", href: "/catalog", label: "Catalog", icon: "M4 6h16M4 10h16M4 14h16M4 18h16" },
   { key: "fitment", href: "/fitment", label: "Fitx", icon: "M13 10V3L4 14h7v7l9-11h-7z" },
+  { key: "mediaDrive", href: "/media-drive", label: "Media Drive", icon: "M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" },
   { key: "inventory", href: "/inventory", label: "Inventory", icon: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" },
   { key: "pricing", href: "/pricing", label: "Pricing", icon: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
   { key: "orders", href: "/orders", label: "Orders", icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" },
