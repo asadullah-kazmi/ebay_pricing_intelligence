@@ -163,26 +163,15 @@ export default function PipelineWorkspace() {
               accept=".csv,.xlsx,.xls"
               onChange={(event) => setFile(event.target.files?.[0] ?? null)}
             />
-            {file ? (
-              <div className={styles.fileSelectedBadge}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-                <span>{file.name} ({(file.size / 1024).toFixed(1)} KB)</span>
-              </div>
-            ) : (
-              <>
-                <div className={styles.dropzoneIcon}>
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" />
-                    <path d="M12 12v9" />
-                    <path d="m16 16-4-4-4 4" />
-                  </svg>
-                </div>
-                <strong>Drag & drop spreadsheet</strong>
-                <span>CSV or XLSX · PartPulse intake template v1</span>
-              </>
-            )}
+            <div className={styles.dropzoneIcon}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" />
+                <path d="M12 12v9" />
+                <path d="m16 16-4-4-4 4" />
+              </svg>
+            </div>
+            <strong>{file ? file.name : "Drag & drop spreadsheet"}</strong>
+            <span>CSV or XLSX · PartPulse intake template v1</span>
           </label>
           <div className={styles.formActions}>
             <button type="submit" className={styles.primary} disabled={!file || busy}>
@@ -224,11 +213,6 @@ export default function PipelineWorkspace() {
           <div>
             <span className={styles.eyebrow}>PIPELINE QUEUE</span>
             <h2>{queue.length} recent uploads</h2>
-          </div>
-          <div className={styles.queueStats}>
-            <span className={styles.statBadge}>{queue.filter((q) => q.status === "READY").length} Ready</span>
-            <span className={styles.statBadge}>{queue.filter((q) => q.status === "PROCESSING").length} Processing</span>
-            <span className={styles.statBadge}>{queue.filter((q) => q.status === "UPLOADED").length} Uploaded</span>
           </div>
         </div>
         <div className={styles.tableWrap}>
