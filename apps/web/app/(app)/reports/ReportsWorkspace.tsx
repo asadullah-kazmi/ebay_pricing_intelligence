@@ -319,6 +319,7 @@ export default function ReportsWorkspace() {
     <div className={styles.page}>
       <header className={styles.topbar}>
         <div>
+          <span className={styles.eyebrow}>Operations & Publishing Reports</span>
           <h1>Reports</h1>
           <p>Publishing oversight, delivery health, recovery controls, and an immutable activity trail.</p>
         </div>
