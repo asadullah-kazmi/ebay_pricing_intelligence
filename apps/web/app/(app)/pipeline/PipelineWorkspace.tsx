@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "../../components/AuthProvider";
 import { apiBase, refreshAccessSession } from "../../lib/auth-session";
+import { generateFullCatalogExcel, generateQuickUpdateExcel } from "./excel-templates";
 import styles from "./pipeline.module.css";
 
 type QueueItem = {
@@ -16,10 +17,21 @@ type QueueItem = {
 };
 
 const demoQueue: QueueItem[] = [
-  { id: "imp-7842", fileName: "catalog-intake-week-12.csv", status: "UPLOADED", condition: "USED", uploadedBy: "BA", createdAt: new Date().toISOString() },
+  { id: "imp-7842", fileName: "catalog-intake-week-12.xlsx", status: "UPLOADED", condition: "USED", uploadedBy: "BA", createdAt: new Date().toISOString() },
   { id: "imp-7841", fileName: "yard-photos-march.zip", status: "PROCESSING", condition: "USED", uploadedBy: "BA", createdAt: new Date(Date.now() - 3600000).toISOString() },
   { id: "imp-7840", fileName: "interchange-batch.xlsx", status: "READY", condition: "NEW", uploadedBy: "OP", createdAt: new Date(Date.now() - 86400000).toISOString() },
 ];
+
+function triggerBlobDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
 
 export default function PipelineWorkspace() {
   const { status } = useAuth();
@@ -27,9 +39,34 @@ export default function PipelineWorkspace() {
   const [condition, setCondition] = useState("USED");
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
+  const [downloading, setDownloading] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [queue, setQueue] = useState<QueueItem[]>(demoQueue);
+
+  async function handleDownloadQuickExcel() {
+    setDownloading("quick");
+    try {
+      const blob = await generateQuickUpdateExcel();
+      triggerBlobDownload(blob, "PartPulse_Quick_Update_Template.xlsx");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Failed to generate Excel template");
+    } finally {
+      setDownloading(null);
+    }
+  }
+
+  async function handleDownloadFullExcel() {
+    setDownloading("full");
+    try {
+      const blob = await generateFullCatalogExcel();
+      triggerBlobDownload(blob, "PartPulse_Full_Catalog_Template.xlsx");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Failed to generate Excel template");
+    } finally {
+      setDownloading(null);
+    }
+  }
 
   async function uploadSpreadsheet(event: FormEvent) {
     event.preventDefault();
@@ -82,25 +119,11 @@ export default function PipelineWorkspace() {
     <div className={styles.page}>
       <header className={styles.topbar}>
         <div>
+          <span className={styles.eyebrow}>CATALOG & INVENTORY INTAKE</span>
           <h1>Pipeline</h1>
           <p>Bulk-upload spreadsheets and photo archives into the catalog intake queue.</p>
         </div>
         <div className={styles.topActions}>
-          <a
-            className={styles.secondary}
-            href="/api/imports/template"
-            onClick={(event) => {
-              event.preventDefault();
-              window.open(`${apiBase}/api/imports/template`, "_blank");
-            }}
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-            Download template
-          </a>
           <Link className={styles.primary} href="/catalog">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="3" width="7" height="7" />
@@ -157,6 +180,74 @@ export default function PipelineWorkspace() {
         </article>
       </section>
 
+      {/* Official Intake Templates Section */}
+      <section className={styles.templatesPanel}>
+        <div className={styles.panelTitle}>
+          <div>
+            <span className={styles.eyebrow}>BRANDED EXCEL WORKSPACE TEMPLATES</span>
+            <h2>Official Pipeline Excel Workbooks (.xlsx)</h2>
+          </div>
+          <span className={styles.templateSub}>Each workbook contains a branded <b>Instructions &amp; Guide</b> tab and a pre-styled <b>Data Intake</b> worksheet.</span>
+        </div>
+        <div className={styles.templatesGrid}>
+          <div className={styles.templateCard}>
+            <div className={styles.templateCardHead}>
+              <span className={styles.badgeBasic}>BASIC TEMPLATE</span>
+              <h3>Quick Price &amp; Quantity Update</h3>
+            </div>
+            <p>Includes an integrated <b>Instructions &amp; Guide</b> sheet and a <b>Quick Update Intake</b> sheet styled with PartPulse dark navy headers.</p>
+            <div className={styles.columnsPreview}>
+              <span>Part no</span>
+              <span>Selling Price</span>
+              <span>Quantity</span>
+            </div>
+            <button
+              type="button"
+              className={styles.templateDownloadBtn}
+              disabled={downloading === "quick"}
+              onClick={() => void handleDownloadQuickExcel()}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              {downloading === "quick" ? "Generating Excel Workbook..." : "Download Quick Update Workbook (.xlsx)"}
+            </button>
+          </div>
+
+          <div className={styles.templateCard}>
+            <div className={styles.templateCardHead}>
+              <span className={styles.badgeStandard}>STANDARD TEMPLATE</span>
+              <h3>Full Catalog Listing Intake</h3>
+            </div>
+            <p>Comprehensive workbook with a step-by-step <b>Guide</b> sheet and a pre-formatted <b>Full Catalog Intake</b> sheet with branded headers &amp; sample items.</p>
+            <div className={styles.columnsPreview}>
+              <span>Part Number</span>
+              <span>Selling Price</span>
+              <span>Quantity</span>
+              <span>Brand</span>
+              <span>Description</span>
+              <span>PicsURL</span>
+              <span>SKU</span>
+            </div>
+            <button
+              type="button"
+              className={styles.templateDownloadBtnPrimary}
+              disabled={downloading === "full"}
+              onClick={() => void handleDownloadFullExcel()}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              {downloading === "full" ? "Generating Excel Workbook..." : "Download Full Catalog Workbook (.xlsx)"}
+            </button>
+          </div>
+        </div>
+      </section>
+
       <section className={styles.uploadGrid}>
         <form className={styles.uploadCard} onSubmit={uploadSpreadsheet}>
           <div className={styles.cardHead}>
@@ -194,7 +285,7 @@ export default function PipelineWorkspace() {
               </svg>
             </div>
             <strong>{file ? file.name : "Drag & drop spreadsheet"}</strong>
-            <span>CSV or XLSX · PartPulse intake template v1</span>
+            <span>Supports Basic &amp; Standard PartPulse Excel Workbooks (.xlsx)</span>
           </label>
           <div className={styles.formActions}>
             <button type="submit" className={styles.primary} disabled={!file || busy}>
@@ -209,11 +300,11 @@ export default function PipelineWorkspace() {
           <ul className={styles.rulesList}>
             <li>
               <span className={styles.ruleCheck}>✓</span>
-              <span>Use the current PartPulse catalog intake spreadsheet template.</span>
+              <span>Switch to Tab 2 (Intake Sheet) in the downloaded Excel workbook to paste parts.</span>
             </li>
             <li>
               <span className={styles.ruleCheck}>✓</span>
-              <span>Keep one SKU per row and map photo folders to those SKUs.</span>
+              <span>Keep Row 1 headers intact in the intake sheet.</span>
             </li>
             <li>
               <span className={styles.ruleCheck}>✓</span>

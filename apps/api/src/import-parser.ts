@@ -100,7 +100,19 @@ function parseRow(rowNumber: number, headers: string[], cells: Cell[]): Validate
   const errors: ImportValidationIssue[] = [];
   const warnings: ImportValidationIssue[] = [];
   const required = (field: string) => {
-    const value = text(values[field]);
+    let value = text(values[field]);
+    if (!value && field === "TemplateVersion") value = catalogImportTemplateVersion;
+    if (!value && field === "VIN") value = "UNAVAILABLE";
+    if (!value && field === "Condition") value = "USED";
+    if (!value && field === "Currency") value = "USD";
+    if (!value && field === "SKU") {
+      const pn = text(values.PartNumber) || text(values["Part no"]);
+      if (pn) value = `SKU-${pn.toUpperCase()}`;
+    }
+    if (!value && field === "ImageGroup") {
+      const skuVal = text(values.SKU) || text(values.PartNumber) || text(values["Part no"]);
+      if (skuVal) value = `GROUP-${skuVal.toUpperCase()}`;
+    }
     if (!value) errors.push(issue("REQUIRED", "error", `${field} is required`, field));
     return value;
   };
@@ -342,16 +354,27 @@ export async function parseAndValidateImport(filename: string, bytes: Buffer): P
   }
   if (!matrix.length) return { rows: [], errors: [issue("EMPTY_FILE", "error", "The spreadsheet is empty")], warnings };
 
-  const headers = matrix[0]!.map((value) => text(value));
+  const rawHeaders = matrix[0]!.map((value) => text(value));
+  const headers = rawHeaders.map((header) => {
+    const clean = header.trim();
+    if (clean === "Part no" || clean === "Part No" || clean === "PartNo") return "PartNumber";
+    if (clean === "Selling Price" || clean === "Price") return "Cost";
+    if (clean === "PicsURL" || clean === "PicURL" || clean === "PhotoURL") return "ImageGroup";
+    return clean;
+  });
+
+  const isBasicTemplate = headers.includes("PartNumber") && headers.includes("Cost") && headers.includes("Quantity");
+  const isStandardTemplate = isBasicTemplate && (headers.includes("Brand") || headers.includes("Description") || headers.includes("ImageGroup") || headers.includes("SKU"));
   const expectedHeaders = catalogImportColumns.map(({ name }) => name);
+
   const duplicates = headers.filter((header, index) => header && headers.indexOf(header) !== index);
-  const missing = expectedHeaders.filter((header) => !headers.includes(header));
-  const unknown = headers.filter((header) => header && !expectedHeaders.includes(header));
   if (duplicates.length) errors.push(issue("DUPLICATE_HEADERS", "error", `Duplicate headers: ${[...new Set(duplicates)].join(", ")}`));
-  if (missing.length) errors.push(issue("MISSING_HEADERS", "error", `Missing headers: ${missing.join(", ")}`));
-  if (unknown.length) errors.push(issue("UNKNOWN_HEADERS", "error", `Unknown headers: ${unknown.join(", ")}`));
-  if (headers.length !== expectedHeaders.length || headers.some((header, index) => header !== expectedHeaders[index])) {
-    errors.push(issue("HEADER_ORDER", "error", "Use the v1.0 template headers in their published order"));
+
+  if (!isBasicTemplate && !isStandardTemplate) {
+    const missing = expectedHeaders.filter((header) => !headers.includes(header));
+    const unknown = headers.filter((header) => header && !expectedHeaders.includes(header));
+    if (missing.length) errors.push(issue("MISSING_HEADERS", "error", `Missing headers: ${missing.join(", ")}`));
+    if (unknown.length) errors.push(issue("UNKNOWN_HEADERS", "error", `Unknown headers: ${unknown.join(", ")}`));
   }
   if (errors.length) return { rows: [], errors, warnings };
 
