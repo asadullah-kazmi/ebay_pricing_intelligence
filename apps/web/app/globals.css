@@ -240,11 +240,12 @@ h2 em {
 }
 
 form {
-  background: var(--pf-sidebar);
-  color: #fff;
-  padding: 28px;
-  border-radius: 16px;
-  box-shadow: 0 24px 60px #0b142633;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  border: 0;
+  box-shadow: none;
 }
 
 form label {

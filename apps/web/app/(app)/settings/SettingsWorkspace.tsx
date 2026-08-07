@@ -176,8 +176,9 @@ export default function SettingsWorkspace() {
     <div className={styles.page}>
       <header className={styles.topbar}>
         <div>
+          <span className={styles.eyebrow}>Account & Security</span>
           <h1>Settings</h1>
-          <p>Manage account security, workspace preferences, and organization access.</p>
+          <p>Manage account security, MFA protection, workspace preferences, and team access.</p>
         </div>
         <div className={styles.topActions}>
           <button type="button" className={styles.ghostBtn} disabled={busy === "logout"} onClick={() => void signOut()}>
@@ -199,7 +200,7 @@ export default function SettingsWorkspace() {
             .map((part) => part[0]?.toUpperCase() ?? "")
             .join("") || "PP"}
         </div>
-        <div>
+        <div className={styles.profileInfo}>
           <b>{session?.user.name || "Operator"}</b>
           <span>{security?.email || session?.user.email}</span>
           <small>
@@ -210,10 +211,10 @@ export default function SettingsWorkspace() {
         </div>
         <div className={styles.profileMeta}>
           <span className={`${styles.pill} ${security?.mfaEnabled ? styles.pillGood : styles.pillWait}`}>
-            {security?.mfaEnabled ? "MFA on" : "MFA off"}
+            {security?.mfaEnabled ? "🛡️ MFA active" : "⚠️ MFA disabled"}
           </span>
           <span className={`${styles.pill} ${security?.emailVerified ? styles.pillGood : styles.pillWait}`}>
-            {security?.emailVerified ? "Email verified" : "Email unverified"}
+            {security?.emailVerified ? "✓ Email verified" : "✉️ Email unverified"}
           </span>
         </div>
       </div>
