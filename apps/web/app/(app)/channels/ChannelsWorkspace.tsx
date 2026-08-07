@@ -326,14 +326,14 @@ export default function ChannelsWorkspace() {
         </article>
         <article>
           <span>Default Primary Account</span>
-          <b style={{ fontSize: "20px", color: "#2563eb", marginTop: "12px" }}>
+          <b className={defaultAccount ? styles.primaryAccountName : styles.emptyAccountName}>
             {defaultAccount ? defaultAccount.username : "None Selected"}
           </b>
           <small>{defaultAccount ? marketplaceLabel(defaultAccount.registrationMarketplace) : "Select a default account"}</small>
         </article>
         <article>
           <span>API Connection Mode</span>
-          <b style={{ fontSize: "20px", color: "#0c274d", marginTop: "12px" }}>
+          <b className={styles.modeName}>
             REST &amp; Fulfillment API
           </b>
           <small>OAuth 2.0 PKCE Authorization</small>
@@ -342,10 +342,20 @@ export default function ChannelsWorkspace() {
 
       {accounts.length === 0 ? (
         <div className={styles.emptyStateCard}>
-          <div className={styles.ebayLogoLarge}>eBay</div>
+          <div className={styles.ebayLogoBadgeLarge}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+            </svg>
+            <span>eBay</span>
+          </div>
           <h2>No eBay Seller Accounts Connected</h2>
           <p>Connect your first eBay seller account to start syncing catalog items, fitment compatibility, pricing, and orders.</p>
-          <button type="button" className={styles.primary} onClick={() => void connectEbay()}>
+          <button type="button" className={styles.primary} disabled={!!busy} onClick={() => void connectEbay()}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
             Connect eBay Account
           </button>
         </div>

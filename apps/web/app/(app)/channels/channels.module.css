@@ -1,6 +1,8 @@
 .page {
-  padding: 28px 32px 40px;
-  font-family: "Plus Jakarta Sans", "DM Sans", sans-serif;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 32px 36px 48px;
+  font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   color: #0f172a;
 }
 
@@ -24,16 +26,19 @@
 
 .topbar h1 {
   margin: 0;
-  font: 800 34px/1.1 "Plus Jakarta Sans", sans-serif;
-  letter-spacing: -1.2px;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 800;
+  font-size: 28px;
+  line-height: 1.15;
+  letter-spacing: -0.6px;
   color: #0c274d;
 }
 
 .topbar p {
-  margin: 8px 0 0;
+  margin: 6px 0 0;
   color: #64748b;
-  font-size: 14px;
-  max-width: 560px;
+  font-size: 13.5px;
+  max-width: 600px;
   line-height: 1.5;
 }
 
@@ -54,7 +59,10 @@
   min-height: 42px;
   padding: 0 18px;
   border-radius: 10px;
-  font: 700 13px/1 "Plus Jakarta Sans", sans-serif;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 1;
   cursor: pointer;
   white-space: nowrap;
   transition: all 160ms ease;
@@ -119,7 +127,7 @@
 .notice,
 .error {
   margin-bottom: 20px;
-  padding: 12px 16px;
+  padding: 14px 18px;
   border-radius: 12px;
   font-size: 13.5px;
   font-weight: 600;
@@ -142,14 +150,14 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
-  margin-bottom: 28px;
+  margin-bottom: 24px;
 }
 
 .accountStats article {
   background: #ffffff;
   border: 1px solid #e2e8f0;
-  border-radius: 16px;
-  padding: 20px 22px;
+  border-radius: 18px;
+  padding: 20px 24px;
   box-shadow: 0 12px 32px rgba(15, 23, 42, 0.05);
 }
 
@@ -163,37 +171,67 @@
 
 .accountStats b {
   display: block;
-  margin: 8px 0 4px;
-  font: 800 32px/1 "Plus Jakarta Sans", sans-serif;
+  margin: 10px 0 4px;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 800;
+  font-size: 30px;
+  line-height: 1;
   color: #0c274d;
-  letter-spacing: -0.8px;
+  letter-spacing: -0.6px;
+}
+
+.primaryAccountName {
+  color: #2563eb !important;
+  font-size: 20px !important;
+  font-weight: 750 !important;
+}
+
+.emptyAccountName {
+  color: #94a3b8 !important;
+  font-size: 20px !important;
+  font-weight: 600 !important;
+}
+
+.modeName {
+  color: #0c274d !important;
+  font-size: 19px !important;
+  font-weight: 750 !important;
 }
 
 .emptyStateCard {
   background: #ffffff;
-  border: 1px dashed #cbd5e1;
+  border: 1px solid #e2e8f0;
   border-radius: 20px;
-  padding: 48px 32px;
+  padding: 56px 36px;
   text-align: center;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.04);
+  gap: 16px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.05);
 }
 
-.ebayLogoLarge {
-  font: 900 28px/1 "Plus Jakarta Sans", sans-serif;
-  color: #2563eb;
-  padding: 12px 24px;
-  background: #eff6ff;
+.ebayLogoBadgeLarge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
   border-radius: 14px;
+  background: #eff6ff;
   border: 1px solid #dbeafe;
+  color: #2563eb;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 800;
+  font-size: 20px;
 }
 
 .emptyStateCard h2 {
-  margin: 0;
-  font: 750 22px/1.2 "Plus Jakarta Sans", sans-serif;
+  margin: 4px 0 0;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 750;
+  font-size: 22px;
+  line-height: 1.3;
+  letter-spacing: -0.3px;
   color: #0c274d;
 }
 
@@ -201,8 +239,9 @@
   margin: 0;
   color: #64748b;
   font-size: 14px;
-  max-width: 480px;
+  max-width: 500px;
   line-height: 1.5;
+  font-weight: 500;
 }
 
 .accountsList {
@@ -249,7 +288,9 @@
   border: 1px solid #dbeafe;
   display: grid;
   place-items: center;
-  font: 900 18px/1 "Plus Jakarta Sans", sans-serif;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 900;
+  font-size: 18px;
   color: #2563eb;
   flex-shrink: 0;
 }
@@ -262,7 +303,10 @@
 
 .usernameRow h2 {
   margin: 0;
-  font: 800 20px/1.2 "Plus Jakarta Sans", sans-serif;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 800;
+  font-size: 20px;
+  line-height: 1.2;
   color: #0c274d;
   letter-spacing: -0.4px;
 }
@@ -290,7 +334,10 @@
   background: #eff6ff;
   border: 1px solid #bfdbfe;
   color: #1d4ed8;
-  font: 700 11.5px/1 "Plus Jakarta Sans", sans-serif;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 700;
+  font-size: 11.5px;
+  line-height: 1;
 }
 
 .setDefaultBtn {
@@ -299,7 +346,10 @@
   color: #475569;
   border-radius: 999px;
   padding: 4px 12px;
-  font: 600 11.5px/1 "Plus Jakarta Sans", sans-serif;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 600;
+  font-size: 11.5px;
+  line-height: 1;
   cursor: pointer;
   transition: all 140ms ease;
 }
@@ -322,7 +372,10 @@
   gap: 6px;
   padding: 5px 12px;
   border-radius: 999px;
-  font: 700 11px/1 "Plus Jakarta Sans", sans-serif;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 700;
+  font-size: 11px;
+  line-height: 1;
   letter-spacing: 0.4px;
   text-transform: uppercase;
 }
@@ -439,7 +492,10 @@
   border-radius: 10px;
   background: #ffffff;
   color: #0f172a;
-  font: 600 13px/1 "Plus Jakarta Sans", sans-serif;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1;
   outline: none;
 }
 
@@ -451,7 +507,10 @@
   border-radius: 10px;
   background: #2563eb;
   color: #ffffff;
-  font: 700 13px/1 "Plus Jakarta Sans", sans-serif;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 1;
   text-decoration: none;
   box-shadow: 0 4px 12px rgba(37, 99, 235, 0.18);
 }
@@ -478,7 +537,10 @@
 }
 
 .syncSummary strong {
-  font: 800 24px/1 "Plus Jakarta Sans", sans-serif;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 800;
+  font-size: 24px;
+  line-height: 1;
   color: #0c274d;
 }
 
@@ -506,7 +568,10 @@
 
 .resourcePanel h3 {
   margin: 0;
-  font: 700 14px/1.2 "Plus Jakarta Sans", sans-serif;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.2;
   color: #0c274d;
 }
 
@@ -518,7 +583,10 @@
   border-radius: 999px;
   background: #eff6ff;
   color: #1d4ed8;
-  font: 700 11px/1 "Plus Jakarta Sans", sans-serif;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 700;
+  font-size: 11px;
+  line-height: 1;
 }
 
 .resourcePanel ul {
@@ -564,7 +632,7 @@
     grid-template-columns: 1fr;
   }
   .page {
-    padding: 16px 14px 28px;
+    padding: 20px 16px 36px;
   }
   .topbar {
     flex-direction: column;
