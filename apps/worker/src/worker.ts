@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   disconnectDatabase,
   consumeNotificationEvent,
+  getActiveBulkPricingJobCount,
   getActiveFitmentJobCount,
   getActivePricingJobCount,
   getActiveInventoryPreparationJobCount,
@@ -14,6 +15,7 @@ import {
   publishOutboxEvents,
   recordWorkerHeartbeat,
   renewWorkerJobLeases,
+  resumeInterruptedBulkPricingJobs,
   resumeInterruptedFitmentJobs,
   resumeInterruptedPricingJobs,
   resumeInterruptedInventoryPreparationJobs,
@@ -57,6 +59,7 @@ const metrics = {
   polls: 0,
   pollFailures: 0,
   pricingJobsDispatched: 0,
+  bulkPricingJobsDispatched: 0,
   fitmentJobsDispatched: 0,
   inventoryPreparationJobsDispatched: 0,
   ebayInventorySyncJobsDispatched: 0,
@@ -68,7 +71,7 @@ const metrics = {
 };
 
 function activeJobs(): number {
-  return getActivePricingJobCount() + getActiveFitmentJobCount() + getActiveInventoryPreparationJobCount() + getActiveEbayInventorySyncJobCount() + getActiveOfferJobCount() + getActiveListingOperationJobCount() + getActiveRetentionRunCount();
+  return getActivePricingJobCount() + getActiveBulkPricingJobCount() + getActiveFitmentJobCount() + getActiveInventoryPreparationJobCount() + getActiveEbayInventorySyncJobCount() + getActiveOfferJobCount() + getActiveListingOperationJobCount() + getActiveRetentionRunCount();
 }
 
 async function heartbeat(): Promise<void> {
@@ -88,8 +91,9 @@ async function poll(): Promise<void> {
   pollInProgress = true;
   metrics.polls += 1;
   try {
-    const [pricingJobs, fitmentJobs, inventoryPreparationJobs, ebayInventorySyncJobs, ebayOfferJobs, ebayListingOperationJobs, retentionRuns, outbox] = await Promise.all([
+    const [pricingJobs, bulkPricingJobs, fitmentJobs, inventoryPreparationJobs, ebayInventorySyncJobs, ebayOfferJobs, ebayListingOperationJobs, retentionRuns, outbox] = await Promise.all([
       resumeInterruptedPricingJobs(jobOptions),
+      resumeInterruptedBulkPricingJobs(jobOptions),
       resumeInterruptedFitmentJobs(jobOptions),
       resumeInterruptedInventoryPreparationJobs(jobOptions),
       resumeInterruptedEbayInventorySyncJobs(jobOptions),
@@ -117,6 +121,7 @@ async function poll(): Promise<void> {
       }),
     ]);
     metrics.pricingJobsDispatched += pricingJobs;
+    metrics.bulkPricingJobsDispatched += bulkPricingJobs;
     metrics.fitmentJobsDispatched += fitmentJobs;
     metrics.inventoryPreparationJobsDispatched += inventoryPreparationJobs;
     metrics.ebayInventorySyncJobsDispatched += ebayInventorySyncJobs;
@@ -125,8 +130,8 @@ async function poll(): Promise<void> {
     metrics.retentionRunsDispatched += retentionRuns;
     metrics.outboxPublished += outbox.published;
     metrics.outboxFailed += outbox.failed;
-    if (pricingJobs || fitmentJobs || inventoryPreparationJobs || ebayInventorySyncJobs || ebayOfferJobs || ebayListingOperationJobs || retentionRuns) {
-      console.info(JSON.stringify({ type: "jobs_dispatched", pricingJobs, fitmentJobs, inventoryPreparationJobs, ebayInventorySyncJobs, ebayOfferJobs, ebayListingOperationJobs, retentionRuns, activeJobs: activeJobs() }));
+    if (pricingJobs || bulkPricingJobs || fitmentJobs || inventoryPreparationJobs || ebayInventorySyncJobs || ebayOfferJobs || ebayListingOperationJobs || retentionRuns) {
+      console.info(JSON.stringify({ type: "jobs_dispatched", pricingJobs, bulkPricingJobs, fitmentJobs, inventoryPreparationJobs, ebayInventorySyncJobs, ebayOfferJobs, ebayListingOperationJobs, retentionRuns, activeJobs: activeJobs() }));
     }
   } catch (error) {
     metrics.pollFailures += 1;
@@ -141,8 +146,9 @@ async function poll(): Promise<void> {
 
 async function start(): Promise<void> {
   await heartbeat();
-  const [pricingJobs, fitmentJobs, inventoryPreparationJobs, ebayInventorySyncJobs, ebayOfferJobs, ebayListingOperationJobs, retentionRuns] = await Promise.all([
+  const [pricingJobs, bulkPricingJobs, fitmentJobs, inventoryPreparationJobs, ebayInventorySyncJobs, ebayOfferJobs, ebayListingOperationJobs, retentionRuns] = await Promise.all([
     resumeInterruptedPricingJobs(jobOptions),
+    resumeInterruptedBulkPricingJobs(jobOptions),
     resumeInterruptedFitmentJobs(jobOptions),
     resumeInterruptedInventoryPreparationJobs(jobOptions),
     resumeInterruptedEbayInventorySyncJobs(jobOptions),
@@ -156,7 +162,7 @@ async function start(): Promise<void> {
     heartbeatIntervalMs,
     leaseDurationMs,
     maxAttempts,
-    recovered: { pricingJobs, fitmentJobs, inventoryPreparationJobs, ebayInventorySyncJobs, ebayOfferJobs, ebayListingOperationJobs, retentionRuns },
+    recovered: { pricingJobs, bulkPricingJobs, fitmentJobs, inventoryPreparationJobs, ebayInventorySyncJobs, ebayOfferJobs, ebayListingOperationJobs, retentionRuns },
   }));
   pollTimer = setInterval(() => void poll(), pollIntervalMs);
   heartbeatTimer = setInterval(() => void heartbeat().catch((error) => {

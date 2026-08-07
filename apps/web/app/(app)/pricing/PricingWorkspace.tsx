@@ -74,6 +74,7 @@ type BulkPricingJob = {
   marketplace: string;
   defaultCondition: string;
   targetMarginPercent: number | null;
+  bufferPercent: number | null;
   status: string;
   totalItems: number;
   completedItems: number;
@@ -187,9 +188,120 @@ function feeBreakdown(sellingPrice: number | null, cost: number, currency: strin
   };
 }
 
-function visibleSellingFormula(item: BulkPricingItem, targetMarginPercent: number) {
+function formulaSellingPrice(cost: number, totalMarginPercent: number) {
+  const safeCost = Math.round(Math.max(0, cost) * 100) / 100;
+  const safeMargin = Math.max(0, Math.min(95, totalMarginPercent));
+  const multiplier = 1 + safeMargin / 100;
+  const firstTierFeeRate = 0.1135 + 0.043;
+  const breakEvenFirstTier = (safeCost + 0.4) / (1 - firstTierFeeRate);
+  if (breakEvenFirstTier <= 1000) {
+    return Math.ceil((breakEvenFirstTier * multiplier - Number.EPSILON) * 100) / 100;
+  }
+  const secondTierFeeRate = 0.0235 + 0.043;
+  const tierAdjustment = 1000 * 0.1135 - 1000 * 0.0235;
+  const breakEvenSecondTier = (safeCost + tierAdjustment + 0.4) / (1 - secondTierFeeRate);
+  return Math.ceil((breakEvenSecondTier * multiplier - Number.EPSILON) * 100) / 100;
+}
+
+function BulkFormulaCalculator({
+  targetMarginPercent,
+  bufferPercent,
+  onMarginChange,
+  onBufferChange,
+}: {
+  targetMarginPercent: string;
+  bufferPercent: string;
+  onMarginChange: (value: string) => void;
+  onBufferChange: (value: string) => void;
+}) {
+  const [sampleCost, setSampleCost] = useState("45");
+  const margin = Math.max(0, Math.min(95, Number(targetMarginPercent) || 0));
+  const buffer = Math.max(0, Math.min(95, Number(bufferPercent) || 0));
+  const totalMargin = Math.min(95, margin + buffer);
+  const cost = Number(sampleCost) || 0;
+  const price = formulaSellingPrice(cost, totalMargin);
+  const breakdown = feeBreakdown(price, cost, "USD", totalMargin);
+
+  return (
+    <div className={styles.simpleCalculator}>
+      <div className={styles.calculatorEditHeader}>
+        <div className={styles.calculatorPriceInputGroup}>
+          <label>
+            <span>Profit margin %</span>
+            <input
+              type="number"
+              min="0"
+              max="95"
+              step="0.1"
+              value={targetMarginPercent}
+              onChange={(event) => onMarginChange(event.currentTarget.value)}
+              placeholder="20"
+              required
+            />
+          </label>
+          <label>
+            <span>Buffer % (extra margin)</span>
+            <input
+              type="number"
+              min="0"
+              max="95"
+              step="0.1"
+              value={bufferPercent}
+              onChange={(event) => onBufferChange(event.currentTarget.value)}
+              placeholder="0"
+            />
+          </label>
+          <label>
+            <span>Sample cost (preview)</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={sampleCost}
+              onChange={(event) => setSampleCost(event.currentTarget.value)}
+              placeholder="45.00"
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className={styles.costBreakdownSimple}>
+        <div className={styles.breakdownRow}>
+          <span>Part cost</span>
+          <b>{money(cost, "USD")}</b>
+        </div>
+        <div className={styles.breakdownRow}>
+          <span>Target profit ({totalMargin.toFixed(1).replace(/\.0$/, "")}% of selling price = margin + buffer)</span>
+          <b>{money(breakdown.targetProfit, "USD")}</b>
+        </div>
+        <div className={styles.breakdownRow}>
+          <span>eBay FVF fee</span>
+          <b>{money(breakdown.ebayFeeTotal, "USD")}</b>
+        </div>
+        <div className={styles.breakdownRow}>
+          <span>Export & payment fees (1.3% exp + 2% pay + 1% buf + {money(0.4, "USD")})</span>
+          <b>{money(breakdown.exportPayoneerBufferFee, "USD")}</b>
+        </div>
+        <div className={`${styles.breakdownRow} ${styles.profitRow}`}>
+          <span>Formula selling price</span>
+          <b>{money(price, "USD")}</b>
+        </div>
+        <div className={styles.breakdownRow}>
+          <span>Net profit</span>
+          <b>{money(breakdown.grossProfitBeforeShipping, "USD")} ({price > 0 ? `${((breakdown.grossProfitBeforeShipping / price) * 100).toFixed(1)}% margin` : "—"})</b>
+        </div>
+        <div className={styles.breakdownRow}>
+          <span>Formula</span>
+          <b>Selling = Break-even × (1 + (margin + buffer)% )</b>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function visibleSellingFormula(item: BulkPricingItem, targetMarginPercent: number, bufferPercent: number) {
   if (item.sellingPrice === null) return null;
-  const breakdown = feeBreakdown(item.sellingPrice, item.costPrice, item.currency, targetMarginPercent);
+  const breakdown = feeBreakdown(item.sellingPrice, item.costPrice, item.currency, Math.min(95, targetMarginPercent + bufferPercent));
   return [
     money(item.costPrice, item.currency),
     money(breakdown.targetProfit, item.currency),
@@ -217,14 +329,18 @@ function csvCell(value: string | number | boolean | null | undefined) {
 function BulkSellingCalculator({
   item,
   targetMarginPercent,
+  bufferPercent,
   onSavePrice,
 }: {
   item: BulkPricingItem;
   targetMarginPercent: number | null;
+  bufferPercent: number | null;
   onSavePrice: (itemId: string, newPrice: number | string | null) => Promise<void>;
 }) {
   const targetMargin = targetMarginPercent ?? 20;
-  const breakdown = feeBreakdown(item.sellingPrice, item.costPrice, item.currency, targetMargin);
+  const buffer = bufferPercent ?? 0;
+  const totalMargin = Math.min(95, targetMargin + buffer);
+  const breakdown = feeBreakdown(item.sellingPrice, item.costPrice, item.currency, totalMargin);
   const [customPrice, setCustomPrice] = useState(item.sellingPrice !== null ? String(item.sellingPrice) : "");
   const [saving, setSaving] = useState(false);
 
@@ -297,7 +413,7 @@ function BulkSellingCalculator({
           <b>{money(item.costPrice, item.currency)}</b>
         </div>
         <div className={styles.breakdownRow}>
-          <span>Target profit ({targetMargin.toFixed(1).replace(/\.0$/, "")}% of selling price)</span>
+          <span>Target profit ({totalMargin.toFixed(1).replace(/\.0$/, "")}% of selling price)</span>
           <b>{money(breakdown.targetProfit, item.currency)}</b>
         </div>
         <div className={styles.breakdownRow}>
@@ -341,6 +457,7 @@ export default function PricingWorkspace() {
   const [condition, setCondition] = useState<"ANY" | "NEW" | "USED">("ANY");
   const [bulkCurrency, setBulkCurrency] = useState("USD");
   const [targetMarginPercent, setTargetMarginPercent] = useState("20");
+  const [bulkBufferPercent, setBulkBufferPercent] = useState("0");
   const [result, setResult] = useState<SearchResult | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -487,6 +604,7 @@ function getDemoHistoryJobs(): BulkPricingJob[] {
       marketplace: "EBAY_US",
       defaultCondition: "NEW",
       targetMarginPercent: 20,
+      bufferPercent: 0,
       status: "COMPLETED",
       totalItems: 249,
       completedItems: 214,
@@ -503,6 +621,7 @@ function getDemoHistoryJobs(): BulkPricingJob[] {
       marketplace: "EBAY_US",
       defaultCondition: "NEW",
       targetMarginPercent: 20,
+      bufferPercent: 0,
       status: "COMPLETED",
       totalItems: 112,
       completedItems: 88,
@@ -519,6 +638,7 @@ function getDemoHistoryJobs(): BulkPricingJob[] {
       marketplace: "EBAY_US",
       defaultCondition: "NEW",
       targetMarginPercent: 20,
+      bufferPercent: 0,
       status: "COMPLETED",
       totalItems: 16,
       completedItems: 3,
@@ -535,6 +655,7 @@ function getDemoHistoryJobs(): BulkPricingJob[] {
       marketplace: "EBAY_US",
       defaultCondition: "USED",
       targetMarginPercent: 20,
+      bufferPercent: 0,
       status: "COMPLETED",
       totalItems: 16,
       completedItems: 10,
@@ -551,6 +672,7 @@ function getDemoHistoryJobs(): BulkPricingJob[] {
       marketplace: "EBAY_US",
       defaultCondition: "USED",
       targetMarginPercent: 20,
+      bufferPercent: 0,
       status: "COMPLETED",
       totalItems: 16,
       completedItems: 9,
@@ -670,6 +792,7 @@ function getDemoHistoryJobs(): BulkPricingJob[] {
           marketplace,
           defaultCondition: condition,
           targetMarginPercent: Number(targetMarginPercent) || 20,
+          bufferPercent: Number(bulkBufferPercent) || 0,
           status: "RUNNING",
           totalItems: 249,
           completedItems: 0,
@@ -689,7 +812,7 @@ function getDemoHistoryJobs(): BulkPricingJob[] {
 
       const bytes = await bulkFile.arrayBuffer();
       const job = await apiFetch(
-        `/api/pricing/bulk?marketplace=${encodeURIComponent(marketplace)}&condition=${encodeURIComponent(condition)}&currency=${encodeURIComponent(bulkCurrency)}&targetMarginPercent=${encodeURIComponent(targetMarginPercent)}`,
+        `/api/pricing/bulk?marketplace=${encodeURIComponent(marketplace)}&condition=${encodeURIComponent(condition)}&currency=${encodeURIComponent(bulkCurrency)}&targetMarginPercent=${encodeURIComponent(targetMarginPercent)}&bufferPercent=${encodeURIComponent(bulkBufferPercent)}`,
         {
           method: "POST",
           headers: {
@@ -899,6 +1022,7 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
     marketplace: histJob?.marketplace ?? "EBAY_US",
     defaultCondition: histJob?.defaultCondition ?? "NEW",
     targetMarginPercent: histJob?.targetMarginPercent ?? 20,
+    bufferPercent: histJob?.bufferPercent ?? 0,
     status: histJob?.status ?? "COMPLETED",
     totalItems: totalCount,
     completedItems: completedCount,
@@ -1191,6 +1315,12 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
                   required={!bulkFile}
                 />
               </label>
+              <BulkFormulaCalculator
+                targetMarginPercent={targetMarginPercent}
+                bufferPercent={bulkBufferPercent}
+                onMarginChange={setTargetMarginPercent}
+                onBufferChange={setBulkBufferPercent}
+              />
               <div className={styles.searchRow}>
                 <label>
                   <span>Marketplace</span>
@@ -1218,19 +1348,6 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
                     onChange={(event) => setBulkCurrency(event.currentTarget.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3))}
                     placeholder="USD"
                     maxLength={3}
-                    required
-                  />
-                </label>
-                <label>
-                  <span>Profit margin %</span>
-                  <input
-                    type="number"
-                    min="0"
-                    max="95"
-                    step="0.1"
-                    value={targetMarginPercent}
-                    onChange={(event) => setTargetMarginPercent(event.currentTarget.value)}
-                    placeholder="20"
                     required
                   />
                 </label>
@@ -1598,7 +1715,7 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
                                   </svg>
                                 </button>
                               </div>
-                              <BulkSellingCalculator item={item} targetMarginPercent={bulkJob.targetMarginPercent} onSavePrice={saveItemSellingPrice} />
+                              <BulkSellingCalculator item={item} targetMarginPercent={bulkJob.targetMarginPercent} bufferPercent={bulkJob.bufferPercent} onSavePrice={saveItemSellingPrice} />
                             </div>
                           </td>
                         </tr>

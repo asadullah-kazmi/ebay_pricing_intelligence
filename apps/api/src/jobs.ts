@@ -2,6 +2,7 @@ import "./env.js";
 
 export { disconnectDatabase } from "./db.js";
 export { getActivePricingJobCount, resumeInterruptedPricingJobs, startQueuedPricingJobs } from "./pricing-service.js";
+export { getActiveBulkPricingJobCount, resumeInterruptedBulkPricingJobs, startQueuedBulkPricingJobs } from "./bulk-pricing-service.js";
 export { getActiveFitmentJobCount, resumeInterruptedFitmentJobs, startQueuedFitmentJobs } from "./fitment-service.js";
 export { getActiveInventoryPreparationJobCount, resumeInterruptedInventoryPreparationJobs, startQueuedInventoryPreparationJobs } from "./inventory-preparation-service.js";
 export { getActiveEbayInventorySyncJobCount, resumeInterruptedEbayInventorySyncJobs, startQueuedEbayInventorySyncJobs } from "./ebay-inventory-sync-service.js";

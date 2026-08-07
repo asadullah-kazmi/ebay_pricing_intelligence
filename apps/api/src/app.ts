@@ -32,7 +32,6 @@ import {
   listBulkPricingJobs,
   parseBulkPricingCsv,
   resumeBulkPricingJob,
-  startBulkPricingJob,
   updateBulkPricingItemSellingPrice,
 } from "./bulk-pricing-service.js";
 import { approveFitmentCandidate, createFitmentJob, FitmentJobError, getFitmentJob, listFitmentJobs, startFitmentJob } from "./fitment-service.js";
@@ -185,6 +184,7 @@ const bulkPricingUploadQuerySchema = z.object({
   condition: z.enum(["ANY", "NEW", "USED"]).default("ANY"),
   currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).default("USD"),
   targetMarginPercent: z.coerce.number().min(0).max(95).default(20),
+  bufferPercent: z.coerce.number().min(0).max(95).default(0),
 });
 const bulkPricingFilenameSchema = z.string().trim().min(1).max(255).regex(/\.csv$/i, "Only .csv files are supported for bulk pricing");
 const updateBulkItemPriceSchema = z.object({ sellingPrice: z.number().nonnegative().nullable() });
@@ -1127,10 +1127,10 @@ app.post("/api/pricing/bulk", searchRateLimit, requireTenantContext, pricingRole
       marketplace: query.marketplace,
       condition: query.condition,
       targetMarginPercent: query.targetMarginPercent,
+      bufferPercent: query.bufferPercent,
       rows,
       sourceFilename: filename,
     });
-    if (getConfig().jobs.executionMode !== "inline") startBulkPricingJob(job.id);
     res.status(202).json(job);
   } catch (error) { next(error); }
 });

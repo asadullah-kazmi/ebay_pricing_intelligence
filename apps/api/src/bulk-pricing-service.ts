@@ -45,6 +45,10 @@ type BulkCompetitor = {
 
 const activeJobs = new Set<string>();
 
+export function getActiveBulkPricingJobCount(): number {
+  return activeJobs.size;
+}
+
 function money(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
@@ -72,10 +76,12 @@ export function calculateBulkMarginPercent(costPrice: number, sellingPrice: numb
 export function calculateSimpleBulkSellingPrice(input: {
   costPrice: number;
   targetMarginPercent: number;
+  bufferPercent?: number;
 }) {
   const costPrice = money(Math.max(0, input.costPrice));
   const targetMarginPercent = Math.max(0, Math.min(95, input.targetMarginPercent));
-  const marginMultiplier = 1 + (targetMarginPercent / 100);
+  const totalMarginPercent = Math.max(0, Math.min(95, targetMarginPercent + (input.bufferPercent ?? 0)));
+  const marginMultiplier = 1 + (totalMarginPercent / 100);
   const firstTierFeeRate = EBAY_FVF_FIRST_TIER_RATE + EXTRA_EXPENSE_RATE;
   const breakEvenFirstTier = (costPrice + EXTRA_EXPENSE_FIXED) / (1 - firstTierFeeRate);
 
@@ -105,6 +111,7 @@ export function calculateSimpleBulkSellingPrice(input: {
     extraExpenses,
     actualProfit,
     actualProfitPercent,
+    totalMarginPercent,
   };
 }
 
@@ -267,6 +274,7 @@ function serializeItem<T extends {
 
 function serializeJob<T extends {
   targetMarginPercent?: Prisma.Decimal | null;
+  bufferPercent?: Prisma.Decimal | null;
   items?: Array<{
     costPrice: Prisma.Decimal;
     quantity: number;
@@ -284,6 +292,7 @@ function serializeJob<T extends {
   return {
     ...job,
     targetMarginPercent: job.targetMarginPercent === undefined ? undefined : numberOrNull(job.targetMarginPercent),
+    bufferPercent: job.bufferPercent === undefined ? undefined : numberOrNull(job.bufferPercent),
     items: job.items?.map(serializeItem),
   };
 }
@@ -346,6 +355,7 @@ async function processBulkItem(
   },
   marketplace: Marketplace,
   targetMarginPercent: number,
+  bufferPercent: number,
   options: JobRunOptions,
 ) {
   await prisma.bulkPricingJobItem.update({
@@ -361,7 +371,7 @@ async function processBulkItem(
     const analytics = calculateAnalytics(listings);
     const completedAt = new Date();
     const cost = Number(item.costPrice.toString());
-    const simplePrice = calculateSimpleBulkSellingPrice({ costPrice: cost, targetMarginPercent });
+    const simplePrice = calculateSimpleBulkSellingPrice({ costPrice: cost, targetMarginPercent, bufferPercent });
     if (!analytics) {
       await prisma.bulkPricingJobItem.update({
         where: { id: item.id },
@@ -450,10 +460,18 @@ async function runBulkPricingJob(jobId: string, options: JobRunOptions = inlineJ
   if (activeJobs.has(jobId)) return;
   activeJobs.add(jobId);
   try {
-    const claimed = await prisma.bulkPricingJob.updateMany({
-      where: { id: jobId, status: { in: ["QUEUED", "PAUSED" as any] } },
-      data: { status: "RUNNING", startedAt: new Date(), completedAt: null, lastError: null },
-    });
+    // Guard the claim with a timeout so a hung database call cannot wedge the in-process
+    // activeJobs guard forever; the next recovery poll will retry the claim.
+    const claimed = await Promise.race([
+      prisma.bulkPricingJob.updateMany({
+        where: { id: jobId, status: { in: ["QUEUED", "PAUSED" as any] } },
+        data: { status: "RUNNING", startedAt: new Date(), completedAt: null, lastError: null },
+      }),
+      new Promise<never>((_, reject) => {
+        const timer = setTimeout(() => reject(new Error("Bulk pricing job claim timed out")), 30_000);
+        timer.unref?.();
+      }),
+    ]);
     if (!claimed.count) return;
 
     const job = await prisma.bulkPricingJob.findUnique({
@@ -462,6 +480,7 @@ async function runBulkPricingJob(jobId: string, options: JobRunOptions = inlineJ
         organizationId: true,
         marketplace: true,
         targetMarginPercent: true,
+        bufferPercent: true,
         items: {
           where: { status: "QUEUED" },
           orderBy: { rowNumber: "asc" },
@@ -479,9 +498,10 @@ async function runBulkPricingJob(jobId: string, options: JobRunOptions = inlineJ
     if (!job) return;
 
     const targetMarginPercent = job.targetMarginPercent === null ? 20 : Number(job.targetMarginPercent.toString());
+    const bufferPercent = job.bufferPercent === null ? 0 : Number(job.bufferPercent.toString());
     for (const item of job.items) {
       try {
-        await processBulkItem(item, job.marketplace as Marketplace, targetMarginPercent, options);
+        await processBulkItem(item, job.marketplace as Marketplace, targetMarginPercent, bufferPercent, options);
         await refreshJobProgress(jobId);
       } catch (err) {
         if (isRateLimitError(err)) {
@@ -582,22 +602,26 @@ export async function createBulkPricingJob(input: {
   marketplace: Marketplace;
   condition: ListingCondition;
   targetMarginPercent?: number | null;
+  bufferPercent?: number | null;
   rows: BulkPricingRowInput[];
   sourceFilename?: string | null;
 }) {
   if (!input.rows.length) throw new BulkPricingError("At least one row is required.");
 
-  // Auto-expire stale running/queued jobs older than 5 minutes to prevent lockout
-  const staleThreshold = new Date(Date.now() - 5 * 60 * 1000);
+  // Expire orphaned jobs that were queued but never picked up so they cannot block new jobs.
+  // Running jobs are intentionally left alone: they are long-lived (rate limits) and are
+  // requeued by resumeInterruptedBulkPricingJobs after their lease goes stale.
+  const neverStartedThreshold = new Date(Date.now() - 10 * 60 * 1000);
   await prisma.bulkPricingJob.updateMany({
     where: {
       organizationId: input.organizationId,
-      status: { in: ["QUEUED", "RUNNING"] },
-      createdAt: { lt: staleThreshold },
+      status: "QUEUED",
+      startedAt: null,
+      createdAt: { lt: neverStartedThreshold },
     },
     data: {
       status: "FAILED",
-      lastError: "Job timed out or was interrupted",
+      lastError: "Job never started and expired",
       completedAt: new Date(),
     },
   });
@@ -626,6 +650,7 @@ export async function createBulkPricingJob(input: {
       marketplace: input.marketplace,
       defaultCondition: input.condition,
       targetMarginPercent: input.targetMarginPercent ?? null,
+      bufferPercent: input.bufferPercent ?? null,
       totalItems: input.rows.length,
       sourceFilename: input.sourceFilename?.slice(0, 255) || null,
       items: {
@@ -676,6 +701,7 @@ export async function listBulkPricingJobs(organizationId: string, limit = 20) {
       marketplace: true,
       defaultCondition: true,
       targetMarginPercent: true,
+      bufferPercent: true,
       status: true,
       totalItems: true,
       completedItems: true,
@@ -738,7 +764,7 @@ export async function updateBulkPricingItemSellingPrice(input: {
 }) {
   const item = await prisma.bulkPricingJobItem.findFirst({
     where: { id: input.itemId, organizationId: input.organizationId },
-    include: { bulkPricingJob: { select: { targetMarginPercent: true } } },
+    include: { bulkPricingJob: { select: { targetMarginPercent: true, bufferPercent: true } } },
   });
   if (!item) throw new BulkPricingError("Bulk pricing item not found", 404);
 
@@ -748,7 +774,8 @@ export async function updateBulkPricingItemSellingPrice(input: {
 
   if (input.sellingPrice === null) {
     const targetMargin = item.bulkPricingJob.targetMarginPercent === null ? 20 : Number(item.bulkPricingJob.targetMarginPercent.toString());
-    const simple = calculateSimpleBulkSellingPrice({ costPrice: cost, targetMarginPercent: targetMargin });
+    const buffer = item.bulkPricingJob.bufferPercent === null ? 0 : Number(item.bulkPricingJob.bufferPercent.toString());
+    const simple = calculateSimpleBulkSellingPrice({ costPrice: cost, targetMarginPercent: targetMargin, bufferPercent: buffer });
     newSellingPrice = simple.sellingPrice;
     newMarginPercent = simple.actualProfitPercent;
   } else {

@@ -102,6 +102,7 @@ enum PricingJobStatus {
   COMPLETED
   PARTIAL
   FAILED
+  PAUSED
 }
 
 enum PricingJobItemStatus {
@@ -928,6 +929,7 @@ model BulkPricingJob {
   failedItems      Int              @default(0)
   sourceFilename   String?
   targetMarginPercent Decimal?         @db.Decimal(6, 2)
+  bufferPercent       Decimal?         @db.Decimal(6, 2)
   lastError        String?
   startedAt        DateTime?
   completedAt      DateTime?
