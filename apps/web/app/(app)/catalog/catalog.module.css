@@ -66,8 +66,9 @@
 
 .workspace {
   min-width: 0;
-  padding-bottom: 32px;
+  padding: 28px 32px 40px;
   font-family: "Plus Jakarta Sans", "DM Sans", sans-serif;
+  color: #0f172a;
 }
 
 .topbar {
@@ -75,28 +76,27 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 20px;
-  height: auto;
-  min-height: 0;
-  padding: 28px 32px 10px;
+  margin-bottom: 20px;
+  padding: 0;
   border-bottom: 0;
   background: transparent;
 }
 
 .topbar h1 {
   margin: 0;
-  font: 800 34px/1.1 "Plus Jakarta Sans", sans-serif;
-  letter-spacing: -1.2px;
-  color: #0f172a;
+  font: 800 32px/1.1 "Plus Jakarta Sans", sans-serif;
+  letter-spacing: -1.1px;
+  color: #0c274d;
 }
 
 .topbar p {
   display: block;
   position: static;
-  margin: 8px 0 0;
+  margin: 6px 0 0;
   color: #64748b;
   font-size: 14px;
   line-height: 1.5;
-  max-width: 520px;
+  max-width: 540px;
 }
 
 .topActions {
@@ -126,19 +126,22 @@
   justify-content: center;
   gap: 8px;
   border-radius: 10px;
-  border: 1px solid #e2e8f0;
-  background: #fff;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
   color: #0f172a;
-  padding: 10px 14px;
-  font: 700 13px/1 "Plus Jakarta Sans", sans-serif;
+  padding: 0 16px;
+  min-height: 40px;
+  font: 700 12.5px/1 "Plus Jakarta Sans", sans-serif;
   text-decoration: none;
   cursor: pointer;
-  transition: 0.15s ease;
+  white-space: nowrap;
+  transition: all 140ms ease;
 }
 
 .iconBtn {
-  width: 42px;
-  height: 42px;
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
   padding: 0;
 }
 
@@ -147,7 +150,7 @@
 .topActions svg {
   width: 16px;
   height: 16px;
-  color: #64748b;
+  color: #475569;
 }
 
 .chevron {
@@ -159,8 +162,15 @@
 .iconBtn:hover,
 .editButton:hover,
 .topActions a:hover {
-  border-color: #cbd5e1;
-  background: #f8fafc;
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.ghostBtn:hover svg,
+.iconBtn:hover svg,
+.topActions a:hover svg {
+  color: #1d4ed8;
 }
 
 .primary,
@@ -172,24 +182,27 @@
 .candidate button,
 .applicationActions button:first-child,
 .draftGrid article > button {
-  background: #0052ff;
-  border-color: #0052ff;
-  color: #fff;
-  box-shadow: 0 8px 18px #0052ff24;
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.22);
 }
 
 .primary:hover,
 .formActions .primary:hover {
-  background: #0046d9;
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.3);
+  transform: translateY(-1px);
 }
 
 .connectionRow {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 32px 16px;
+  padding: 0 0 16px;
   color: #64748b;
-  font-size: 12px;
+  font-size: 12.5px;
   position: relative;
   z-index: 0;
 }
@@ -202,10 +215,14 @@
 .linkBtn {
   border: 0;
   background: transparent;
-  color: #0052ff;
-  font: 700 12px/1 "Plus Jakarta Sans", sans-serif;
+  color: #2563eb;
+  font: 700 12.5px/1 "Plus Jakarta Sans", sans-serif;
   cursor: pointer;
   padding: 0;
+}
+
+.linkBtn:hover {
+  text-decoration: underline;
 }
 
 .primary:disabled,
@@ -227,6 +244,8 @@
 .publishBtn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 .connectedDot,
@@ -234,8 +253,8 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #0f7a45;
-  box-shadow: 0 0 0 3px #e8f8ef;
+  background: #16a34a;
+  box-shadow: 0 0 0 3px #dcfce7;
 }
 
 .disconnectedDot {
@@ -245,8 +264,8 @@
 
 .eyebrow {
   display: block;
-  color: #0055ff;
-  font-size: 11px;
+  color: #2563eb;
+  font-size: 10.5px;
   font-weight: 800;
   letter-spacing: 0.8px;
   text-transform: uppercase;
@@ -255,10 +274,11 @@
 .demoBanner,
 .notice,
 .error {
-  margin: 0 32px 12px;
-  padding: 12px 14px;
-  border-radius: 10px;
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border-radius: 12px;
   font-size: 13px;
+  font-weight: 600;
 }
 
 .demoBanner,
@@ -275,42 +295,44 @@
 }
 
 .stats {
-  padding: 8px 32px 18px;
+  padding: 0 0 20px;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: 16px;
 }
 
 .stats article {
-  background: #fff;
+  background: #ffffff;
   border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 18px 20px;
-  box-shadow: 0 8px 24px #0b142608;
+  border-radius: 16px;
+  padding: 20px 22px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.05);
 }
 
 .stats span,
 .stats small {
   display: block;
   color: #64748b;
-  font-size: 12px;
+  font-size: 12.5px;
+  font-weight: 600;
 }
 
 .stats b {
   display: block;
   margin: 8px 0 4px;
-  font: 800 30px/1 "Plus Jakarta Sans", sans-serif;
-  color: #0f172a;
+  font: 800 32px/1 "Plus Jakarta Sans", sans-serif;
+  color: #0c274d;
+  letter-spacing: -0.8px;
 }
 
 .catalogPanel,
 .pricingPanel {
-  margin: 0 32px 28px;
-  background: #fff;
+  margin: 0 0 28px;
+  background: #ffffff;
   border: 1px solid #e2e8f0;
-  border-radius: 14px;
+  border-radius: 16px;
   overflow: hidden;
-  box-shadow: 0 8px 24px #0b142608;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.05);
 }
 
 .panelTitle {
@@ -318,22 +340,25 @@
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  padding: 18px 20px;
+  padding: 20px 24px;
   border-bottom: 1px solid #e2e8f0;
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
 }
 
 .panelTitle h2,
 .pricingPanel h2 {
   margin: 4px 0 0;
   font: 800 20px/1.2 "Plus Jakarta Sans", sans-serif;
+  color: #0c274d;
   letter-spacing: -0.4px;
 }
 
 .viewToggle {
   display: flex;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
   overflow: hidden;
+  background: #f8fafc;
 }
 
 .viewToggle button {
@@ -342,19 +367,21 @@
   background: transparent;
   color: #64748b;
   box-shadow: none;
-  padding: 9px 12px;
+  padding: 8px 14px;
+  min-height: 36px;
+  font-weight: 700;
 }
 
 .viewToggle .viewActive {
-  background: #0055ff;
-  color: #fff;
+  background: #2563eb;
+  color: #ffffff;
 }
 
 .savedViews {
   display: flex;
   align-items: flex-end;
   gap: 10px;
-  padding: 12px 20px;
+  padding: 14px 24px;
   border-bottom: 1px solid #e2e8f0;
   background: #f8fafc;
 }
@@ -369,9 +396,9 @@
 .rulePanel label span {
   display: block;
   margin-bottom: 6px;
-  color: #64748b;
-  font-size: 12px;
-  font-weight: 500;
+  color: #475569;
+  font-size: 11.5px;
+  font-weight: 600;
   letter-spacing: 0.2px;
   text-transform: none;
 }
@@ -385,14 +412,15 @@
 .rulePanel input[type="number"],
 .bulkBar select {
   width: 100%;
-  border: 1px solid #e2e8f0;
-  background: #fff;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
   color: #0f172a;
-  border-radius: 8px;
-  padding: 10px 12px;
+  border-radius: 10px;
+  padding: 10px 14px;
   outline: none;
-  font: 400 13px/1.4 "Plus Jakarta Sans", sans-serif;
+  font: 500 13px/1.4 "Plus Jakarta Sans", sans-serif;
   letter-spacing: 0;
+  transition: all 140ms ease;
 }
 
 .savedViews select:focus,
@@ -401,15 +429,15 @@
 .drawer input:focus,
 .drawer select:focus,
 .drawer textarea:focus {
-  border-color: #0055ff;
-  box-shadow: 0 0 0 3px #0055ff14;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
 .filters {
-  padding: 16px 20px;
+  padding: 18px 24px;
   display: grid;
   grid-template-columns: minmax(240px, 1.8fr) repeat(4, minmax(120px, 1fr)) auto;
-  gap: 10px;
+  gap: 12px;
   border-bottom: 1px solid #e2e8f0;
   align-items: end;
 }
@@ -417,10 +445,10 @@
 .toolbar {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 18px 20px 16px;
+  gap: 16px;
+  padding: 20px 24px;
   border-bottom: 1px solid #e2e8f0;
-  background: #fff;
+  background: #ffffff;
 }
 
 .searchBox {
@@ -444,20 +472,21 @@
 .searchBox input {
   width: 100%;
   box-sizing: border-box;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #cbd5e1;
   background: #f8fafc;
   color: #0f172a;
   border-radius: 12px;
   padding: 0 56px 0 44px;
-  height: 48px;
+  height: 46px;
   font: 500 14px/1 "Plus Jakarta Sans", sans-serif;
   outline: none;
+  transition: all 160ms ease;
 }
 
 .searchBox input:focus {
-  background: #fff;
-  border-color: #0052ff;
-  box-shadow: 0 0 0 3px #0052ff14;
+  background: #ffffff;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
 .searchBox input::placeholder {
@@ -475,78 +504,90 @@
 
 .searchIcon {
   left: 16px;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
 }
 
 .kbdHint {
   right: 14px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #cbd5e1;
   border-radius: 6px;
-  padding: 3px 7px;
-  font: 700 10px/1 "Plus Jakarta Sans", sans-serif;
-  background: #fff;
+  padding: 4px 8px;
+  font: 700 10.5px/1 "Plus Jakarta Sans", sans-serif;
+  background: #ffffff;
   color: #64748b;
 }
 
 .filterRow {
   display: flex;
-  flex-wrap: wrap;
   align-items: flex-end;
-  gap: 10px;
+  gap: 8px;
+  width: 100%;
+  flex-wrap: nowrap;
 }
 
 .filterField {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  min-width: 132px;
-  flex: 0 1 auto;
+  gap: 4px;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .filterField > span {
-  color: #64748b;
+  color: #475569;
   font-size: 11px;
   font-weight: 700;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .filterField select,
 .filterField input,
 .filterSelect {
-  min-width: 132px;
-  height: 40px;
-  border: 1px solid #e2e8f0;
-  background: #fff;
-  color: #334155;
-  border-radius: 10px;
-  padding: 0 12px;
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #0f172a;
+  border-radius: 9px;
+  padding: 0 8px;
   font: 600 12px/1 "Plus Jakarta Sans", sans-serif;
   outline: none;
   cursor: pointer;
+  transition: all 140ms ease;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .filterField select:focus,
 .filterField input:focus,
 .filterSelect:focus {
-  border-color: #0052ff;
-  box-shadow: 0 0 0 3px #0052ff14;
+  background: #ffffff;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
 .advancedToggle {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  height: 40px;
-  padding: 0 14px;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  background: #fff;
+  gap: 6px;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  background: #ffffff;
   color: #334155;
   font: 700 12px/1 "Plus Jakarta Sans", sans-serif;
   cursor: pointer;
   white-space: nowrap;
-  margin-left: auto;
+  flex-shrink: 0;
   align-self: flex-end;
+  transition: all 140ms ease;
 }
 
 .advancedToggle svg {
@@ -556,15 +597,25 @@
 }
 
 .advancedToggle:hover {
-  background: #f8fafc;
-  border-color: #cbd5e1;
+  background: #eff6ff;
+  border-color: #2563eb;
+  color: #1d4ed8;
+}
+
+@media (max-width: 1024px) {
+  .filterRow {
+    flex-wrap: wrap;
+  }
+  .filterField {
+    min-width: 120px;
+  }
 }
 
 .advancedFilters {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 12px;
-  padding-top: 4px;
+  padding-top: 6px;
 }
 
 .advancedActions {
@@ -580,22 +631,22 @@
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  background: #eef4ff;
+  background: #eff6ff;
   border-bottom: 1px solid #dbeafe;
-  padding: 12px 20px;
+  padding: 14px 24px;
   font-size: 13px;
 }
 
 .bulkBar b {
   color: #1d4ed8;
-  font: 700 13px/1 "Plus Jakarta Sans", sans-serif;
+  font: 700 13.5px/1 "Plus Jakarta Sans", sans-serif;
 }
 
 .bulkActions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   margin-left: auto;
 }
 
@@ -603,10 +654,11 @@
   border: 1px solid transparent;
   background: transparent;
   color: #1d4ed8;
-  font: 700 12px/1 "Plus Jakarta Sans", sans-serif;
+  font: 700 12.5px/1 "Plus Jakarta Sans", sans-serif;
   cursor: pointer;
-  padding: 8px 12px;
+  padding: 8px 14px;
   border-radius: 8px;
+  transition: all 140ms ease;
 }
 
 .bulkBar button:hover {
@@ -614,10 +666,10 @@
 }
 
 .bulkPrimary {
-  background: #0052ff !important;
-  border-color: #0052ff !important;
-  color: #fff !important;
-  box-shadow: 0 6px 14px #0052ff24;
+  background: #2563eb !important;
+  border-color: #2563eb !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.22);
 }
 
 .bulkPrimary svg {

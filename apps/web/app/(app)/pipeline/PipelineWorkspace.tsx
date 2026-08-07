@@ -134,6 +134,29 @@ export default function PipelineWorkspace() {
         </div>
       )}
 
+      <section className={styles.stats}>
+        <article>
+          <span>Total Batches</span>
+          <b>{queue.length}</b>
+          <small>In Pipeline History</small>
+        </article>
+        <article>
+          <span>Ready for Catalog</span>
+          <b style={{ color: "#16a34a" }}>{queue.filter((q) => q.status === "READY").length}</b>
+          <small>Validated &amp; Stage Ready</small>
+        </article>
+        <article>
+          <span>Processing</span>
+          <b style={{ color: "#d97706" }}>{queue.filter((q) => q.status === "PROCESSING").length}</b>
+          <small>Parsing &amp; Enriching</small>
+        </article>
+        <article>
+          <span>Uploaded Staged</span>
+          <b style={{ color: "#2563eb" }}>{queue.filter((q) => q.status === "UPLOADED").length}</b>
+          <small>Awaiting Processing</small>
+        </article>
+      </section>
+
       <section className={styles.uploadGrid}>
         <form className={styles.uploadCard} onSubmit={uploadSpreadsheet}>
           <div className={styles.cardHead}>
