@@ -1800,75 +1800,46 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
                   </tbody>
                 </table>
               </div>
-              <div className={styles.paginationBar}>
-                <div className={styles.paginationInfo}>
-                  {totalBulkCount > 0 ? (
-                    <span>
-                      Showing <b>{startIndex + 1}–{endIndex}</b> of <b>{totalBulkCount}</b> listings
-                    </span>
-                  ) : (
-                    <span>No listings match active filters</span>
-                  )}
-                </div>
-
-                <div className={styles.paginationControls}>
-                  <label className={styles.pageSizeSelect}>
-                    <span>Listings per page:</span>
-                    <select
-                      value={pageSize}
-                      onChange={(e) => {
-                        setPageSize(Number(e.target.value));
-                        setCurrentPage(1);
-                      }}
-                    >
-                      <option value={10}>10</option>
-                      <option value={50}>50</option>
-                      <option value={100}>100</option>
-                      <option value={250}>250</option>
-                    </select>
-                  </label>
-
-                  <div className={styles.pageButtons}>
-                    <button
-                      type="button"
-                      className={styles.pageBtn}
-                      disabled={safePage <= 1}
-                      onClick={() => setCurrentPage(1)}
-                      title="First page"
-                    >
-                      «
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.pageBtn}
-                      disabled={safePage <= 1}
-                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                      title="Previous page"
-                    >
-                      ‹ Prev
-                    </button>
-                    <span className={styles.pageIndicator}>
-                      Page <b>{safePage}</b> of <b>{totalPages}</b>
-                    </span>
-                    <button
-                      type="button"
-                      className={styles.pageBtn}
-                      disabled={safePage >= totalPages}
-                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                      title="Next page"
-                    >
-                      Next ›
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.pageBtn}
-                      disabled={safePage >= totalPages}
-                      onClick={() => setCurrentPage(totalPages)}
-                      title="Last page"
-                    >
-                      »
-                    </button>
-                  </div>
+              <div className={styles.pagination}>
+                <span>
+                  {totalBulkCount > 0
+                    ? `Showing ${startIndex + 1} to ${endIndex} of ${totalBulkCount} results`
+                    : "No listings match active filters"}
+                </span>
+                <div className={styles.pageSize}>
+                  <span>Rows per page</span>
+                  <select
+                    value={pageSize}
+                    onChange={(event) => {
+                      setPageSize(Number(event.target.value));
+                      setCurrentPage(1);
+                    }}
+                    className={styles.pageSizeSelect}
+                    aria-label="Rows per page"
+                  >
+                    <option value={10}>10</option>
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                    <option value={250}>250</option>
+                  </select>
+                  <button
+                    type="button"
+                    disabled={safePage <= 1}
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    aria-label="Previous page"
+                  >
+                    ‹
+                  </button>
+                  <em className={styles.pageCurrent}>{safePage}</em>
+                  <button
+                    type="button"
+                    disabled={safePage >= totalPages}
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    aria-label="Next page"
+                  >
+                    ›
+                  </button>
                 </div>
               </div>
             </section>
