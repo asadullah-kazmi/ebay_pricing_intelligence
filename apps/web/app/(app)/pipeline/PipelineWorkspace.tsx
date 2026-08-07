@@ -187,7 +187,6 @@ export default function PipelineWorkspace() {
             <span className={styles.eyebrow}>BRANDED EXCEL WORKSPACE TEMPLATES</span>
             <h2>Official Pipeline Excel Workbooks (.xlsx)</h2>
           </div>
-          <span className={styles.templateSub}>Each workbook contains a branded <b>Instructions &amp; Guide</b> tab and a pre-styled <b>Data Intake</b> worksheet.</span>
         </div>
         <div className={styles.templatesGrid}>
           <div className={styles.templateCard}>

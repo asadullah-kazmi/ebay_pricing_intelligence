@@ -47,29 +47,29 @@ const demoParts: InventoryPart[] = [
     condition: "USED",
     status: "READY_FOR_ENRICHMENT",
     updatedAt: new Date().toISOString(),
-    inventoryItem: { quantity: 4, cost: 28, currency: "USD", warehouse: { id: "w1", code: "MAIN", name: "Main" }, binLocation: { id: "b1", code: "A-14" } },
+    inventoryItem: { quantity: 14, cost: 28, currency: "USD", warehouse: { id: "w1", code: "MAIN", name: "Main Yard Warehouse" }, binLocation: { id: "b1", code: "A-14" } },
   },
   {
     id: "d2",
     sku: "AUD-8K0615301M",
     primaryPartNumber: "8K0615301M",
     brand: "Audi",
-    partName: "Rear Brake Caliper",
+    partName: "Rear Brake Caliper Assembly",
     condition: "USED",
     status: "NEEDS_IMAGES",
     updatedAt: new Date(Date.now() - 86400000).toISOString(),
-    inventoryItem: { quantity: 2, cost: 46.5, currency: "USD", warehouse: { id: "w1", code: "MAIN", name: "Main" }, binLocation: { id: "b2", code: "C-08" } },
+    inventoryItem: { quantity: 3, cost: 46.5, currency: "USD", warehouse: { id: "w1", code: "MAIN", name: "Main Yard Warehouse" }, binLocation: { id: "b2", code: "C-08" } },
   },
   {
     id: "d3",
     sku: "BMW-64119355981",
     primaryPartNumber: "64119355981",
     brand: "BMW",
-    partName: "Air Conditioning Control Panel",
+    partName: "Air Conditioning Control Panel Unit",
     condition: "USED",
     status: "IMPORTED",
     updatedAt: new Date(Date.now() - 172800000).toISOString(),
-    inventoryItem: { quantity: 0, cost: 65, currency: "USD", warehouse: { id: "w1", code: "MAIN", name: "Main" }, binLocation: null },
+    inventoryItem: { quantity: 0, cost: 65, currency: "USD", warehouse: { id: "w1", code: "MAIN", name: "Main Yard Warehouse" }, binLocation: null },
   },
   {
     id: "d4",
@@ -80,18 +80,18 @@ const demoParts: InventoryPart[] = [
     condition: "USED",
     status: "READY_FOR_ENRICHMENT",
     updatedAt: new Date(Date.now() - 3600000).toISOString(),
-    inventoryItem: { quantity: 1, cost: 95, currency: "USD", warehouse: { id: "w1", code: "MAIN", name: "Main" }, binLocation: { id: "b3", code: "B-02" } },
+    inventoryItem: { quantity: 1, cost: 95, currency: "USD", warehouse: { id: "w1", code: "MAIN", name: "Main Yard Warehouse" }, binLocation: { id: "b3", code: "B-02" } },
   },
 ];
 
 function money(value: string | number, currency: string) {
-  return new Intl.NumberFormat("en", { style: "currency", currency }).format(Number(value));
+  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(Number(value));
 }
 
 function stockTone(qty: number) {
-  if (qty <= 0) return { label: "Out of Stock", className: styles.stockOut };
-  if (qty <= 5) return { label: "Low Stock", className: styles.stockLow };
-  return { label: "In Stock", className: styles.stockIn };
+  if (qty <= 0) return { label: "Out of Stock", tone: "bad" };
+  if (qty <= 5) return { label: "Low Stock", tone: "warn" };
+  return { label: "In Stock", tone: "good" };
 }
 
 export default function InventoryWorkspace() {
@@ -111,7 +111,7 @@ export default function InventoryWorkspace() {
     if (search.trim()) query.set("q", search.trim());
     if (condition) query.set("condition", condition);
     if (warehouseId) query.set("warehouseId", warehouseId);
-    if (stockFilter === "in") { query.set("minQuantity", "1"); }
+    if (stockFilter === "in") { query.set("minQuantity", "6"); }
     if (stockFilter === "low") { query.set("minQuantity", "1"); query.set("maxQuantity", "5"); }
     if (stockFilter === "out") { query.set("maxQuantity", "0"); }
     return query.toString();
@@ -124,7 +124,7 @@ export default function InventoryWorkspace() {
         parts: demoParts,
         pagination: { page: 1, pageSize: 25, total: demoParts.length, totalPages: 1 },
         summary: { total: demoParts.length, byStatus: {} },
-        warehouses: [{ id: "w1", code: "MAIN", name: "Main" }],
+        warehouses: [{ id: "w1", code: "MAIN", name: "Main Yard Warehouse" }],
       });
       return;
     }
@@ -133,7 +133,7 @@ export default function InventoryWorkspace() {
     try {
       setCatalog((await apiFetch(`/api/parts?${queryString}`)) as CatalogResponse);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to load inventory");
+      setError(caught instanceof Error ? caught.message : "Unable to load inventory records");
     } finally {
       setLoading(false);
     }
@@ -162,48 +162,77 @@ export default function InventoryWorkspace() {
     <div className={styles.page}>
       <header className={styles.topbar}>
         <div>
-          <h1>Inventory</h1>
-          <p>Monitor stock levels, bin locations, and on-hand value across warehouses.</p>
+          <span className={styles.eyebrow}>WAREHOUSE &amp; INVENTORY OPERATIONS</span>
+          <h1>Inventory Control &amp; Valuation</h1>
+          <p>Monitor stock levels, bin locations, on-hand valuation, and warehouse replenishment across seller accounts.</p>
         </div>
         <div className={styles.topActions}>
-          <button type="button" className={styles.iconBtn} onClick={() => void load()} aria-label="Refresh" title="Refresh">
+          <button type="button" className={styles.iconBtn} onClick={() => void load()} aria-label="Refresh Inventory" title="Refresh Inventory">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
           </button>
-          <Link className={styles.ghostBtn} href="/catalog">Open catalog</Link>
-          <Link className={styles.primary} href="/pipeline">+ Receive stock</Link>
+          <Link className={styles.ghostBtn} href="/catalog">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            Open catalog
+          </Link>
+          <Link className={styles.primary} href="/pipeline">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 5v14M5 12h14"/></svg>
+            Receive stock
+          </Link>
         </div>
       </header>
 
-      {error && <div className={styles.error}>{error}</div>}
+      {error && (
+        <div className={styles.error}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          {error}
+        </div>
+      )}
 
+      {/* Executive Summary Metrics Grid */}
       <section className={styles.metrics}>
-        <article>
-          <span>Total SKUs</span>
+        <article className={styles.metricCard}>
+          <div className={styles.metricHeader}>
+            <span>TOTAL INVENTORY SKUs</span>
+            <span className={styles.metricBadgeTotal}>ACTIVE</span>
+          </div>
           <b>{metrics.totalSkus}</b>
-          <small>In this inventory view</small>
+          <small>Tracked across warehouses</small>
         </article>
-        <article>
-          <span>In stock</span>
+        <article className={styles.metricCard}>
+          <div className={styles.metricHeader}>
+            <span>IN STOCK</span>
+            <span className={styles.metricBadgeGood}>HEALTHY</span>
+          </div>
           <b className={styles.metricGood}>{metrics.inStock}</b>
-          <small>More than 5 units</small>
+          <small>&gt; 5 available units</small>
         </article>
-        <article>
-          <span>Low stock</span>
+        <article className={styles.metricCard}>
+          <div className={styles.metricHeader}>
+            <span>LOW STOCK</span>
+            <span className={styles.metricBadgeWarn}>REORDER</span>
+          </div>
           <b className={styles.metricWarn}>{metrics.low}</b>
-          <small>1–5 units left</small>
+          <small>1–5 units remaining</small>
         </article>
-        <article>
-          <span>Out of stock</span>
+        <article className={styles.metricCard}>
+          <div className={styles.metricHeader}>
+            <span>OUT OF STOCK</span>
+            <span className={styles.metricBadgeBad}>CRITICAL</span>
+          </div>
           <b className={styles.metricBad}>{metrics.out}</b>
-          <small>Needs replenishment</small>
+          <small>Needs stock replenishment</small>
         </article>
-        <article>
-          <span>On-hand value</span>
-          <b>{money(metrics.value, "USD")}</b>
+        <article className={styles.metricCard}>
+          <div className={styles.metricHeader}>
+            <span>ON-HAND VALUATION</span>
+            <span className={styles.metricBadgeValue}>USD</span>
+          </div>
+          <b className={styles.metricValue}>{money(metrics.value, "USD")}</b>
           <small>Cost × quantity (page)</small>
         </article>
       </section>
 
+      {/* Primary Inventory Data Panel */}
       <section className={styles.panel}>
         <div className={styles.toolbar}>
           <label className={styles.searchBox}>
@@ -212,22 +241,22 @@ export default function InventoryWorkspace() {
             <input
               value={search}
               onChange={(event) => { setSearch(event.target.value); setPage(1); }}
-              placeholder="Search by SKU, title, or part number..."
+              placeholder="Filter inventory by SKU, OEM part number, brand, or title..."
             />
             <span className={styles.kbdHint}>⌘K</span>
           </label>
           <div className={styles.filterRow}>
             <label className={styles.filterField}>
-              <span>Stock Level</span>
+              <span>STOCK LEVEL</span>
               <select value={stockFilter} onChange={(event) => { setStockFilter(event.target.value); setPage(1); }}>
-                <option value="">All Stock</option>
-                <option value="in">In stock</option>
-                <option value="low">Low stock</option>
-                <option value="out">Out of stock</option>
+                <option value="">All Stock Levels</option>
+                <option value="in">In Stock (&gt;5)</option>
+                <option value="low">Low Stock (1–5)</option>
+                <option value="out">Out of Stock (0)</option>
               </select>
             </label>
             <label className={styles.filterField}>
-              <span>Warehouse</span>
+              <span>WAREHOUSE</span>
               <select value={warehouseId} onChange={(event) => { setWarehouseId(event.target.value); setPage(1); }}>
                 <option value="">All Locations</option>
                 {catalog.warehouses.map((warehouse) => (
@@ -236,7 +265,7 @@ export default function InventoryWorkspace() {
               </select>
             </label>
             <label className={styles.filterField}>
-              <span>Condition</span>
+              <span>CONDITION</span>
               <select value={condition} onChange={(event) => { setCondition(event.target.value); setPage(1); }}>
                 <option value="">All Conditions</option>
                 <option value="NEW">New</option>
@@ -247,27 +276,30 @@ export default function InventoryWorkspace() {
         </div>
 
         {loading ? (
-          <div className={styles.empty}><b>Refreshing inventory...</b></div>
+          <div className={styles.empty}>
+            <div className={styles.spinner} />
+            <b>Refreshing inventory control records...</b>
+          </div>
         ) : catalog.parts.length === 0 ? (
           <div className={styles.empty}>
             <b>No inventory records found</b>
-            <span>Import parts from Pipeline or adjust stock filters.</span>
-            <Link href="/pipeline">Go to pipeline</Link>
+            <span>Import catalog parts from Pipeline or adjust your stock filters.</span>
+            <Link href="/pipeline" className={styles.primaryInline}>Go to pipeline</Link>
           </div>
         ) : (
           <div className={styles.tableWrap}>
             <table>
               <thead>
                 <tr>
-                  <th>SKU</th>
-                  <th>Title</th>
-                  <th>Condition</th>
-                  <th>Qty</th>
-                  <th>Stock</th>
-                  <th>Location</th>
-                  <th>Unit cost</th>
-                  <th>On-hand</th>
-                  <th>Updated</th>
+                  <th>SKU &amp; PART NO</th>
+                  <th>PART DETAILS</th>
+                  <th>CONDITION</th>
+                  <th>QTY</th>
+                  <th>STOCK STATUS</th>
+                  <th>LOCATION</th>
+                  <th>UNIT COST</th>
+                  <th>ON-HAND VALUE</th>
+                  <th>LAST UPDATED</th>
                 </tr>
               </thead>
               <tbody>
@@ -279,22 +311,32 @@ export default function InventoryWorkspace() {
                   return (
                     <tr key={part.id}>
                       <td>
-                        <Link className={styles.skuLink} href="/catalog">{part.sku}</Link>
+                        <Link className={styles.skuLink} href="/catalog">
+                          <code>{part.sku}</code>
+                        </Link>
                         <span className={styles.subtle}>{part.primaryPartNumber}</span>
                       </td>
                       <td>
-                        <b className={styles.titleCell}>{part.partName || "Unnamed part"}</b>
-                        <span className={styles.subtle}>{part.brand || "Brand not set"}</span>
+                        <b className={styles.titleCell}>{part.partName || "Unnamed catalog item"}</b>
+                        <span className={styles.subtle}>{part.brand || "Brand unavailable"}</span>
                       </td>
-                      <td>{part.condition === "NEW" ? "New" : "Used"}</td>
-                      <td><b>{qty}</b></td>
-                      <td><span className={stock.className}>{stock.label}</span></td>
                       <td>
-                        {part.inventoryItem?.warehouse?.code || "—"}
-                        <span className={styles.subtle}>{part.inventoryItem?.binLocation?.code || "Unassigned bin"}</span>
+                        <span className={styles.conditionTag}>{part.condition === "NEW" ? "New" : "Used"}</span>
                       </td>
-                      <td>{money(cost, currency)}</td>
-                      <td><b>{money(cost * qty, currency)}</b></td>
+                      <td>
+                        <b className={styles.qtyNumber}>{qty}</b>
+                      </td>
+                      <td>
+                        <span className={`${styles.statusPill} ${styles[`tone_${stock.tone}`]}`}>
+                          {stock.label}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={styles.locationCode}>{part.inventoryItem?.warehouse?.code || "—"}</span>
+                        <span className={styles.subtle}>{part.inventoryItem?.binLocation?.code ? `Bin: ${part.inventoryItem.binLocation.code}` : "Unassigned bin"}</span>
+                      </td>
+                      <td className={styles.costCell}>{money(cost, currency)}</td>
+                      <td className={styles.valueCell}>{money(cost * qty, currency)}</td>
                       <td className={styles.dateCell}>{new Date(part.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</td>
                     </tr>
                   );
@@ -306,8 +348,7 @@ export default function InventoryWorkspace() {
 
         <div className={styles.pagination}>
           <span>
-            Showing {catalog.parts.length ? ((catalog.pagination.page - 1) * catalog.pagination.pageSize) + 1 : 0}
-            {" "}to {Math.min(catalog.pagination.page * catalog.pagination.pageSize, catalog.pagination.total)} of {catalog.pagination.total} results
+            Showing <b>{catalog.parts.length ? ((catalog.pagination.page - 1) * catalog.pagination.pageSize) + 1 : 0}</b> to <b>{Math.min(catalog.pagination.page * catalog.pagination.pageSize, catalog.pagination.total)}</b> of <b>{catalog.pagination.total}</b> inventory items
           </span>
           <div className={styles.pageSize}>
             <span>Rows per page</span>
@@ -317,18 +358,18 @@ export default function InventoryWorkspace() {
                 setPageSize(Number(e.target.value));
                 setPage(1);
               }}
-              style={{ border: "1px solid #e2e8f0", borderRadius: 8, height: 30, padding: "0 8px", background: "#fff", color: "#0f172a", font: '700 12px/1 "Plus Jakarta Sans", sans-serif', cursor: "pointer", outline: "none" }}
               aria-label="Rows per page"
             >
               <option value={10}>10</option>
               <option value={25}>25</option>
               <option value={50}>50</option>
               <option value={100}>100</option>
-              <option value={250}>250</option>
             </select>
-            <button type="button" disabled={page <= 1} onClick={() => setPage((value) => value - 1)} aria-label="Previous">‹</button>
-            <em className={styles.pageCurrent}>{catalog.pagination.page}</em>
-            <button type="button" disabled={page >= catalog.pagination.totalPages} onClick={() => setPage((value) => value + 1)} aria-label="Next">›</button>
+            <div className={styles.pageButtons}>
+              <button type="button" disabled={page <= 1} onClick={() => setPage((value) => value - 1)} aria-label="Previous page">‹</button>
+              <em className={styles.pageCurrent}>{catalog.pagination.page}</em>
+              <button type="button" disabled={page >= catalog.pagination.totalPages} onClick={() => setPage((value) => value + 1)} aria-label="Next page">›</button>
+            </div>
           </div>
         </div>
       </section>

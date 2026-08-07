@@ -1820,9 +1820,11 @@
 .inventoryModal {
   width: min(640px, 96vw);
   max-height: 88vh;
-  background: #f8fafc;
+  background: #ffffff;
   border: 1px solid #e2e8f0;
-  box-shadow: 0 24px 60px #0b142628;
+  border-radius: 20px;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.12);
+  overflow: hidden;
 }
 
 .inventoryHeader {
@@ -1830,37 +1832,36 @@
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  padding: 14px 18px;
-  border-bottom: 1px solid #e2e8f080;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid #f1f5f9;
   position: sticky;
   top: 0;
   z-index: 2;
-  background: #fffffff5;
-  backdrop-filter: blur(10px);
+  background: #ffffff;
 }
 
 .inventoryEyebrow {
   display: block;
-  margin-bottom: 4px;
-  color: #0052ff;
-  font-size: 11px;
+  margin-bottom: 3px;
+  color: #2563eb;
+  font-size: 10.5px;
   font-weight: 800;
-  letter-spacing: 0.7px;
+  letter-spacing: 0.8px;
   text-transform: uppercase;
 }
 
 .detailHydrating {
   display: inline-block;
-  margin-top: 6px;
+  margin-top: 4px;
   color: #64748b;
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 11.5px;
+  font-weight: 500;
 }
 
 .inventoryHeader h2 {
   margin: 0 !important;
-  font: 700 17px/1.25 "Plus Jakarta Sans", sans-serif !important;
-  letter-spacing: -0.2px !important;
+  font: 750 20px/1.2 "Plus Jakarta Sans", sans-serif !important;
+  letter-spacing: -0.3px !important;
   color: #0c274d;
 }
 
@@ -1874,20 +1875,20 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 30px;
-  padding: 0 11px;
-  border-radius: 8px;
-  border: 1px solid #c7d7ff;
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 9px;
+  border: 1px solid #dbeafe;
   background: #eff6ff;
-  color: #0052ff;
-  font: 600 12px/1 "Plus Jakarta Sans", sans-serif;
+  color: #1d4ed8;
+  font: 700 12.5px/1 "Plus Jakarta Sans", sans-serif;
   cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+  transition: all 140ms ease;
 }
 
 .editDetailsBtn:hover {
-  border-color: #0052ff;
-  color: #0046db;
+  border-color: #2563eb;
+  color: #1e40af;
   background: #dbeafe;
 }
 
@@ -1900,47 +1901,49 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: #fff;
+  border-radius: 9px;
+  background: #ffffff;
   color: #64748b;
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
+  transition: all 140ms ease;
 }
 
 .iconClose:hover {
-  background: #f1f5f9;
+  background: #f8fafc;
   border-color: #cbd5e1;
   color: #0f172a;
 }
 
 .inventoryBody {
-  padding: 16px 18px 22px;
+  padding: 20px 24px 28px;
   display: grid;
-  gap: 12px;
+  gap: 16px;
 }
 
 .inventoryHero {
   display: grid;
-  grid-template-columns: 96px minmax(0, 1fr);
-  gap: 14px;
-  padding: 14px;
-  border: 1px solid #e2e8f0;
-  border-radius: 14px;
-  background: #fff;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  align-items: center;
 }
 
 .inventoryHeroMedia {
   position: relative;
-  width: 96px;
-  height: 96px;
-  border-radius: 10px;
+  width: 88px;
+  height: 88px;
+  border-radius: 14px;
   overflow: hidden;
-  background: linear-gradient(145deg, #e8eef8, #f8fafc);
+  background: #f8fafc;
   border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
 }
 
 .inventoryHeroMedia .thumb,
@@ -1957,8 +1960,8 @@
   min-width: 20px;
   padding: 2px 6px;
   border-radius: 999px;
-  background: rgba(12, 39, 77, 0.82);
-  color: #fff;
+  background: rgba(12, 39, 77, 0.85);
+  color: #ffffff;
   font-size: 10px;
   font-weight: 700;
   text-align: center;
@@ -1968,7 +1971,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   justify-content: center;
 }
 
@@ -1982,37 +1985,40 @@
   display: inline-flex;
   align-items: center;
   min-height: 22px;
-  padding: 0 8px;
+  padding: 0 9px;
   border-radius: 999px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.15px;
+  font: 700 10.5px/1 "Plus Jakarta Sans", sans-serif;
+  letter-spacing: 0.2px;
 }
 
 .tone_good {
-  background: #e8f8ef;
-  color: #0f7a45;
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
 }
 
 .tone_warn {
-  background: #fff4e5;
-  color: #b45309;
+  background: #fffbebfb;
+  color: #92400e;
+  border: 1px solid #fde68a;
 }
 
 .tone_bad {
-  background: #feeceb;
-  color: #b42318;
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
 }
 
 .tone_muted {
-  background: #eef2f7;
+  background: #f1f5f9;
   color: #475569;
+  border: 1px solid #e2e8f0;
 }
 
 .inventoryHeroCopy h3 {
-  margin: 0;
-  font: 600 16px/1.3 "Plus Jakarta Sans", sans-serif;
-  letter-spacing: -0.2px;
+  margin: 2px 0 0;
+  font: 750 17px/1.25 "Plus Jakarta Sans", sans-serif;
+  letter-spacing: -0.3px;
   color: #0c274d;
   text-transform: none;
 }
@@ -2020,7 +2026,7 @@
 .heroSubline {
   margin: 0;
   color: #64748b;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 500;
   line-height: 1.35;
 }
@@ -2028,21 +2034,22 @@
 .skuCopy {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   width: fit-content;
-  margin: 0;
+  margin: 2px 0 0;
   border-radius: 8px;
   background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #cbd5e1;
   color: #64748b;
-  font: 600 12px/1 "Plus Jakarta Sans", sans-serif;
+  font: 600 11.5px/1 "Plus Jakarta Sans", sans-serif;
   cursor: pointer;
-  padding: 6px 9px;
+  padding: 4px 8px;
+  transition: all 140ms ease;
 }
 
 .skuCopy span {
-  color: #94a3b8;
-  font-size: 10px;
+  color: #64748b;
+  font-size: 9.5px;
   font-weight: 800;
   letter-spacing: 0.5px;
   text-transform: uppercase;
@@ -2050,42 +2057,46 @@
 
 .skuCopy code {
   color: #0f172a;
-  font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 .skuCopy svg {
-  width: 13px;
-  height: 13px;
+  width: 12px;
+  height: 12px;
 }
 
 .skuCopy:hover {
-  color: #0052ff;
-  border-color: #c7d7ff;
-  background: #f5f8ff;
+  color: #2563eb;
+  border-color: #2563eb;
+  background: #eff6ff;
 }
 
 .skuCopy:hover code {
-  color: #0052ff;
+  color: #2563eb;
 }
 
 .statStrip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  gap: 12px;
+  padding: 14px 18px;
+  background: #f8fafc;
+  border: 1px solid #f1f5f9;
+  border-radius: 14px;
   margin-top: 0;
 }
 
 .statStrip article {
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: #f8fafc;
-  border: 1px solid #e8eef6;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
 }
 
 .statStrip span {
   display: block;
-  color: #94a3b8;
-  font-size: 10px;
+  color: #64748b;
+  font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0.4px;
   text-transform: uppercase;
@@ -2095,9 +2106,9 @@
   display: block;
   margin-top: 4px;
   color: #0c274d;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: -0.15px;
+  font-size: 15.5px;
+  font-weight: 750;
+  letter-spacing: -0.3px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2110,15 +2121,15 @@
 }
 
 .inventoryPanel {
-  padding: 12px 14px;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  background: #fff;
+  padding: 16px 18px;
+  border: 1px solid #f1f5f9;
+  border-radius: 14px;
+  background: #ffffff;
 }
 
 .inventoryPanel > header {
   margin-bottom: 0;
-  padding: 0 0 8px;
+  padding: 0 0 10px;
   border: 0;
   border-bottom: 1px solid #f1f5f9;
   background: transparent;
@@ -2127,8 +2138,8 @@
 
 .inventoryPanel > header h4 {
   margin: 0;
-  font: 700 11px/1.2 "Plus Jakarta Sans", sans-serif;
-  letter-spacing: 0.3px;
+  font: 750 12px/1.2 "Plus Jakarta Sans", sans-serif;
+  letter-spacing: 0.4px;
   text-transform: uppercase;
   color: #0c274d;
 }
@@ -2136,7 +2147,7 @@
 .inventoryPanel > header p {
   margin: 3px 0 0;
   color: #64748b;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   text-transform: none;
   letter-spacing: 0;
