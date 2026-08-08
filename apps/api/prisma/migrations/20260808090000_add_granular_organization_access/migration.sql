@@ -1,0 +1,9 @@
+ALTER TYPE "OrganizationRole" ADD VALUE IF NOT EXISTS 'LISTING_MANAGER';
+ALTER TYPE "OrganizationRole" ADD VALUE IF NOT EXISTS 'STORE_MANAGER';
+
+ALTER TABLE "OrganizationMembership"
+  ADD COLUMN "permissions" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
+
+ALTER TABLE "OrganizationInvitation"
+  ADD COLUMN "invitedName" TEXT,
+  ADD COLUMN "permissions" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

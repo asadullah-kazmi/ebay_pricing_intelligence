@@ -10,6 +10,7 @@ export type CachedWorkspaceSession = {
   user: { id: string; email: string; name: string | null };
   organization: { id: string; name: string; slug: string };
   role: string;
+  permissions: string[];
 };
 
 export class SessionExpiredError extends Error {

@@ -4,6 +4,7 @@ import { ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import BrandMark from "./BrandMark";
 import styles from "./shell.module.css";
+import { permissionSet } from "../lib/organization-access";
 
 export type NavKey =
   | "dashboard"
@@ -44,6 +45,8 @@ type AppShellProps = {
   children: ReactNode;
   userName?: string;
   userRole?: string;
+  organizationRole?: string;
+  permissions?: string[];
   badgeCount?: number;
   onSignOut?: () => void;
   footerNote?: string;
@@ -55,6 +58,8 @@ export default function AppShell({
   children,
   userName = "Operator",
   userRole = "Catalog",
+  organizationRole,
+  permissions,
   badgeCount,
   onSignOut,
   footerNote,
@@ -62,6 +67,14 @@ export default function AppShell({
 }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const access = permissionSet(organizationRole, permissions);
+  const navPermission: Partial<Record<NavKey, string>> = {
+    dashboard: "tab.dashboard", quickSku: "tab.quick_sku", pipeline: "tab.pipeline",
+    catalog: "tab.catalog", pricing: "tab.pricing", mediaDrive: "tab.media_drive",
+    inventory: "tab.inventory", orders: "tab.orders", fitment: "tab.fitment",
+    shipping: "tab.shipping", channels: "tab.channels", reports: "tab.reports", settings: "tab.settings",
+  };
+  const visibleNavItems = navItems.filter((item) => !navPermission[item.key] || access.has(navPermission[item.key]!));
   const initials = userName
     .split(/\s+/)
     .filter(Boolean)
@@ -104,7 +117,7 @@ export default function AppShell({
           </button>
         </div>
         <nav className={styles.nav}>
-          {navItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <Link
               key={item.key}
               href={item.href}

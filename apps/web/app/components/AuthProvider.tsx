@@ -61,6 +61,7 @@ function initialAuthState(): {
         user: { id: "demo", email: "demo@partpulse.local", name: "Demo Operator" },
         organization: { id: "demo", name: "Demo Yard", slug: "demo" },
         role: "CATALOG_OPERATOR",
+        permissions: [],
       },
     };
   }
@@ -104,6 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user: { id: "demo", email: "demo@partpulse.local", name: "Demo Operator" },
         organization: { id: "demo", name: "Demo Yard", slug: "demo" },
         role: "CATALOG_OPERATOR",
+        permissions: [],
       });
       setStatus("ready");
       return;

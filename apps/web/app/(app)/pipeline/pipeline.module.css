@@ -154,14 +154,11 @@
   color: #b91c1c;
 }
 
-/* Official Intake Templates Section */
-.templatesPanel {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 18px;
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.05);
-  padding: 24px;
-  margin-bottom: 24px;
+.templateButtonsRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
 }
 
 .templateSub {
@@ -309,11 +306,8 @@
 }
 
 .uploadGrid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.95fr);
-  gap: 20px;
+  display: block;
   margin-bottom: 24px;
-  align-items: stretch;
 }
 
 .uploadCard,

@@ -7,6 +7,7 @@ import styles from "./catalog.module.css";
 import { useAuth } from "../../components/AuthProvider";
 import { apiBase, apiRequest, refreshAccessSession, SessionExpiredError } from "../../lib/auth-session";
 import { dismissFitmentJob, dismissPricingJob, isDismissedFitmentJob, isDismissedPricingJob, shouldAutoShowJob } from "../../lib/dismissed-jobs";
+import { permissionSet } from "../../lib/organization-access";
 import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogSavedView, CatalogStatus, EbayAspectRequirement, EbayConditionOption, EbayConnection, EbayInventorySyncJob, EbayListingOperationJob, EbayOffer, EbayOfferJob, EbaySellerResources, FitmentJob, FitmentJobSummary, InventoryPreparation, InventoryPreparationJob, ListingDraft, LiveDraftValidation, ManualFitmentApplication, PartCondition, PartFitment, PricingConditionMode, PricingJob, PricingJobSummary } from "./types";
 
 const statuses: CatalogStatus[] = ["IMPORTED", "NEEDS_IMAGES", "IMPORT_ERROR", "READY_FOR_ENRICHMENT", "ARCHIVED"];
@@ -203,7 +204,13 @@ function CatalogImage({ mediaId, demo }: { mediaId?: string; token?: string; dem
 }
 
 export default function CatalogWorkspace() {
-  const { status: authStatus, token, demo, apiFetch } = useAuth();
+  const { status: authStatus, token, demo, apiFetch, session } = useAuth();
+  const access = permissionSet(session?.role, session?.permissions);
+  const canEditCatalog = access.has("catalog.edit");
+  const canDeleteCatalog = access.has("catalog.delete");
+  const canPublishCatalog = access.has("catalog.publish");
+  const canRunPricing = access.has("pricing.run");
+  const canManageFitment = access.has("fitment.manage");
   const searchParams = useSearchParams();
   const [catalog, setCatalog] = useState<CatalogResponse>(emptyCatalog);
   const [loading, setLoading] = useState(true);
@@ -1445,13 +1452,13 @@ export default function CatalogWorkspace() {
           <div className={styles.bulkBar}>
             <b>{selected.size} item{selected.size === 1 ? "" : "s"} selected</b>
             <div className={styles.bulkActions}>
-              <button type="button" className={styles.bulkPrimary} disabled={selected.size > 25 || draftBusy} onClick={() => void createDrafts()}>
+              {canPublishCatalog && <button type="button" className={styles.bulkPrimary} disabled={selected.size > 25 || draftBusy} onClick={() => void createDrafts()}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
                 {draftBusy ? "Preparing..." : "Publish"}
-              </button>
-              <button type="button" disabled={draftBusy} onClick={() => void openBulkPolicies()}>Shipping</button>
-              <button type="button" onClick={() => setBulkEditorOpen(true)}>Edit</button>
-              <button type="button" className={styles.bulkDanger} disabled={loading} onClick={() => void deleteSelected()}>Delete</button>
+              </button>}
+              {canPublishCatalog && <button type="button" disabled={draftBusy} onClick={() => void openBulkPolicies()}>Shipping</button>}
+              {canEditCatalog && <button type="button" onClick={() => setBulkEditorOpen(true)}>Edit</button>}
+              {canDeleteCatalog && <button type="button" className={styles.bulkDanger} disabled={loading} onClick={() => void deleteSelected()}>Delete</button>}
               <div className={styles.bulkMore}>
                 <button type="button" className={styles.moreBtn} onClick={() => setBulkMoreOpen((value) => !value)} aria-expanded={bulkMoreOpen}>... More</button>
                 {bulkMoreOpen && (
@@ -1459,9 +1466,9 @@ export default function CatalogWorkspace() {
                     <label>Marketplace
                       <select aria-label="eBay marketplace" value={pricingMarketplace} onChange={(event) => setPricingMarketplace(event.target.value)}><option value="EBAY_US">eBay US</option><option value="EBAY_GB">eBay UK</option><option value="EBAY_DE">eBay Germany</option></select>
                     </label>
-                    <button type="button" disabled={selected.size > 25 || pricingBusy || Boolean(pricingJob && ["QUEUED", "RUNNING"].includes(pricingJob.status))} onClick={() => { setBulkMoreOpen(false); void priceSelected(); }}>{pricingBusy ? "Starting..." : "Price selected"}</button>
-                    <button type="button" disabled={selected.size > 10 || fitmentBusy || Boolean(fitmentJob && ["QUEUED", "RUNNING"].includes(fitmentJob.status))} onClick={() => { setBulkMoreOpen(false); void findFitment(); }}>{fitmentBusy ? "Working..." : "Find fitment"}</button>
-                    <button type="button" onClick={() => { setBulkMoreOpen(false); void archiveSelected(); }}>Archive</button>
+                    {canRunPricing && <button type="button" disabled={selected.size > 25 || pricingBusy || Boolean(pricingJob && ["QUEUED", "RUNNING"].includes(pricingJob.status))} onClick={() => { setBulkMoreOpen(false); void priceSelected(); }}>{pricingBusy ? "Starting..." : "Price selected"}</button>}
+                    {canManageFitment && <button type="button" disabled={selected.size > 10 || fitmentBusy || Boolean(fitmentJob && ["QUEUED", "RUNNING"].includes(fitmentJob.status))} onClick={() => { setBulkMoreOpen(false); void findFitment(); }}>{fitmentBusy ? "Working..." : "Find fitment"}</button>}
+                    {canEditCatalog && <button type="button" onClick={() => { setBulkMoreOpen(false); void archiveSelected(); }}>Archive</button>}
                   </div>
                 )}
               </div>
@@ -1540,11 +1547,11 @@ export default function CatalogWorkspace() {
                           <span className={`${styles.statusChip} ${styles.needs_images}`}>Need images</span>
                         ) : published ? (
                           <span className={`${styles.statusChip} ${styles.imported}`}>Published</span>
-                        ) : (
+                        ) : canPublishCatalog ? (
                           <button type="button" className={styles.publishBtn} disabled={draftBusy} onClick={() => void createDrafts([part.id])}>
                             Publish
                           </button>
-                        )}
+                        ) : <span className={styles.emptyValue}>Ready</span>}
                       </td>
                     </tr>
                   );

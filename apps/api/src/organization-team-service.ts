@@ -6,6 +6,8 @@ import { recordAuditEvent } from "./audit-service.js";
 import { getConfig } from "./config.js";
 import { prisma } from "./db.js";
 import { emailIsConfigured, sendOrganizationInvitationEmail } from "./email-service.js";
+import { hashPassword, verifyPassword } from "./credential-security.js";
+import { effectiveOrganizationPermissions, normalizeOrganizationPermissions } from "./organization-access.js";
 
 const invitationLifetimeMs = 7 * 24 * 60 * 60 * 1_000;
 const privilegedRoles = new Set<OrganizationRole>(["OWNER", "ADMIN"]);
@@ -34,13 +36,12 @@ export function maskInvitationEmail(email: string) {
 export function canManageMemberRole(actorRole: OrganizationRole, targetRole: OrganizationRole, nextRole?: OrganizationRole) {
   if (actorRole === "OWNER") return true;
   if (actorRole !== "ADMIN") return false;
-  if (privilegedRoles.has(targetRole)) return false;
-  return !nextRole || !privilegedRoles.has(nextRole);
+  if (targetRole === "OWNER") return false;
+  return !nextRole || nextRole !== "OWNER";
 }
 
 function assertInvitationRole(actorRole: OrganizationRole, role: OrganizationRole) {
   if (role === "OWNER") throw new OrganizationTeamError("Owner access must be granted by changing an existing member role", 409);
-  if (actorRole === "ADMIN" && role === "ADMIN") throw new OrganizationTeamError("Only an owner can invite another administrator", 409);
 }
 
 function invitationUrl(token: string) {
@@ -58,7 +59,7 @@ export async function listOrganizationTeam(organizationId: string) {
       where: { organizationId },
       orderBy: [{ role: "asc" }, { createdAt: "asc" }],
       select: {
-        id: true, role: true, createdAt: true, updatedAt: true,
+        id: true, role: true, permissions: true, createdAt: true, updatedAt: true,
         user: { select: { id: true, email: true, name: true } },
       },
     }),
@@ -66,7 +67,7 @@ export async function listOrganizationTeam(organizationId: string) {
       where: { organizationId, status: { in: ["PENDING", "EXPIRED"] } },
       orderBy: { createdAt: "desc" },
       select: {
-        id: true, email: true, role: true, status: true, expiresAt: true, createdAt: true,
+        id: true, email: true, invitedName: true, role: true, permissions: true, status: true, expiresAt: true, createdAt: true,
         invitedBy: { select: { id: true, email: true, name: true } },
       },
     }),
@@ -85,12 +86,16 @@ export async function createOrganizationInvitation(input: {
   organizationId: string;
   actorUserId: string;
   actorRole: OrganizationRole;
+  name: string;
   email: string;
   role: OrganizationRole;
+  permissions: string[];
   requestId?: string;
 }) {
   assertInvitationRole(input.actorRole, input.role);
   const email = normalizeInvitationEmail(input.email);
+  const invitedName = input.name.trim();
+  const permissions = effectiveOrganizationPermissions(input.role, normalizeOrganizationPermissions(input.permissions));
   const token = randomBytes(32).toString("base64url");
   const tokenHash = hashInvitationToken(token);
   const expiresAt = new Date(Date.now() + invitationLifetimeMs);
@@ -106,13 +111,17 @@ export async function createOrganizationInvitation(input: {
       create: {
         organizationId: input.organizationId,
         email,
+        invitedName,
         role: input.role,
+        permissions,
         tokenHash,
         invitedById: input.actorUserId,
         expiresAt,
       },
       update: {
         role: input.role,
+        invitedName,
+        permissions,
         tokenHash,
         invitedById: input.actorUserId,
         status: "PENDING",
@@ -122,7 +131,7 @@ export async function createOrganizationInvitation(input: {
         revokedAt: null,
       },
       select: {
-        id: true, email: true, role: true, status: true, expiresAt: true, createdAt: true,
+        id: true, email: true, invitedName: true, role: true, permissions: true, status: true, expiresAt: true, createdAt: true,
         organization: { select: { name: true } },
       },
     });
@@ -133,7 +142,7 @@ export async function createOrganizationInvitation(input: {
       resourceType: "OrganizationInvitation",
       resourceId: saved.id,
       summary: `Invited ${email} as ${input.role.toLowerCase().replaceAll("_", " ")}`,
-      metadata: { email, role: input.role, expiresAt: expiresAt.toISOString() },
+      metadata: { email, invitedName, role: input.role, permissions, expiresAt: expiresAt.toISOString() },
       requestId: input.requestId,
     });
     return saved;
@@ -142,7 +151,7 @@ export async function createOrganizationInvitation(input: {
   let emailDelivery: "sent" | "failed" | "not_configured" = "not_configured";
   if (emailIsConfigured()) {
     try {
-      await sendOrganizationInvitationEmail(invitation.email, invitation.organization.name, invitation.role, url);
+      await sendOrganizationInvitationEmail(invitation.email, invitedName, invitation.organization.name, invitation.role, permissions, url);
       emailDelivery = "sent";
     } catch (error) {
       emailDelivery = "failed";
@@ -168,14 +177,14 @@ export async function revokeOrganizationInvitation(input: {
   });
   if (!invitation) throw new OrganizationTeamError("Invitation not found", 404);
   if (invitation.status !== "PENDING") throw new OrganizationTeamError("Only a pending invitation can be revoked", 409);
-  if (input.actorRole === "ADMIN" && privilegedRoles.has(invitation.role)) {
+  if (input.actorRole === "ADMIN" && invitation.role === "OWNER") {
     throw new OrganizationTeamError("Only an owner can revoke this invitation", 409);
   }
   return prisma.$transaction(async (tx) => {
     await lockOrganization(tx, input.organizationId);
     const current = await tx.organizationInvitation.findUnique({ where: { id: invitation.id } });
     if (!current || current.status !== "PENDING") throw new OrganizationTeamError("Only a pending invitation can be revoked", 409);
-    if (input.actorRole === "ADMIN" && privilegedRoles.has(current.role)) {
+    if (input.actorRole === "ADMIN" && current.role === "OWNER") {
       throw new OrganizationTeamError("Only an owner can revoke this invitation", 409);
     }
     const updated = await tx.organizationInvitation.update({
@@ -201,7 +210,7 @@ export async function revokeOrganizationInvitation(input: {
 export async function previewOrganizationInvitation(token: string) {
   const invitation = await prisma.organizationInvitation.findUnique({
     where: { tokenHash: hashInvitationToken(token) },
-    select: { status: true, email: true, role: true, expiresAt: true, organization: { select: { name: true, slug: true } } },
+    select: { status: true, email: true, invitedName: true, role: true, permissions: true, expiresAt: true, organization: { select: { name: true, slug: true } } },
   });
   if (!invitation || invitation.status !== "PENDING") throw new OrganizationTeamError("Invitation is invalid or no longer available", 404);
   if (invitation.expiresAt <= new Date()) {
@@ -214,7 +223,9 @@ export async function previewOrganizationInvitation(token: string) {
   return {
     organization: invitation.organization,
     email: maskInvitationEmail(invitation.email),
+    name: invitation.invitedName,
     role: invitation.role,
+    permissions: effectiveOrganizationPermissions(invitation.role as OrganizationRole, invitation.permissions),
     expiresAt: invitation.expiresAt,
   };
 }
@@ -222,11 +233,13 @@ export async function previewOrganizationInvitation(token: string) {
 export async function acceptOrganizationInvitation(input: {
   token: string;
   name?: string;
+  password: string;
   jwt: JwtConfiguration;
   requestId?: string;
-}): Promise<{ pair: TokenPair; organization: { id: string; name: string; slug: string }; user: { id: string; email: string; name: string | null }; role: OrganizationRole }> {
+}): Promise<{ pair: TokenPair; organization: { id: string; name: string; slug: string }; user: { id: string; email: string; name: string | null }; role: OrganizationRole; permissions: string[] }> {
   const tokenHash = hashInvitationToken(input.token);
   const now = new Date();
+  const passwordHash = await hashPassword(input.password);
   try {
     return await prisma.$transaction(async (tx) => {
       let invitation = await tx.organizationInvitation.findUnique({
@@ -246,20 +259,23 @@ export async function acceptOrganizationInvitation(input: {
       }
       const existingUser = await tx.user.findFirst({
         where: { email: { equals: invitation.email, mode: "insensitive" } },
-        select: { id: true },
+        select: { id: true, passwordHash: true },
       });
+      if (existingUser?.passwordHash && !(await verifyPassword(input.password, existingUser.passwordHash))) {
+        throw new OrganizationTeamError("This email already has a PartPulse account. Enter its existing password to accept the invitation", 409);
+      }
       const user = existingUser
         ? await tx.user.update({
           where: { id: existingUser.id },
-          data: { ...(input.name?.trim() ? { name: input.name.trim() } : {}), emailVerifiedAt: now },
+          data: { name: input.name?.trim() || invitation.invitedName || undefined, emailVerifiedAt: now, ...(!existingUser.passwordHash ? { passwordHash, passwordChangedAt: now } : {}), failedLoginAttempts: 0, lockedUntil: null },
           select: { id: true, email: true, name: true },
         })
         : await tx.user.create({
-          data: { email: invitation.email, name: input.name?.trim() || null, emailVerifiedAt: now },
+          data: { email: invitation.email, name: input.name?.trim() || invitation.invitedName || null, emailVerifiedAt: now, passwordHash, passwordChangedAt: now },
           select: { id: true, email: true, name: true },
         });
       await tx.organizationMembership.create({
-        data: { organizationId: invitation.organizationId, userId: user.id, role: invitation.role },
+        data: { organizationId: invitation.organizationId, userId: user.id, role: invitation.role, permissions: invitation.permissions },
       });
       await tx.organizationInvitation.update({
         where: { id: invitation.id },
@@ -275,6 +291,7 @@ export async function acceptOrganizationInvitation(input: {
         metadata: { role: invitation.role },
         requestId: input.requestId,
       });
+      await tx.refreshSession.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: now } });
       const store: RefreshSessionStore = {
         membershipExists: async (userId, organizationId) => Boolean(await tx.organizationMembership.findUnique({
           where: { organizationId_userId: { organizationId, userId } },
@@ -285,7 +302,7 @@ export async function acceptOrganizationInvitation(input: {
         revoke: async () => undefined,
       };
       const pair = await issueTokenPair({ userId: user.id, organizationId: invitation.organizationId }, input.jwt, store, now);
-      return { pair, organization: invitation.organization, user, role: invitation.role };
+      return { pair, organization: invitation.organization, user, role: invitation.role, permissions: effectiveOrganizationPermissions(invitation.role as OrganizationRole, invitation.permissions) };
     });
   } catch (error) {
     if (error instanceof OrganizationTeamError) throw error;
@@ -310,6 +327,7 @@ export async function changeOrganizationMemberRole(input: {
   actorRole: OrganizationRole;
   membershipId: string;
   role: OrganizationRole;
+  permissions?: string[];
   requestId?: string;
 }) {
   const membership = await prisma.organizationMembership.findFirst({
@@ -320,13 +338,14 @@ export async function changeOrganizationMemberRole(input: {
   if (!canManageMemberRole(input.actorRole, membership.role, input.role)) {
     throw new OrganizationTeamError("You cannot assign or modify this role", 409);
   }
-  if (membership.role === input.role) return membership;
+  const permissions = effectiveOrganizationPermissions(input.role, normalizeOrganizationPermissions(input.permissions ?? membership.permissions));
+  if (membership.role === input.role && JSON.stringify(membership.permissions) === JSON.stringify(permissions)) return membership;
   return prisma.$transaction(async (tx) => {
     await lockOrganization(tx, input.organizationId);
     await assertLastOwnerSafe(tx, input.organizationId, membership.id, membership.role, input.role);
     const updated = await tx.organizationMembership.update({
       where: { id: membership.id },
-      data: { role: input.role },
+      data: { role: input.role, permissions },
       include: { user: { select: { id: true, email: true, name: true } } },
     });
     await recordAuditEvent(tx, {
@@ -337,7 +356,7 @@ export async function changeOrganizationMemberRole(input: {
       resourceId: membership.id,
       severity: privilegedRoles.has(input.role) || privilegedRoles.has(membership.role) ? "WARNING" : "INFO",
       summary: `Changed ${membership.user.email} from ${membership.role} to ${input.role}`,
-      metadata: { userId: membership.userId, previousRole: membership.role, role: input.role },
+      metadata: { userId: membership.userId, previousRole: membership.role, role: input.role, permissions },
       requestId: input.requestId,
     });
     return updated;

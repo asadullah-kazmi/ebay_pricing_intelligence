@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "../../components/AuthProvider";
 import styles from "./settings.module.css";
+import UserManagement from "./UserManagement";
 
 interface Security {
   email: string;
@@ -37,7 +38,8 @@ export default function SettingsWorkspace() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [tab, setTab] = useState<"security" | "workspace">("security");
+  const [tab, setTab] = useState<"security" | "workspace" | "users">("security");
+  const canManageUsers = session?.role === "OWNER" || session?.role === "ADMIN" || session?.permissions?.includes("team.manage");
 
   const load = useCallback(async () => {
     if (authStatus !== "ready") return;
@@ -238,6 +240,15 @@ export default function SettingsWorkspace() {
         >
           Workspace
         </button>
+        {canManageUsers && <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "users"}
+          className={tab === "users" ? styles.tabActive : undefined}
+          onClick={() => setTab("users")}
+        >
+          User management
+        </button>}
       </div>
 
       {tab === "security" && (
@@ -388,10 +399,10 @@ export default function SettingsWorkspace() {
               <p>Team access and role management for this PartPulse organization.</p>
             </div>
             <div className={styles.linkList}>
-              <Link href="/admin/team">
+              {canManageUsers && <button type="button" onClick={() => setTab("users")}>
                 <b>Team management</b>
-                <span>Invite members and assign catalog, ops, and admin roles</span>
-              </Link>
+                <span>Invite users and assign Admin, Listing Manager, or Store Manager access</span>
+              </button>}
               <Link href="/reports">
                 <b>Operations reports</b>
                 <span>Publishing health, failed jobs, retention, and audit trail</span>
@@ -424,6 +435,8 @@ export default function SettingsWorkspace() {
           </section>
         </div>
       )}
+
+      {tab === "users" && canManageUsers && <UserManagement />}
     </div>
   );
 }

@@ -101,6 +101,8 @@ See [Tenant Operations and Audit Console](docs/ADMIN_OPERATIONS.md) for owner/ad
 
 See [Organization Onboarding and Team Management](docs/ORGANIZATION_ONBOARDING.md) for single-use invitation links, membership roles, last-owner protection, and session revocation.
 
+See [Organization Role-Based Access](docs/ROLE_BASED_ACCESS.md) for Admin, Listing Manager, and Store Manager presets, granular tab/action permissions, invitation password setup, and deployment migration steps.
+
 See [Complete Authentication and Account Security](docs/COMPLETE_AUTHENTICATION.md) for Gmail/Railway configuration, registration, verified login, password reset, account recovery, logout, and optional TOTP MFA.
 
 See [Catalog Operations](docs/CATALOG_OPERATIONS.md) for advanced catalog filters, personal saved views, atomic bulk editing, and bulk eBay policy/location assignment.

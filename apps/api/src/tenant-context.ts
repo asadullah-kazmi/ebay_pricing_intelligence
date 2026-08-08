@@ -2,11 +2,13 @@ import type { RequestHandler, Response } from "express";
 import { AuthenticationError, AuthorizationError, type OrganizationRole, verifyAccessToken } from "./auth.js";
 import { getJwtConfiguration } from "./auth-sessions.js";
 import { prisma } from "./db.js";
+import { effectiveOrganizationPermissions, hasOrganizationPermission, type OrganizationAccessPermission } from "./organization-access.js";
 
 export interface TenantContext {
   user: { id: string; email: string; name: string | null };
   organization: { id: string; name: string; slug: string };
   role: OrganizationRole;
+  permissions: OrganizationAccessPermission[];
 }
 
 interface MembershipRecord extends TenantContext {}
@@ -18,11 +20,14 @@ async function findMembership(userId: string, organizationId: string): Promise<M
     where: { organizationId_userId: { organizationId, userId } },
     select: {
       role: true,
+      permissions: true,
       user: { select: { id: true, email: true, name: true } },
       organization: { select: { id: true, name: true, slug: true } },
     },
   });
-  return membership ? { ...membership, role: membership.role as OrganizationRole } : null;
+  if (!membership) return null;
+  const role = membership.role as OrganizationRole;
+  return { ...membership, role, permissions: effectiveOrganizationPermissions(role, membership.permissions) };
 }
 
 function readBearerToken(authorization: string | undefined): string {
@@ -65,6 +70,28 @@ export function requireOrganizationRoles(...allowedRoles: OrganizationRole[]): R
     const tenant = res.locals.tenant as TenantContext | undefined;
     if (!tenant) return res.status(401).json({ error: "Authentication required" });
     if (!allowed.has(tenant.role)) return res.status(403).json({ error: "Insufficient organization permission" });
+    next();
+  };
+}
+
+export function requireOrganizationPermission(permission: OrganizationAccessPermission): RequestHandler {
+  return (_req, res, next) => {
+    const tenant = res.locals.tenant as TenantContext | undefined;
+    if (!tenant) return res.status(401).json({ error: "Authentication required" });
+    if (!hasOrganizationPermission(tenant.role, tenant.permissions, permission)) {
+      return res.status(403).json({ error: "Insufficient organization permission", permission });
+    }
+    next();
+  };
+}
+
+export function requireAnyOrganizationPermission(...permissions: OrganizationAccessPermission[]): RequestHandler {
+  return (_req, res, next) => {
+    const tenant = res.locals.tenant as TenantContext | undefined;
+    if (!tenant) return res.status(401).json({ error: "Authentication required" });
+    if (!permissions.some((permission) => hasOrganizationPermission(tenant.role, tenant.permissions, permission))) {
+      return res.status(403).json({ error: "Insufficient organization permission", permissions });
+    }
     next();
   };
 }

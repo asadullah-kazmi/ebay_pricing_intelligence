@@ -2,6 +2,7 @@
 
 import { Fragment, FormEvent, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../components/AuthProvider";
+import { permissionSet } from "../../lib/organization-access";
 import styles from "./pricing.module.css";
 
 type SearchResult = {
@@ -350,11 +351,13 @@ function BulkSellingCalculator({
   targetMarginPercent,
   bufferPercent,
   onSavePrice,
+  editable,
 }: {
   item: BulkPricingItem;
   targetMarginPercent: number | null;
   bufferPercent: number | null;
   onSavePrice: (itemId: string, newPrice: number | string | null) => Promise<void>;
+  editable: boolean;
 }) {
   const targetMargin = targetMarginPercent ?? 20;
   const buffer = bufferPercent ?? 0;
@@ -371,7 +374,7 @@ function BulkSellingCalculator({
 
   return (
     <div className={styles.simpleCalculator}>
-      <div className={styles.calculatorEditHeader}>
+      {editable && <div className={styles.calculatorEditHeader}>
         <div className={styles.calculatorPriceInputGroup}>
           <label htmlFor={`calc-price-${item.id}`}>
             <span>Override selling price</span>
@@ -424,7 +427,7 @@ function BulkSellingCalculator({
             </button>
           )}
         </div>
-      </div>
+      </div>}
 
       <div className={styles.costBreakdownSimple}>
         <div className={styles.breakdownRow}>
@@ -469,7 +472,9 @@ function BulkSellingCalculator({
 }
 
 export default function PricingWorkspace() {
-  const { status: authStatus, demo, apiFetch } = useAuth();
+  const { status: authStatus, demo, apiFetch, session } = useAuth();
+  const access = permissionSet(session?.role, session?.permissions);
+  const canEditPricing = access.has("pricing.edit");
   const [mode, setMode] = useState<"single" | "bulk">("single");
   const [oem, setOem] = useState("8K0615301M");
   const [marketplace, setMarketplace] = useState("EBAY_US");
@@ -1622,7 +1627,7 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
                                   autoFocus
                                 />
                               </div>
-                              <button
+                              {canEditPricing && <button
                                 type="button"
                                 className={styles.inlineSaveBtn}
                                 disabled={savingItemId === item.id}
@@ -1630,7 +1635,7 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
                                 title="Save price"
                               >
                                 ✓
-                              </button>
+                              </button>}
                               <button
                                 type="button"
                                 className={styles.inlineCancelBtn}
@@ -1790,7 +1795,7 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
                                   </svg>
                                 </button>
                               </div>
-                              <BulkSellingCalculator item={item} targetMarginPercent={bulkJob.targetMarginPercent} bufferPercent={bulkJob.bufferPercent} onSavePrice={saveItemSellingPrice} />
+                              <BulkSellingCalculator item={item} targetMarginPercent={bulkJob.targetMarginPercent} bufferPercent={bulkJob.bufferPercent} onSavePrice={saveItemSellingPrice} editable={canEditPricing} />
                             </div>
                           </td>
                         </tr>

@@ -9,6 +9,7 @@ function tenant(role: OrganizationRole): TenantContext {
     user: { id: "user-1", email: "operator@example.com", name: "Operator" },
     organization: { id: "org-1", name: "Test Auto", slug: "test-auto" },
     role,
+    permissions: [],
   };
 }
 

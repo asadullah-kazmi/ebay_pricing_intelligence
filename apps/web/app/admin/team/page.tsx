@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import TeamManagement from "./TeamManagement";
+import { redirect } from "next/navigation";
 
 export const metadata: Metadata = {
   title: "Team Management | PartPulse",
@@ -7,5 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function TeamPage() {
-  return <TeamManagement />;
+  redirect("/settings");
 }

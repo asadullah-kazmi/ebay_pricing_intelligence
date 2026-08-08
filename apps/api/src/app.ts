@@ -45,8 +45,9 @@ import {
 } from "./bulk-pricing-service.js";
 import { approveFitmentCandidate, createFitmentJob, FitmentJobError, getFitmentJob, listFitmentJobs, startFitmentJob } from "./fitment-service.js";
 import { completeEbayAuthorization, createEbayAuthorization, disconnectEbayConnection, EbaySellerOAuthError, ebayOAuthRedirectMessage, ebayOAuthRedirectReason, getEbayConnection } from "./ebay-seller-oauth.js";
-import { getTenantContext, requireOrganizationRoles, requireTenantContext } from "./tenant-context.js";
+import { getTenantContext, requireAnyOrganizationPermission, requireOrganizationPermission, requireOrganizationRoles, requireTenantContext } from "./tenant-context.js";
 import { organizationPermissionRoles } from "./authorization-policy.js";
+import { organizationPermissions } from "./organization-access.js";
 import { getWorkerHealth } from "./worker-operations.js";
 import { executeIdempotent, IdempotencyError } from "./idempotency-service.js";
 import { DeadLetterError, listDeadLetters, requeueDeadLetter } from "./dead-letter-service.js";
@@ -393,20 +394,28 @@ const retentionRunSchema = z.object({
   }
 });
 const retentionRunListSchema = z.object({ limit: z.coerce.number().int().min(1).max(50).default(20) });
-const organizationRoleSchema = z.enum(["OWNER", "ADMIN", "MANAGER", "CATALOG_OPERATOR", "PRICING_OPERATOR", "PUBLISHER", "VIEWER"]);
+const organizationRoleSchema = z.enum(["OWNER", "ADMIN", "LISTING_MANAGER", "STORE_MANAGER", "MANAGER", "CATALOG_OPERATOR", "PRICING_OPERATOR", "PUBLISHER", "VIEWER"]);
+const assignableOrganizationRoleSchema = z.enum(["ADMIN", "LISTING_MANAGER", "STORE_MANAGER"]);
+const organizationPermissionSchema = z.enum(organizationPermissions);
+const securePasswordSchema = z.string().min(12).max(128).refine(passwordMeetsPolicy, "Password must include uppercase, lowercase, number, and symbol");
 const invitationTokenSchema = z.string().trim().min(32).max(200);
 const invitationPreviewSchema = z.object({ token: invitationTokenSchema }).strict();
 const invitationAcceptSchema = z.object({
   token: invitationTokenSchema,
   name: z.string().trim().min(1).max(100).optional(),
+  password: securePasswordSchema,
 }).strict();
 const createInvitationSchema = z.object({
+  name: z.string().trim().min(1).max(100),
   email: z.string().trim().email().max(320),
-  role: organizationRoleSchema,
+  role: assignableOrganizationRoleSchema,
+  permissions: z.array(organizationPermissionSchema).max(50),
 }).strict();
-const changeMemberRoleSchema = z.object({ role: organizationRoleSchema }).strict();
+const changeMemberRoleSchema = z.object({
+  role: assignableOrganizationRoleSchema,
+  permissions: z.array(organizationPermissionSchema).max(50),
+}).strict();
 const emailSchema = z.string().trim().email().max(320);
-const securePasswordSchema = z.string().min(12).max(128).refine(passwordMeetsPolicy, "Password must include uppercase, lowercase, number, and symbol");
 const registerAccountSchema = z.object({
   email: emailSchema,
   name: z.string().trim().min(1).max(100),
@@ -652,6 +661,7 @@ app.post("/api/invitations/accept", authRateLimit, async (req, res, next) => {
       organization: accepted.organization,
       user: accepted.user,
       role: accepted.role,
+      permissions: accepted.permissions,
     });
   } catch (error) { next(error); }
 });
@@ -763,14 +773,14 @@ app.get("/api/ebay/resources", requireTenantContext, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-app.post("/api/ebay/resources/sync", writeRateLimit, requireTenantContext, listingDraftRoles, async (req, res, next) => {
+app.post("/api/ebay/resources/sync", writeRateLimit, requireTenantContext, requireOrganizationPermission("catalog.publish"), async (req, res, next) => {
   try {
     const { marketplace } = sellerResourceSyncSchema.parse(req.body);
     res.json(await syncSellerResources(getTenantContext(res).organization.id, marketplace));
   } catch (error) { next(error); }
 });
 
-app.post("/api/ebay/categories/:categoryId/aspects/refresh", writeRateLimit, requireTenantContext, listingDraftRoles, async (req, res, next) => {
+app.post("/api/ebay/categories/:categoryId/aspects/refresh", writeRateLimit, requireTenantContext, requireOrganizationPermission("catalog.publish"), async (req, res, next) => {
   try {
     const categoryId = req.params.categoryId;
     if (typeof categoryId !== "string" || !/^[A-Za-z0-9_-]{1,50}$/.test(categoryId)) return res.status(400).json({ error: "Invalid category ID" });
@@ -806,7 +816,7 @@ app.post("/api/auth/logout", async (req, res, next) => {
   }
 });
 
-app.post("/api/media/upload-url", requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+app.post("/api/media/upload-url", requireTenantContext, requireOrganizationPermission("media.upload"), async (req, res, next) => {
   try {
     const storage = getObjectStorage();
     if (!storage) return res.status(503).json({ error: "Object storage is not configured" });
@@ -830,7 +840,7 @@ app.get("/api/imports/template/schema", requireTenantContext, (_req, res) => {
   res.json(catalogImportTemplate);
 });
 
-app.post("/api/imports/validate", importRateLimit, requireTenantContext, mediaUploadRoles, importBody, async (req, res, next) => {
+app.post("/api/imports/validate", importRateLimit, requireTenantContext, requireOrganizationPermission("pipeline.upload"), importBody, async (req, res, next) => {
   try {
     const storage = getObjectStorage();
     if (!storage) return res.status(503).json({ error: "Object storage is not configured" });
@@ -863,7 +873,7 @@ app.post("/api/imports/validate", importRateLimit, requireTenantContext, mediaUp
   } catch (error) { next(error); }
 });
 
-app.post("/api/imports/:id/images", importRateLimit, requireTenantContext, mediaUploadRoles, imageArchiveBody, async (req, res, next) => {
+app.post("/api/imports/:id/images", importRateLimit, requireTenantContext, requireOrganizationPermission("pipeline.upload"), imageArchiveBody, async (req, res, next) => {
   try {
     const storage = getObjectStorage();
     if (!storage) return res.status(503).json({ error: "Object storage is not configured" });
@@ -895,7 +905,7 @@ app.get("/api/imports/:id/preview", requireTenantContext, async (req, res, next)
   } catch (error) { next(error); }
 });
 
-app.patch("/api/imports/:id/media-matches/:matchId", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+app.patch("/api/imports/:id/media-matches/:matchId", writeRateLimit, requireTenantContext, requireOrganizationPermission("pipeline.manage"), async (req, res, next) => {
   try {
     const importBatchId = req.params.id;
     const mediaMatchId = req.params.matchId;
@@ -913,7 +923,7 @@ app.patch("/api/imports/:id/media-matches/:matchId", writeRateLimit, requireTena
   } catch (error) { next(error); }
 });
 
-app.delete("/api/imports/:id/media-matches/:matchId", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+app.delete("/api/imports/:id/media-matches/:matchId", writeRateLimit, requireTenantContext, requireOrganizationPermission("pipeline.manage"), async (req, res, next) => {
   try {
     const importBatchId = req.params.id;
     const mediaMatchId = req.params.matchId;
@@ -925,7 +935,7 @@ app.delete("/api/imports/:id/media-matches/:matchId", writeRateLimit, requireTen
   } catch (error) { next(error); }
 });
 
-app.post("/api/imports/:id/confirm", importRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+app.post("/api/imports/:id/confirm", importRateLimit, requireTenantContext, requireOrganizationPermission("pipeline.manage"), async (req, res, next) => {
   try {
     const importBatchId = req.params.id;
     if (typeof importBatchId !== "string") return res.status(400).json({ error: "Invalid import batch ID" });
@@ -935,14 +945,14 @@ app.post("/api/imports/:id/confirm", importRateLimit, requireTenantContext, medi
   } catch (error) { next(error); }
 });
 
-app.get("/api/parts", requireTenantContext, async (req, res, next) => {
+app.get("/api/parts", requireTenantContext, requireAnyOrganizationPermission("catalog.view", "inventory.view"), async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
     res.json(await listCatalogParts(tenant.organization.id, catalogQuerySchema.parse(req.query)));
   } catch (error) { next(error); }
 });
 
-app.post("/api/parts/quick-sku/identify", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+app.post("/api/parts/quick-sku/identify", writeRateLimit, requireTenantContext, requireOrganizationPermission("quick_sku.create"), async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
     const input = quickSkuIdentifySchema.parse(req.body);
@@ -950,14 +960,14 @@ app.post("/api/parts/quick-sku/identify", writeRateLimit, requireTenantContext, 
   } catch (error) { next(error); }
 });
 
-app.post("/api/parts/quick-sku/identify-ai", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+app.post("/api/parts/quick-sku/identify-ai", writeRateLimit, requireTenantContext, requireOrganizationPermission("quick_sku.create"), async (req, res, next) => {
   try {
     const input = quickSkuAiEnhanceSchema.parse(req.body);
     res.json(await enhanceQuickSkuWithAi(input.identify, { condition: input.condition }));
   } catch (error) { next(error); }
 });
 
-app.post("/api/parts/quick-sku/fitment", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+app.post("/api/parts/quick-sku/fitment", writeRateLimit, requireTenantContext, requireOrganizationPermission("quick_sku.create"), async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
     const input = quickSkuFitmentSchema.parse(req.body);
@@ -965,14 +975,14 @@ app.post("/api/parts/quick-sku/fitment", writeRateLimit, requireTenantContext, m
   } catch (error) { next(error); }
 });
 
-app.post("/api/parts/quick-sku/prepare", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+app.post("/api/parts/quick-sku/prepare", writeRateLimit, requireTenantContext, requireOrganizationPermission("quick_sku.create"), async (req, res, next) => {
   try {
     const input = quickSkuPrepareSchema.parse(req.body);
     res.json(assembleQuickSkuPrepared(input));
   } catch (error) { next(error); }
 });
 
-app.post("/api/parts/quick-sku", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+app.post("/api/parts/quick-sku", writeRateLimit, requireTenantContext, requireOrganizationPermission("quick_sku.create"), async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
     const body = req.body as Record<string, unknown>;
@@ -1026,7 +1036,7 @@ app.delete("/api/catalog/saved-views/:id", writeRateLimit, requireTenantContext,
   } catch (error) { next(error); }
 });
 
-app.get("/api/parts/export", requireTenantContext, async (req, res, next) => {
+app.get("/api/parts/export", requireTenantContext, requireOrganizationPermission("catalog.view"), async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
     const { page: _page, pageSize: _pageSize, ...query } = catalogQuerySchema.parse(req.query);
@@ -1036,7 +1046,7 @@ app.get("/api/parts/export", requireTenantContext, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-app.patch("/api/parts/bulk-status", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+app.patch("/api/parts/bulk-status", writeRateLimit, requireTenantContext, requireOrganizationPermission("catalog.edit"), async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
     const input = catalogBulkStatusSchema.parse(req.body);
@@ -1044,7 +1054,7 @@ app.patch("/api/parts/bulk-status", writeRateLimit, requireTenantContext, mediaU
   } catch (error) { next(error); }
 });
 
-app.patch("/api/parts/bulk-edit", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+app.patch("/api/parts/bulk-edit", writeRateLimit, requireTenantContext, requireOrganizationPermission("catalog.edit"), async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
     const input = catalogBulkUpdateSchema.parse(req.body);
@@ -1052,7 +1062,7 @@ app.patch("/api/parts/bulk-edit", writeRateLimit, requireTenantContext, mediaUpl
   } catch (error) { next(error); }
 });
 
-app.post("/api/parts/bulk-delete", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+app.post("/api/parts/bulk-delete", writeRateLimit, requireTenantContext, requireOrganizationPermission("catalog.delete"), async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
     const input = catalogBulkDeleteSchema.parse(req.body);
@@ -1060,7 +1070,7 @@ app.post("/api/parts/bulk-delete", writeRateLimit, requireTenantContext, mediaUp
   } catch (error) { next(error); }
 });
 
-app.get("/api/parts/:id", requireTenantContext, async (req, res, next) => {
+app.get("/api/parts/:id", requireTenantContext, requireAnyOrganizationPermission("catalog.view", "inventory.view"), async (req, res, next) => {
   try {
     const partId = req.params.id;
     if (typeof partId !== "string") return res.status(400).json({ error: "Invalid catalog part ID" });
@@ -1068,7 +1078,7 @@ app.get("/api/parts/:id", requireTenantContext, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-app.delete("/api/parts/:id", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+app.delete("/api/parts/:id", writeRateLimit, requireTenantContext, requireOrganizationPermission("catalog.delete"), async (req, res, next) => {
   try {
     const partId = req.params.id;
     if (typeof partId !== "string") return res.status(400).json({ error: "Invalid catalog part ID" });
@@ -1077,7 +1087,7 @@ app.delete("/api/parts/:id", writeRateLimit, requireTenantContext, mediaUploadRo
   } catch (error) { next(error); }
 });
 
-app.patch("/api/parts/:id", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+app.patch("/api/parts/:id", writeRateLimit, requireTenantContext, requireOrganizationPermission("catalog.edit"), async (req, res, next) => {
   try {
     const partId = req.params.id;
     if (typeof partId !== "string") return res.status(400).json({ error: "Invalid catalog part ID" });
@@ -1085,7 +1095,7 @@ app.patch("/api/parts/:id", writeRateLimit, requireTenantContext, mediaUploadRol
   } catch (error) { next(error); }
 });
 
-app.post("/api/pricing/jobs", searchRateLimit, requireTenantContext, pricingRoles, async (req, res, next) => {
+app.post("/api/pricing/jobs", searchRateLimit, requireTenantContext, requireOrganizationPermission("pricing.run"), async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
     const input = createPricingJobSchema.parse(req.body);
@@ -1102,14 +1112,14 @@ app.post("/api/pricing/jobs", searchRateLimit, requireTenantContext, pricingRole
   } catch (error) { next(error); }
 });
 
-app.get("/api/pricing/jobs", requireTenantContext, async (req, res, next) => {
+app.get("/api/pricing/jobs", requireTenantContext, requireOrganizationPermission("pricing.view"), async (req, res, next) => {
   try {
     const { limit } = pricingJobListSchema.parse(req.query);
     res.json(await listPricingJobs(getTenantContext(res).organization.id, limit));
   } catch (error) { next(error); }
 });
 
-app.get("/api/pricing/jobs/:id", requireTenantContext, async (req, res, next) => {
+app.get("/api/pricing/jobs/:id", requireTenantContext, requireOrganizationPermission("pricing.view"), async (req, res, next) => {
   try {
     const jobId = req.params.id;
     if (typeof jobId !== "string") return res.status(400).json({ error: "Invalid pricing job ID" });
@@ -1117,7 +1127,7 @@ app.get("/api/pricing/jobs/:id", requireTenantContext, async (req, res, next) =>
   } catch (error) { next(error); }
 });
 
-app.get("/api/pricing/bulk/template", requireTenantContext, pricingRoles, (_req, res) => {
+app.get("/api/pricing/bulk/template", requireTenantContext, requireOrganizationPermission("pricing.export"), (_req, res) => {
   res.set({
     "Content-Type": "text/csv; charset=utf-8",
     "Content-Disposition": `attachment; filename="${bulkPricingTemplateFilename}"`,
@@ -1126,7 +1136,7 @@ app.get("/api/pricing/bulk/template", requireTenantContext, pricingRoles, (_req,
   res.send(createBulkPricingTemplateCsv());
 });
 
-app.post("/api/pricing/bulk", searchRateLimit, requireTenantContext, pricingRoles, importBody, async (req, res, next) => {
+app.post("/api/pricing/bulk", searchRateLimit, requireTenantContext, requireOrganizationPermission("pricing.run"), importBody, async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
     const query = bulkPricingUploadQuerySchema.parse(req.query);
@@ -1153,21 +1163,21 @@ app.post("/api/pricing/bulk", searchRateLimit, requireTenantContext, pricingRole
   } catch (error) { next(error); }
 });
 
-app.post("/api/pricing/bulk/clear-stuck", requireTenantContext, pricingRoles, async (req, res, next) => {
+app.post("/api/pricing/bulk/clear-stuck", requireTenantContext, requireOrganizationPermission("pricing.run"), async (req, res, next) => {
   try {
     await cancelStuckBulkPricingJobs(getTenantContext(res).organization.id);
     res.json({ success: true });
   } catch (error) { next(error); }
 });
 
-app.get("/api/pricing/bulk/jobs", requireTenantContext, pricingRoles, async (req, res, next) => {
+app.get("/api/pricing/bulk/jobs", requireTenantContext, requireOrganizationPermission("pricing.view"), async (req, res, next) => {
   try {
     const { limit } = pricingJobListSchema.parse(req.query);
     res.json(await listBulkPricingJobs(getTenantContext(res).organization.id, limit));
   } catch (error) { next(error); }
 });
 
-app.get("/api/pricing/bulk/:id", requireTenantContext, pricingRoles, async (req, res, next) => {
+app.get("/api/pricing/bulk/:id", requireTenantContext, requireOrganizationPermission("pricing.view"), async (req, res, next) => {
   try {
     const jobId = req.params.id;
     if (typeof jobId !== "string") return res.status(400).json({ error: "Invalid bulk pricing job ID" });
@@ -1175,7 +1185,7 @@ app.get("/api/pricing/bulk/:id", requireTenantContext, pricingRoles, async (req,
   } catch (error) { next(error); }
 });
 
-app.post("/api/pricing/bulk/:id/resume", requireTenantContext, pricingRoles, async (req, res, next) => {
+app.post("/api/pricing/bulk/:id/resume", requireTenantContext, requireOrganizationPermission("pricing.run"), async (req, res, next) => {
   try {
     const jobId = req.params.id;
     if (typeof jobId !== "string") return res.status(400).json({ error: "Invalid bulk pricing job ID" });
@@ -1184,7 +1194,7 @@ app.post("/api/pricing/bulk/:id/resume", requireTenantContext, pricingRoles, asy
   } catch (error) { next(error); }
 });
 
-app.get("/api/pricing/bulk/:id/export", requireTenantContext, pricingRoles, async (req, res, next) => {
+app.get("/api/pricing/bulk/:id/export", requireTenantContext, requireOrganizationPermission("pricing.export"), async (req, res, next) => {
   try {
     const jobId = req.params.id;
     if (typeof jobId !== "string") return res.status(400).json({ error: "Invalid bulk pricing job ID" });
@@ -1198,7 +1208,7 @@ app.get("/api/pricing/bulk/:id/export", requireTenantContext, pricingRoles, asyn
   } catch (error) { next(error); }
 });
 
-app.patch("/api/pricing/bulk/items/:id", writeRateLimit, requireTenantContext, pricingRoles, async (req, res, next) => {
+app.patch("/api/pricing/bulk/items/:id", writeRateLimit, requireTenantContext, requireOrganizationPermission("pricing.edit"), async (req, res, next) => {
   try {
     const itemId = req.params.id;
     if (typeof itemId !== "string") return res.status(400).json({ error: "Invalid item ID" });
@@ -1240,7 +1250,7 @@ app.get("/api/pricing/proposals", requireTenantContext, async (req, res, next) =
   } catch (error) { next(error); }
 });
 
-app.post("/api/pricing/proposals/:id/decision", writeRateLimit, requireTenantContext, pricingRoles, async (req, res, next) => {
+app.post("/api/pricing/proposals/:id/decision", writeRateLimit, requireTenantContext, requireOrganizationPermission("pricing.edit"), async (req, res, next) => {
   try {
     const proposalId = req.params.id;
     if (typeof proposalId !== "string") return res.status(400).json({ error: "Invalid pricing proposal ID" });
@@ -1256,7 +1266,7 @@ app.post("/api/pricing/proposals/:id/decision", writeRateLimit, requireTenantCon
   } catch (error) { next(error); }
 });
 
-app.post("/api/fitment/jobs", searchRateLimit, requireTenantContext, fitmentRoles, async (req, res, next) => {
+app.post("/api/fitment/jobs", searchRateLimit, requireTenantContext, requireOrganizationPermission("fitment.manage"), async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
     const input = createFitmentJobSchema.parse(req.body);
@@ -1273,14 +1283,14 @@ app.post("/api/fitment/jobs", searchRateLimit, requireTenantContext, fitmentRole
   } catch (error) { next(error); }
 });
 
-app.get("/api/fitment/jobs", requireTenantContext, async (req, res, next) => {
+app.get("/api/fitment/jobs", requireTenantContext, requireOrganizationPermission("fitment.view"), async (req, res, next) => {
   try {
     const { limit } = pricingJobListSchema.parse(req.query);
     res.json(await listFitmentJobs(getTenantContext(res).organization.id, limit));
   } catch (error) { next(error); }
 });
 
-app.get("/api/fitment/jobs/:id", requireTenantContext, async (req, res, next) => {
+app.get("/api/fitment/jobs/:id", requireTenantContext, requireOrganizationPermission("fitment.view"), async (req, res, next) => {
   try {
     const jobId = req.params.id;
     if (typeof jobId !== "string") return res.status(400).json({ error: "Invalid fitment job ID" });
@@ -1288,7 +1298,7 @@ app.get("/api/fitment/jobs/:id", requireTenantContext, async (req, res, next) =>
   } catch (error) { next(error); }
 });
 
-app.get("/api/parts/:id/fitment", requireTenantContext, async (req, res, next) => {
+app.get("/api/parts/:id/fitment", requireTenantContext, requireOrganizationPermission("fitment.view"), async (req, res, next) => {
   try {
     const partId = req.params.id;
     if (typeof partId !== "string") return res.status(400).json({ error: "Invalid catalog part ID" });
@@ -1297,7 +1307,7 @@ app.get("/api/parts/:id/fitment", requireTenantContext, async (req, res, next) =
   } catch (error) { next(error); }
 });
 
-app.post("/api/parts/:id/fitment", writeRateLimit, requireTenantContext, fitmentRoles, async (req, res, next) => {
+app.post("/api/parts/:id/fitment", writeRateLimit, requireTenantContext, requireOrganizationPermission("fitment.manage"), async (req, res, next) => {
   try {
     const partId = req.params.id;
     if (typeof partId !== "string") return res.status(400).json({ error: "Invalid catalog part ID" });
@@ -1312,7 +1322,7 @@ app.post("/api/parts/:id/fitment", writeRateLimit, requireTenantContext, fitment
   } catch (error) { next(error); }
 });
 
-app.patch("/api/fitment/applications/:id", writeRateLimit, requireTenantContext, fitmentRoles, async (req, res, next) => {
+app.patch("/api/fitment/applications/:id", writeRateLimit, requireTenantContext, requireOrganizationPermission("fitment.manage"), async (req, res, next) => {
   try {
     const applicationId = req.params.id;
     if (typeof applicationId !== "string") return res.status(400).json({ error: "Invalid fitment application ID" });
@@ -1327,7 +1337,7 @@ app.patch("/api/fitment/applications/:id", writeRateLimit, requireTenantContext,
   } catch (error) { next(error); }
 });
 
-app.post("/api/fitment/applications/:id/decision", writeRateLimit, requireTenantContext, fitmentRoles, async (req, res, next) => {
+app.post("/api/fitment/applications/:id/decision", writeRateLimit, requireTenantContext, requireOrganizationPermission("fitment.manage"), async (req, res, next) => {
   try {
     const applicationId = req.params.id;
     if (typeof applicationId !== "string") return res.status(400).json({ error: "Invalid fitment application ID" });
@@ -1343,7 +1353,7 @@ app.post("/api/fitment/applications/:id/decision", writeRateLimit, requireTenant
   } catch (error) { next(error); }
 });
 
-app.post("/api/fitment/items/:id/approve", searchRateLimit, requireTenantContext, fitmentRoles, async (req, res, next) => {
+app.post("/api/fitment/items/:id/approve", searchRateLimit, requireTenantContext, requireOrganizationPermission("fitment.manage"), async (req, res, next) => {
   try {
     const itemId = req.params.id;
     if (typeof itemId !== "string") return res.status(400).json({ error: "Invalid fitment item ID" });
@@ -1353,7 +1363,7 @@ app.post("/api/fitment/items/:id/approve", searchRateLimit, requireTenantContext
   } catch (error) { next(error); }
 });
 
-app.post("/api/listing-drafts", writeRateLimit, requireTenantContext, listingDraftRoles, async (req, res, next) => {
+app.post("/api/listing-drafts", writeRateLimit, requireTenantContext, requireOrganizationPermission("catalog.publish"), async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
     const input = createListingDraftsSchema.parse(req.body);
@@ -1380,7 +1390,7 @@ app.get("/api/listing-drafts", requireTenantContext, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-app.post("/api/listing-drafts/bulk-policies", writeRateLimit, requireTenantContext, listingDraftRoles, async (req, res, next) => {
+app.post("/api/listing-drafts/bulk-policies", writeRateLimit, requireTenantContext, requireOrganizationPermission("catalog.publish"), async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
     const { partIds, marketplace, ...policies } = bulkListingPoliciesSchema.parse(req.body);
@@ -1402,7 +1412,7 @@ app.get("/api/listing-drafts/:id", requireTenantContext, async (req, res, next) 
   } catch (error) { next(error); }
 });
 
-app.patch("/api/listing-drafts/:id", writeRateLimit, requireTenantContext, listingDraftRoles, async (req, res, next) => {
+app.patch("/api/listing-drafts/:id", writeRateLimit, requireTenantContext, requireOrganizationPermission("catalog.publish"), async (req, res, next) => {
   try {
     const draftId = req.params.id;
     if (typeof draftId !== "string") return res.status(400).json({ error: "Invalid listing draft ID" });
@@ -1411,7 +1421,7 @@ app.patch("/api/listing-drafts/:id", writeRateLimit, requireTenantContext, listi
   } catch (error) { next(error); }
 });
 
-app.post("/api/listing-drafts/:id/validate", writeRateLimit, requireTenantContext, listingDraftRoles, async (req, res, next) => {
+app.post("/api/listing-drafts/:id/validate", writeRateLimit, requireTenantContext, requireOrganizationPermission("catalog.publish"), async (req, res, next) => {
   try {
     const draftId = req.params.id;
     if (typeof draftId !== "string") return res.status(400).json({ error: "Invalid listing draft ID" });
@@ -1421,7 +1431,7 @@ app.post("/api/listing-drafts/:id/validate", writeRateLimit, requireTenantContex
   } catch (error) { next(error); }
 });
 
-app.post("/api/listing-drafts/:id/validate-live", writeRateLimit, requireTenantContext, listingDraftRoles, async (req, res, next) => {
+app.post("/api/listing-drafts/:id/validate-live", writeRateLimit, requireTenantContext, requireOrganizationPermission("catalog.publish"), async (req, res, next) => {
   try {
     const draftId = req.params.id;
     if (typeof draftId !== "string") return res.status(400).json({ error: "Invalid listing draft ID" });
@@ -1431,7 +1441,7 @@ app.post("/api/listing-drafts/:id/validate-live", writeRateLimit, requireTenantC
   } catch (error) { next(error); }
 });
 
-app.post("/api/listing-drafts/:id/prepare-inventory", writeRateLimit, requireTenantContext, listingDraftRoles, async (req, res, next) => {
+app.post("/api/listing-drafts/:id/prepare-inventory", writeRateLimit, requireTenantContext, requireOrganizationPermission("catalog.publish"), async (req, res, next) => {
   try {
     const draftId = req.params.id;
     if (typeof draftId !== "string") return res.status(400).json({ error: "Invalid listing draft ID" });
@@ -1472,7 +1482,7 @@ app.get("/api/listing-drafts/:id/inventory-preparation", requireTenantContext, a
   } catch (error) { next(error); }
 });
 
-app.post("/api/inventory-preparations/:id/apply", writeRateLimit, requireTenantContext, listingDraftRoles, async (req, res, next) => {
+app.post("/api/inventory-preparations/:id/apply", writeRateLimit, requireTenantContext, requireOrganizationPermission("catalog.publish"), async (req, res, next) => {
   try {
     const preparationId = req.params.id;
     if (typeof preparationId !== "string") return res.status(400).json({ error: "Invalid inventory preparation ID" });
@@ -1514,7 +1524,7 @@ app.get("/api/listing-drafts/:id/inventory-sync", requireTenantContext, async (r
   } catch (error) { next(error); }
 });
 
-app.post("/api/ebay/inventory-sync-jobs/:id/offer", writeRateLimit, requireTenantContext, listingDraftRoles, async (req, res, next) => {
+app.post("/api/ebay/inventory-sync-jobs/:id/offer", writeRateLimit, requireTenantContext, requireOrganizationPermission("catalog.publish"), async (req, res, next) => {
   try {
     const inventorySyncJobId = req.params.id;
     if (typeof inventorySyncJobId !== "string") return res.status(400).json({ error: "Invalid eBay inventory sync job ID" });
@@ -1539,7 +1549,7 @@ app.post("/api/ebay/inventory-sync-jobs/:id/offer", writeRateLimit, requireTenan
   } catch (error) { next(error); }
 });
 
-app.post("/api/ebay/offers/:id/publish", writeRateLimit, requireTenantContext, listingDraftRoles, async (req, res, next) => {
+app.post("/api/ebay/offers/:id/publish", writeRateLimit, requireTenantContext, requireOrganizationPermission("catalog.publish"), async (req, res, next) => {
   try {
     const offerId = req.params.id;
     if (typeof offerId !== "string") return res.status(400).json({ error: "Invalid eBay offer ID" });
@@ -1589,7 +1599,7 @@ app.get("/api/ebay/offer-jobs/:id", requireTenantContext, async (req, res, next)
   } catch (error) { next(error); }
 });
 
-app.post("/api/ebay/offers/:id/revise", writeRateLimit, requireTenantContext, listingDraftRoles, async (req, res, next) => {
+app.post("/api/ebay/offers/:id/revise", writeRateLimit, requireTenantContext, requireOrganizationPermission("catalog.publish"), async (req, res, next) => {
   try {
     const offerId = req.params.id;
     if (typeof offerId !== "string") return res.status(400).json({ error: "Invalid eBay offer ID" });
@@ -1620,7 +1630,7 @@ app.post("/api/ebay/offers/:id/revise", writeRateLimit, requireTenantContext, li
   } catch (error) { next(error); }
 });
 
-app.post("/api/ebay/offers/:id/withdraw", writeRateLimit, requireTenantContext, listingDraftRoles, async (req, res, next) => {
+app.post("/api/ebay/offers/:id/withdraw", writeRateLimit, requireTenantContext, requireOrganizationPermission("catalog.publish"), async (req, res, next) => {
   try {
     const offerId = req.params.id;
     if (typeof offerId !== "string") return res.status(400).json({ error: "Invalid eBay offer ID" });
@@ -1646,7 +1656,7 @@ app.post("/api/ebay/offers/:id/withdraw", writeRateLimit, requireTenantContext, 
   } catch (error) { next(error); }
 });
 
-app.post("/api/ebay/offers/:id/reconcile", writeRateLimit, requireTenantContext, listingDraftRoles, async (req, res, next) => {
+app.post("/api/ebay/offers/:id/reconcile", writeRateLimit, requireTenantContext, requireOrganizationPermission("catalog.publish"), async (req, res, next) => {
   try {
     const offerId = req.params.id;
     if (typeof offerId !== "string") return res.status(400).json({ error: "Invalid eBay offer ID" });
@@ -1776,13 +1786,13 @@ app.post("/api/admin/email/verify", authRateLimit, requireTenantContext, adminOp
   } catch (error) { next(error); }
 });
 
-app.get("/api/team", requireTenantContext, teamManagementRoles, async (_req, res, next) => {
+app.get("/api/team", requireTenantContext, requireOrganizationPermission("team.manage"), async (_req, res, next) => {
   try {
     res.json(await listOrganizationTeam(getTenantContext(res).organization.id));
   } catch (error) { next(error); }
 });
 
-app.post("/api/team/invitations", writeRateLimit, requireTenantContext, teamManagementRoles, async (req, res, next) => {
+app.post("/api/team/invitations", writeRateLimit, requireTenantContext, requireOrganizationPermission("team.manage"), async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
     const input = createInvitationSchema.parse(req.body);
@@ -1796,7 +1806,7 @@ app.post("/api/team/invitations", writeRateLimit, requireTenantContext, teamMana
   } catch (error) { next(error); }
 });
 
-app.delete("/api/team/invitations/:id", writeRateLimit, requireTenantContext, teamManagementRoles, async (req, res, next) => {
+app.delete("/api/team/invitations/:id", writeRateLimit, requireTenantContext, requireOrganizationPermission("team.manage"), async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
     const invitationId = z.string().min(1).parse(req.params.id);
@@ -1810,23 +1820,24 @@ app.delete("/api/team/invitations/:id", writeRateLimit, requireTenantContext, te
   } catch (error) { next(error); }
 });
 
-app.patch("/api/team/members/:id", writeRateLimit, requireTenantContext, teamManagementRoles, async (req, res, next) => {
+app.patch("/api/team/members/:id", writeRateLimit, requireTenantContext, requireOrganizationPermission("team.manage"), async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
     const membershipId = z.string().min(1).parse(req.params.id);
-    const { role } = changeMemberRoleSchema.parse(req.body);
+    const { role, permissions } = changeMemberRoleSchema.parse(req.body);
     res.json(await changeOrganizationMemberRole({
       organizationId: tenant.organization.id,
       actorUserId: tenant.user.id,
       actorRole: tenant.role,
       membershipId,
       role,
+      permissions,
       requestId: res.locals.requestId,
     }));
   } catch (error) { next(error); }
 });
 
-app.delete("/api/team/members/:id", writeRateLimit, requireTenantContext, teamManagementRoles, async (req, res, next) => {
+app.delete("/api/team/members/:id", writeRateLimit, requireTenantContext, requireOrganizationPermission("team.manage"), async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
     const membershipId = z.string().min(1).parse(req.params.id);
@@ -1885,7 +1896,7 @@ app.post("/api/admin/dead-letters/:id/requeue", writeRateLimit, requireTenantCon
   } catch (error) { next(error); }
 });
 
-app.post("/api/media/uploads/confirm", requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+app.post("/api/media/uploads/confirm", requireTenantContext, requireOrganizationPermission("media.upload"), async (req, res, next) => {
   try {
     const storage = getObjectStorage();
     if (!storage) return res.status(503).json({ error: "Object storage is not configured" });
@@ -1932,7 +1943,7 @@ app.post("/api/media/download-urls", requireTenantContext, async (req, res, next
   } catch (error) { next(error); }
 });
 
-app.post("/api/media-drive/ingest", importRateLimit, requireTenantContext, mediaUploadRoles, mediaDriveArchiveBody, async (req, res, next) => {
+app.post("/api/media-drive/ingest", importRateLimit, requireTenantContext, requireOrganizationPermission("media.upload"), mediaDriveArchiveBody, async (req, res, next) => {
   try {
     const storage = getObjectStorage();
     if (!storage) return res.status(503).json({ error: "Object storage is not configured" });
@@ -1952,7 +1963,7 @@ app.post("/api/media-drive/ingest", importRateLimit, requireTenantContext, media
   } catch (error) { next(error); }
 });
 
-app.get("/api/media-drive/folders", requireTenantContext, async (req, res, next) => {
+app.get("/api/media-drive/folders", requireTenantContext, requireOrganizationPermission("media.view"), async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
     const query = mediaDriveFolderQuerySchema.parse(req.query);
@@ -1960,7 +1971,7 @@ app.get("/api/media-drive/folders", requireTenantContext, async (req, res, next)
   } catch (error) { next(error); }
 });
 
-app.get("/api/media-drive/folders/:partNumber", requireTenantContext, async (req, res, next) => {
+app.get("/api/media-drive/folders/:partNumber", requireTenantContext, requireOrganizationPermission("media.view"), async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
     const partNumber = req.params.partNumber;
@@ -1970,7 +1981,7 @@ app.get("/api/media-drive/folders/:partNumber", requireTenantContext, async (req
   } catch (error) { next(error); }
 });
 
-app.post("/api/media-drive/folders/:partNumber/rematch", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+app.post("/api/media-drive/folders/:partNumber/rematch", writeRateLimit, requireTenantContext, requireOrganizationPermission("media.upload"), async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
     const partNumber = req.params.partNumber;
@@ -1979,7 +1990,7 @@ app.post("/api/media-drive/folders/:partNumber/rematch", writeRateLimit, require
   } catch (error) { next(error); }
 });
 
-app.post("/api/media-drive/folders/:partNumber/link", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+app.post("/api/media-drive/folders/:partNumber/link", writeRateLimit, requireTenantContext, requireOrganizationPermission("media.upload"), async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
     const partNumber = req.params.partNumber;
@@ -1989,7 +2000,7 @@ app.post("/api/media-drive/folders/:partNumber/link", writeRateLimit, requireTen
   } catch (error) { next(error); }
 });
 
-app.delete("/api/media-drive/folders/:partNumber", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+app.delete("/api/media-drive/folders/:partNumber", writeRateLimit, requireTenantContext, requireOrganizationPermission("media.delete"), async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
     const partNumber = req.params.partNumber;

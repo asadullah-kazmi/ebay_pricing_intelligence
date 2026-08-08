@@ -10,6 +10,8 @@ datasource db {
 enum OrganizationRole {
   OWNER
   ADMIN
+  LISTING_MANAGER
+  STORE_MANAGER
   MANAGER
   CATALOG_OPERATOR
   PRICING_OPERATOR
@@ -429,6 +431,7 @@ model OrganizationMembership {
   organizationId String
   userId         String
   role           OrganizationRole
+  permissions    String[]         @default([])
   organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt      DateTime         @default(now())
@@ -443,7 +446,9 @@ model OrganizationInvitation {
   id             String                       @id @default(cuid())
   organizationId String
   email          String
+  invitedName    String?
   role           OrganizationRole
+  permissions    String[]                     @default([])
   status         OrganizationInvitationStatus @default(PENDING)
   tokenHash      String                       @unique
   invitedById    String

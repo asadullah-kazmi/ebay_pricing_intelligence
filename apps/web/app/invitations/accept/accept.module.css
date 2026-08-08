@@ -116,3 +116,6 @@
     padding-top: 38px;
   }
 }
+
+.accessSummary { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 18px; }
+.accessSummary span { display: inline-flex; padding: 6px 9px; border: 1px solid #dbeafe; border-radius: 999px; background: #eff6ff; color: #1d4ed8; font-size: 10px; font-weight: 700; }

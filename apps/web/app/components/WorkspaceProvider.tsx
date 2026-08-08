@@ -16,6 +16,7 @@ import BrandMark from "./BrandMark";
 import { AuthProvider, useAuth } from "./AuthProvider";
 import WorkspaceViews from "./WorkspaceViews";
 import styles from "./workspace.module.css";
+import { permissionSet } from "../lib/organization-access";
 
 type NavContextValue = {
   pathname: string;
@@ -84,12 +85,38 @@ function SignInPanel() {
   );
 }
 
+function AccessDeniedPanel({ href }: { href: string }) {
+  return (
+    <section className={styles.signInPanel}>
+      <BrandMark />
+      <span className={styles.eyebrow}>ACCESS CONTROL</span>
+      <h1>This area is not assigned to you</h1>
+      <p>Ask your organization administrator to add this tab or the required action to your access profile.</p>
+      <Link className={styles.signInButton} href={href}>Open an available workspace</Link>
+    </section>
+  );
+}
+
 function WorkspaceFrame({ children }: { children: ReactNode }) {
   const realPathname = usePathname();
   const [optimisticPath, setOptimisticPath] = useState<string | null>(null);
   const pathname = optimisticPath ?? realPathname;
   const { status, session, logout } = useAuth();
   const active = resolveActive(pathname);
+  const access = permissionSet(session?.role, session?.permissions);
+  const requiredTab: Partial<Record<NavKey, string>> = {
+    dashboard: "tab.dashboard", quickSku: "tab.quick_sku", pipeline: "tab.pipeline",
+    catalog: "tab.catalog", pricing: "tab.pricing", mediaDrive: "tab.media_drive",
+    inventory: "tab.inventory", orders: "tab.orders", fitment: "tab.fitment",
+    shipping: "tab.shipping", channels: "tab.channels", reports: "tab.reports", settings: "tab.settings",
+  };
+  const canOpenActive = !requiredTab[active] || access.has(requiredTab[active]!);
+  const firstAllowedHref = [
+    ["tab.dashboard", "/dashboard"], ["tab.quick_sku", "/quick-sku"], ["tab.pipeline", "/pipeline"],
+    ["tab.catalog", "/catalog"], ["tab.pricing", "/pricing"], ["tab.media_drive", "/media-drive"],
+    ["tab.inventory", "/inventory"], ["tab.orders", "/orders"], ["tab.fitment", "/fitment"],
+    ["tab.shipping", "/shipping"],
+  ].find(([permission]) => access.has(permission!))?.[1] ?? "/login";
 
   useEffect(() => {
     setOptimisticPath(null);
@@ -111,11 +138,15 @@ function WorkspaceFrame({ children }: { children: ReactNode }) {
         active={active}
         userName={session?.user.name || session?.user.email || "PartPulse"}
         userRole={session?.organization.name || "Workspace"}
+        organizationRole={session?.role}
+        permissions={session?.permissions}
         onSignOut={() => void logout()}
         onNavigate={navigateOptimistic}
       >
         {status === "required" ? (
           <SignInPanel />
+        ) : status === "ready" && !canOpenActive ? (
+          <AccessDeniedPanel href={firstAllowedHref} />
         ) : isShellWorkspace(pathname) ? (
           <WorkspaceViews pathname={pathname} />
         ) : (

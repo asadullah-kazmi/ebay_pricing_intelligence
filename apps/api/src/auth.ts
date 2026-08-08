@@ -5,6 +5,8 @@ import { z } from "zod";
 export const organizationRoles = [
   "OWNER",
   "ADMIN",
+  "LISTING_MANAGER",
+  "STORE_MANAGER",
   "MANAGER",
   "CATALOG_OPERATOR",
   "PRICING_OPERATOR",

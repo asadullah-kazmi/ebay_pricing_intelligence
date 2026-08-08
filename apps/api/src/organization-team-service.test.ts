@@ -13,10 +13,11 @@ describe("organization team security", () => {
     expect(maskInvitationEmail("a@example.com")).toBe("a**@example.com");
   });
 
-  it("prevents administrators from changing privileged memberships", () => {
+  it("protects the organization owner while allowing admin user management", () => {
     expect(canManageMemberRole("OWNER", "OWNER", "VIEWER")).toBe(true);
     expect(canManageMemberRole("ADMIN", "OWNER", "VIEWER")).toBe(false);
-    expect(canManageMemberRole("ADMIN", "MANAGER", "ADMIN")).toBe(false);
+    expect(canManageMemberRole("ADMIN", "MANAGER", "ADMIN")).toBe(true);
+    expect(canManageMemberRole("ADMIN", "ADMIN", "LISTING_MANAGER")).toBe(true);
     expect(canManageMemberRole("ADMIN", "MANAGER", "PUBLISHER")).toBe(true);
   });
 });

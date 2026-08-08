@@ -157,93 +157,36 @@ export default function PipelineWorkspace() {
         </div>
       )}
 
-      <section className={styles.stats}>
-        <article>
-          <span>Total Batches</span>
-          <b>{queue.length}</b>
-          <small>In Pipeline History</small>
-        </article>
-        <article>
-          <span>Ready for Catalog</span>
-          <b style={{ color: "#16a34a" }}>{queue.filter((q) => q.status === "READY").length}</b>
-          <small>Validated &amp; Stage Ready</small>
-        </article>
-        <article>
-          <span>Processing</span>
-          <b style={{ color: "#d97706" }}>{queue.filter((q) => q.status === "PROCESSING").length}</b>
-          <small>Parsing &amp; Enriching</small>
-        </article>
-        <article>
-          <span>Uploaded Staged</span>
-          <b style={{ color: "#2563eb" }}>{queue.filter((q) => q.status === "UPLOADED").length}</b>
-          <small>Awaiting Processing</small>
-        </article>
-      </section>
+      {/* Template Download Buttons Row */}
+      <div className={styles.templateButtonsRow}>
+        <button
+          type="button"
+          className={styles.ghostBtn}
+          disabled={downloading === "quick"}
+          onClick={() => void handleDownloadQuickExcel()}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          {downloading === "quick" ? "Generating..." : "Download Quick Template (.xlsx)"}
+        </button>
 
-      {/* Official Intake Templates Section */}
-      <section className={styles.templatesPanel}>
-        <div className={styles.panelTitle}>
-          <div>
-            <span className={styles.eyebrow}>EXCEL TEMPLATES</span>
-            <h2>Download Pipeline Intake Workbooks</h2>
-          </div>
-        </div>
-        <div className={styles.templatesGrid}>
-          <div className={styles.templateCard}>
-            <div className={styles.templateCardHead}>
-              <span className={styles.badgeBasic}>BASIC</span>
-              <h3>Quick Price &amp; Quantity Update</h3>
-            </div>
-            <div className={styles.columnsPreview}>
-              <span>Part no</span>
-              <span>Selling Price</span>
-              <span>Quantity</span>
-            </div>
-            <button
-              type="button"
-              className={styles.templateDownloadBtn}
-              disabled={downloading === "quick"}
-              onClick={() => void handleDownloadQuickExcel()}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-              {downloading === "quick" ? "Generating..." : "Download Quick Template (.xlsx)"}
-            </button>
-          </div>
-
-          <div className={styles.templateCard}>
-            <div className={styles.templateCardHead}>
-              <span className={styles.badgeStandard}>STANDARD</span>
-              <h3>Full Catalog Listing Intake</h3>
-            </div>
-            <div className={styles.columnsPreview}>
-              <span>Part Number</span>
-              <span>Selling Price</span>
-              <span>Quantity</span>
-              <span>Brand</span>
-              <span>Description</span>
-              <span>PicsURL</span>
-              <span>SKU</span>
-            </div>
-            <button
-              type="button"
-              className={styles.templateDownloadBtnPrimary}
-              disabled={downloading === "full"}
-              onClick={() => void handleDownloadFullExcel()}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-              {downloading === "full" ? "Generating..." : "Download Full Template (.xlsx)"}
-            </button>
-          </div>
-        </div>
-      </section>
+        <button
+          type="button"
+          className={styles.ghostBtn}
+          disabled={downloading === "full"}
+          onClick={() => void handleDownloadFullExcel()}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          {downloading === "full" ? "Generating..." : "Download Full Template (.xlsx)"}
+        </button>
+      </div>
 
       <section className={styles.uploadGrid}>
         <form className={styles.uploadCard} onSubmit={uploadSpreadsheet}>
@@ -290,33 +233,6 @@ export default function PipelineWorkspace() {
             </button>
           </div>
         </form>
-
-        <aside className={styles.rulesCard}>
-          <span className={styles.eyebrow}>BULK UPLOAD RULES</span>
-          <h2>Before you upload</h2>
-          <ul className={styles.rulesList}>
-            <li>
-              <span className={styles.ruleCheck}>✓</span>
-              <span>Switch to Tab 2 (Intake Sheet) in the downloaded Excel workbook to paste parts.</span>
-            </li>
-            <li>
-              <span className={styles.ruleCheck}>✓</span>
-              <span>Keep Row 1 headers intact in the intake sheet.</span>
-            </li>
-            <li>
-              <span className={styles.ruleCheck}>✓</span>
-              <span>Image ZIP uploads happen after spreadsheet validation.</span>
-            </li>
-            <li>
-              <span className={styles.ruleCheck}>✓</span>
-              <span>Review blockers in preview before confirming into the live catalog.</span>
-            </li>
-          </ul>
-          <div className={styles.infoBox}>
-            <span className={styles.infoIcon}>i</span>
-            <span>Tip: confirm imports only after image matches and required fields are complete.</span>
-          </div>
-        </aside>
       </section>
 
       <section className={styles.queuePanel}>

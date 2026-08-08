@@ -155,13 +155,17 @@ export function sendAccountRecoveryEmail(to: string, url: string) {
   });
 }
 
-export function sendOrganizationInvitationEmail(to: string, organizationName: string, role: string, url: string) {
+export function sendOrganizationInvitationEmail(to: string, invitedName: string, organizationName: string, role: string, permissions: string[], url: string) {
+  const roleLabel = role === "LISTING_MANAGER" ? "Listing Manager" : role === "STORE_MANAGER" ? "Store Manager" : "Admin";
+  const tabLabels = permissions
+    .filter((permission) => permission.startsWith("tab."))
+    .map((permission) => permission.slice(4).replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()));
   return sendActionEmail({
     to,
     subject: `Join ${organizationName} on PartPulse`,
-    heading: `Join ${organizationName}`,
-    message: `You have been invited to PartPulse with the ${role.toLowerCase().replaceAll("_", " ")} role. This single-use invitation expires in seven days.`,
-    action: "Accept invitation",
+    heading: `${invitedName}, join ${organizationName}`,
+    message: `You have been invited as ${roleLabel}. Your workspace includes ${tabLabels.length ? tabLabels.join(", ") : "the access selected by your administrator"}. Accept the invitation and create your secure password. This single-use link expires in seven days.`,
+    action: "Accept invitation and set password",
     url,
   });
 }
