@@ -45,3 +45,27 @@ export function permissionSet(role: string | undefined, permissions: string[] | 
   if (role === "LISTING_MANAGER" || role === "STORE_MANAGER") return new Set(defaultPermissionsForRole(role));
   return new Set<string>();
 }
+
+const routeByTabPermission: Record<string, string> = {
+  "tab.dashboard": "/dashboard",
+  "tab.quick_sku": "/quick-sku",
+  "tab.pipeline": "/pipeline",
+  "tab.catalog": "/catalog",
+  "tab.pricing": "/pricing",
+  "tab.media_drive": "/media-drive",
+  "tab.inventory": "/inventory",
+  "tab.orders": "/orders",
+  "tab.fitment": "/fitment",
+  "tab.shipping": "/shipping",
+  "tab.channels": "/channels",
+  "tab.reports": "/reports",
+  "tab.settings": "/settings",
+};
+
+/** Returns the first workspace route visible to this organization member. */
+export function firstAllowedRoute(role: string | undefined, permissions: string[] | undefined) {
+  const access = permissionSet(role, permissions);
+  return accessOptions
+    .map((option) => [option.permission, routeByTabPermission[option.permission]] as const)
+    .find(([permission, route]) => Boolean(route) && access.has(permission))?.[1] ?? "/login";
+}

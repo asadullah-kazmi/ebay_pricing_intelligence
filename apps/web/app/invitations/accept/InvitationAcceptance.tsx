@@ -2,6 +2,8 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import BrandMark from "../../components/BrandMark";
+import { primeAuthenticatedSession } from "../../lib/auth-session";
+import { firstAllowedRoute } from "../../lib/organization-access";
 import styles from "./accept.module.css";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -75,19 +77,17 @@ export default function InvitationAcceptance() {
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "Unable to accept invitation");
       setState("complete");
-      const routeByTab: Record<string, string> = {
-        "tab.dashboard": "/dashboard",
-        "tab.quick_sku": "/quick-sku",
-        "tab.pipeline": "/pipeline",
-        "tab.catalog": "/catalog",
-        "tab.pricing": "/pricing",
-        "tab.media_drive": "/media-drive",
-        "tab.inventory": "/inventory",
-        "tab.orders": "/orders",
-        "tab.fitment": "/fitment",
-        "tab.shipping": "/shipping",
-      };
-      const destination = preview?.permissions.map((permission) => routeByTab[permission]).find(Boolean) ?? "/login";
+      primeAuthenticatedSession({
+        accessToken: body.accessToken,
+        expiresIn: body.accessTokenExpiresIn,
+        workspace: {
+          user: body.user,
+          organization: body.organization,
+          role: body.role,
+          permissions: body.permissions,
+        },
+      });
+      const destination = firstAllowedRoute(body.role, body.permissions);
       window.setTimeout(() => window.location.assign(destination), 900);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to accept invitation");

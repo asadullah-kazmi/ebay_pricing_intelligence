@@ -16,7 +16,7 @@ import BrandMark from "./BrandMark";
 import { AuthProvider, useAuth } from "./AuthProvider";
 import WorkspaceViews from "./WorkspaceViews";
 import styles from "./workspace.module.css";
-import { permissionSet } from "../lib/organization-access";
+import { firstAllowedRoute, permissionSet } from "../lib/organization-access";
 
 type NavContextValue = {
   pathname: string;
@@ -111,12 +111,7 @@ function WorkspaceFrame({ children }: { children: ReactNode }) {
     shipping: "tab.shipping", channels: "tab.channels", reports: "tab.reports", settings: "tab.settings",
   };
   const canOpenActive = !requiredTab[active] || access.has(requiredTab[active]!);
-  const firstAllowedHref = [
-    ["tab.dashboard", "/dashboard"], ["tab.quick_sku", "/quick-sku"], ["tab.pipeline", "/pipeline"],
-    ["tab.catalog", "/catalog"], ["tab.pricing", "/pricing"], ["tab.media_drive", "/media-drive"],
-    ["tab.inventory", "/inventory"], ["tab.orders", "/orders"], ["tab.fitment", "/fitment"],
-    ["tab.shipping", "/shipping"],
-  ].find(([permission]) => access.has(permission!))?.[1] ?? "/login";
+  const firstAllowedHref = firstAllowedRoute(session?.role, session?.permissions);
 
   useEffect(() => {
     setOptimisticPath(null);

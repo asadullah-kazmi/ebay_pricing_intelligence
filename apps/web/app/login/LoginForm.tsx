@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import styles from "../auth-ui.module.css";
 import BrandMark from "../components/BrandMark";
 import { primeAuthenticatedSession, type CachedWorkspaceSession } from "../lib/auth-session";
+import { firstAllowedRoute } from "../lib/organization-access";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 type Organization = { name: string; slug: string };
@@ -34,6 +35,7 @@ export default function LoginForm() {
 
   useEffect(() => {
     router.prefetch("/dashboard");
+    router.prefetch("/quick-sku");
   }, [router]);
 
   function openWorkspace(result: AuthenticatedResult) {
@@ -47,7 +49,9 @@ export default function LoginForm() {
         permissions: result.permissions,
       },
     });
-    router.replace("/dashboard");
+    const destination = firstAllowedRoute(result.role, result.permissions);
+    router.prefetch(destination);
+    router.replace(destination);
   }
 
   async function post(path: string, body: unknown) {
