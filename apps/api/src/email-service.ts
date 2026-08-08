@@ -66,8 +66,20 @@ function renderBrandedEmail(input: { heading: string; message: string; action: s
             <td style="background:linear-gradient(135deg,#0b1426,#132038);padding:22px 28px;">
               <table role="presentation" cellspacing="0" cellpadding="0" border="0">
                 <tr>
-                  <td style="width:34px;height:34px;border-radius:9px;background:linear-gradient(145deg,#3b82f6,#0055ff);text-align:center;vertical-align:middle;">
-                    <span style="display:inline-block;width:18px;height:2px;background:#ffffff;border-radius:2px;box-shadow:0 5px 0 #ffffff,0 10px 0 #ffffff;"></span>
+                  <td style="vertical-align:middle;line-height:1;">
+                    <svg width="34" height="34" viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;">
+                      <rect width="34" height="34" rx="9" fill="url(#pp_brand_grad)"/>
+                      <rect x="7" y="9" width="13" height="3" rx="1.5" fill="white"/>
+                      <rect x="7" y="15" width="10" height="3" rx="1.5" fill="white" fill-opacity="0.85"/>
+                      <rect x="7" y="21" width="7" height="3" rx="1.5" fill="white" fill-opacity="0.65"/>
+                      <circle cx="23.5" cy="10.5" r="2.5" fill="#BFDBFE"/>
+                      <defs>
+                        <linearGradient id="pp_brand_grad" x1="0" y1="0" x2="34" y2="34" gradientUnits="userSpaceOnUse">
+                          <stop stop-color="#3B82F6"/>
+                          <stop offset="1" stop-color="#0055FF"/>
+                        </linearGradient>
+                      </defs>
+                    </svg>
                   </td>
                   <td style="padding-left:12px;font-family:'Plus Jakarta Sans',Arial,Helvetica,sans-serif;font-size:20px;font-weight:800;color:#ffffff;letter-spacing:-0.4px;">
                     Part<span style="color:#93c5fd;">Pulse</span>
