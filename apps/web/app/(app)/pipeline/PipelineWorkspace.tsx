@@ -184,17 +184,16 @@ export default function PipelineWorkspace() {
       <section className={styles.templatesPanel}>
         <div className={styles.panelTitle}>
           <div>
-            <span className={styles.eyebrow}>BRANDED EXCEL WORKSPACE TEMPLATES</span>
-            <h2>Official Pipeline Excel Workbooks (.xlsx)</h2>
+            <span className={styles.eyebrow}>EXCEL TEMPLATES</span>
+            <h2>Download Pipeline Intake Workbooks</h2>
           </div>
         </div>
         <div className={styles.templatesGrid}>
           <div className={styles.templateCard}>
             <div className={styles.templateCardHead}>
-              <span className={styles.badgeBasic}>BASIC TEMPLATE</span>
+              <span className={styles.badgeBasic}>BASIC</span>
               <h3>Quick Price &amp; Quantity Update</h3>
             </div>
-            <p>Includes an integrated <b>Instructions &amp; Guide</b> sheet and a <b>Quick Update Intake</b> sheet styled with PartPulse dark navy headers.</p>
             <div className={styles.columnsPreview}>
               <span>Part no</span>
               <span>Selling Price</span>
@@ -211,16 +210,15 @@ export default function PipelineWorkspace() {
                 <polyline points="7 10 12 15 17 10" />
                 <line x1="12" y1="15" x2="12" y2="3" />
               </svg>
-              {downloading === "quick" ? "Generating Excel Workbook..." : "Download Quick Update Workbook (.xlsx)"}
+              {downloading === "quick" ? "Generating..." : "Download Quick Template (.xlsx)"}
             </button>
           </div>
 
           <div className={styles.templateCard}>
             <div className={styles.templateCardHead}>
-              <span className={styles.badgeStandard}>STANDARD TEMPLATE</span>
+              <span className={styles.badgeStandard}>STANDARD</span>
               <h3>Full Catalog Listing Intake</h3>
             </div>
-            <p>Comprehensive workbook with a step-by-step <b>Guide</b> sheet and a pre-formatted <b>Full Catalog Intake</b> sheet with branded headers &amp; sample items.</p>
             <div className={styles.columnsPreview}>
               <span>Part Number</span>
               <span>Selling Price</span>
@@ -241,7 +239,7 @@ export default function PipelineWorkspace() {
                 <polyline points="7 10 12 15 17 10" />
                 <line x1="12" y1="15" x2="12" y2="3" />
               </svg>
-              {downloading === "full" ? "Generating Excel Workbook..." : "Download Full Catalog Workbook (.xlsx)"}
+              {downloading === "full" ? "Generating..." : "Download Full Template (.xlsx)"}
             </button>
           </div>
         </div>
