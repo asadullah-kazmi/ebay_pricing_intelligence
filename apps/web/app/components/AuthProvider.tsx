@@ -71,9 +71,9 @@ function initialAuthState(): {
     return { status: "ready", token: access.accessToken, session: profile, demo: false };
   }
   if (access) {
-    return { status: "loading", token: access.accessToken, session: null, demo: false };
+    return { status: "loading", token: access.accessToken, session: profile, demo: false };
   }
-  return { status: "loading", token: "", session: null, demo: false };
+  return { status: "loading", token: "", session: profile, demo: false };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -111,24 +111,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    const cachedProfile = getCachedWorkspaceSession();
+
     void refreshAccessSession()
       .then(async (access) => {
         if (cancelled) return;
         setToken(access.accessToken);
-        const cachedProfile = getCachedWorkspaceSession();
         if (cachedProfile) {
           setSession(cachedProfile);
           setStatus("ready");
-          return;
         }
+        // Always revalidate the cached role and permissions. The cache only
+        // makes the shell immediate; the API remains the source of truth.
         const body = (await apiGetCached("/api/session")) as WorkspaceSession;
         if (cancelled) return;
         setCachedWorkspaceSession(body);
         setSession(body);
         setStatus("ready");
       })
-      .catch(() => {
-        if (!cancelled) markRequired();
+      .catch((error) => {
+        if (cancelled) return;
+        if (error instanceof SessionExpiredError || !cachedProfile) markRequired();
       });
 
     return () => {

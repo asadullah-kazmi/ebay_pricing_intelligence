@@ -571,8 +571,10 @@ app.post("/api/auth/login", authRateLimit, async (req, res, next) => {
         authenticated: true,
         accessToken: result.pair.accessToken,
         accessTokenExpiresIn: result.pair.accessTokenExpiresIn,
+        user: result.user,
         organization: result.organization,
         role: result.role,
+        permissions: result.permissions,
       });
     }
     res.json(result);
@@ -590,7 +592,10 @@ app.post("/api/auth/login/mfa", authRateLimit, async (req, res, next) => {
       authenticated: true,
       accessToken: result.pair.accessToken,
       accessTokenExpiresIn: result.pair.accessTokenExpiresIn,
+      user: result.user,
       organization: result.organization,
+      role: result.role,
+      permissions: result.permissions,
     });
   } catch (error) { next(error); }
 });

@@ -1,13 +1,25 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import styles from "../auth-ui.module.css";
 import BrandMark from "../components/BrandMark";
+import { primeAuthenticatedSession, type CachedWorkspaceSession } from "../lib/auth-session";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 type Organization = { name: string; slug: string };
+type AuthenticatedResult = {
+  authenticated: true;
+  accessToken: string;
+  accessTokenExpiresIn: number;
+  user: CachedWorkspaceSession["user"];
+  organization: CachedWorkspaceSession["organization"];
+  role: string;
+  permissions: string[];
+};
 
 export default function LoginForm() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -19,6 +31,24 @@ export default function LoginForm() {
   const [error, setError] = useState("");
   const [verificationRequired, setVerificationRequired] = useState(false);
   const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    router.prefetch("/dashboard");
+  }, [router]);
+
+  function openWorkspace(result: AuthenticatedResult) {
+    primeAuthenticatedSession({
+      accessToken: result.accessToken,
+      expiresIn: result.accessTokenExpiresIn,
+      workspace: {
+        user: result.user,
+        organization: result.organization,
+        role: result.role,
+        permissions: result.permissions,
+      },
+    });
+    router.replace("/dashboard");
+  }
 
   async function post(path: string, body: unknown) {
     let response: Response;
@@ -61,7 +91,7 @@ export default function LoginForm() {
         setChallengeToken(result.challengeToken);
         setNotice("Enter the code from your authenticator app or a recovery code.");
       } else {
-        window.location.assign("/dashboard");
+        openWorkspace(result as AuthenticatedResult);
       }
     } catch (caught) {
       const failure = caught as Error & { details?: { verificationRequired?: boolean } };
@@ -74,8 +104,8 @@ export default function LoginForm() {
     event.preventDefault();
     setBusy(true); setError("");
     try {
-      await post("/api/auth/login/mfa", { challengeToken, code });
-      window.location.assign("/dashboard");
+      const result = await post("/api/auth/login/mfa", { challengeToken, code });
+      openWorkspace(result as AuthenticatedResult);
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to verify code"); }
     finally { setBusy(false); }
   }

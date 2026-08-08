@@ -23,6 +23,9 @@ export class SessionExpiredError extends Error {
 let inflight: Promise<AccessSession> | null = null;
 let cached: AccessSession | null = null;
 let cachedWorkspaceSession: CachedWorkspaceSession | null = null;
+let workspaceSessionLoaded = false;
+
+const workspaceSessionStorageKey = "partpulse.workspace-session.v1";
 
 const getInflight = new Map<string, Promise<unknown>>();
 const getCache = new Map<string, { expiresAt: number; data: unknown }>();
@@ -37,16 +40,58 @@ export function getCachedAccessSession(): AccessSession | null {
 }
 
 export function getCachedWorkspaceSession(): CachedWorkspaceSession | null {
+  if (!workspaceSessionLoaded && typeof window !== "undefined") {
+    workspaceSessionLoaded = true;
+    try {
+      const stored = window.sessionStorage.getItem(workspaceSessionStorageKey);
+      if (stored) {
+        const parsed = JSON.parse(stored) as Partial<CachedWorkspaceSession>;
+        if (
+          parsed.user?.id && parsed.user.email &&
+          parsed.organization?.id && parsed.organization.name && parsed.organization.slug &&
+          typeof parsed.role === "string" && Array.isArray(parsed.permissions)
+        ) {
+          cachedWorkspaceSession = parsed as CachedWorkspaceSession;
+        }
+      }
+    } catch {
+      try { window.sessionStorage.removeItem(workspaceSessionStorageKey); } catch { /* Storage can be disabled. */ }
+    }
+  }
   return cachedWorkspaceSession;
 }
 
 export function setCachedWorkspaceSession(session: CachedWorkspaceSession | null): void {
+  workspaceSessionLoaded = true;
   cachedWorkspaceSession = session;
+  if (typeof window === "undefined") return;
+  try {
+    if (session) window.sessionStorage.setItem(workspaceSessionStorageKey, JSON.stringify(session));
+    else window.sessionStorage.removeItem(workspaceSessionStorageKey);
+  } catch {
+    // The in-memory fast path still works when browser storage is disabled.
+  }
+}
+
+/** Prime the in-memory auth state from a successful login before client navigation. */
+export function primeAuthenticatedSession(input: {
+  accessToken: string;
+  expiresIn: number;
+  workspace: CachedWorkspaceSession;
+}): void {
+  cached = {
+    accessToken: input.accessToken,
+    expiresIn: input.expiresIn,
+    expiresAt: Date.now() + input.expiresIn * 1_000,
+  };
+  setCachedWorkspaceSession(input.workspace);
+  getInflight.clear();
+  getCache.clear();
 }
 
 export function clearAccessSessionCache(): void {
   cached = null;
-  cachedWorkspaceSession = null;
+  setCachedWorkspaceSession(null);
   getInflight.clear();
   getCache.clear();
 }

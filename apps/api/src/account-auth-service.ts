@@ -17,6 +17,7 @@ import {
 } from "./credential-security.js";
 import { prisma } from "./db.js";
 import { emailIsConfigured, sendAccountRecoveryEmail, sendPasswordResetEmail, sendVerificationEmail } from "./email-service.js";
+import { effectiveOrganizationPermissions, type OrganizationAccessPermission } from "./organization-access.js";
 
 const verificationTtlMs = 24 * 60 * 60_000;
 const passwordResetTtlMs = 60 * 60_000;
@@ -219,6 +220,7 @@ export async function verifyAccountEmail(token: string) {
 
 type LoginMembership = {
   role: OrganizationRole;
+  permissions: string[];
   organization: { id: string; name: string; slug: string };
 };
 
@@ -235,7 +237,14 @@ function selectMembership(memberships: LoginMembership[], slug?: string) {
 export type LoginResult =
   | { organizationRequired: true; organizations: Array<{ name: string; slug: string }> }
   | { mfaRequired: true; challengeToken: string; expiresIn: number }
-  | { authenticated: true; pair: TokenPair; organization: { id: string; name: string; slug: string }; role: OrganizationRole };
+  | {
+      authenticated: true;
+      pair: TokenPair;
+      user: { id: string; email: string; name: string | null };
+      organization: { id: string; name: string; slug: string };
+      role: OrganizationRole;
+      permissions: OrganizationAccessPermission[];
+    };
 
 export async function loginAccount(input: {
   email: string;
@@ -248,9 +257,9 @@ export async function loginAccount(input: {
   const user = await prisma.user.findFirst({
     where: { email: { equals: email, mode: "insensitive" } },
     select: {
-      id: true, email: true, passwordHash: true, emailVerifiedAt: true, failedLoginAttempts: true, lockedUntil: true,
+      id: true, email: true, name: true, passwordHash: true, emailVerifiedAt: true, failedLoginAttempts: true, lockedUntil: true,
       mfaEnabled: true,
-      memberships: { select: { role: true, organization: { select: { id: true, name: true, slug: true } } } },
+      memberships: { select: { role: true, permissions: true, organization: { select: { id: true, name: true, slug: true } } } },
     },
   });
   const validPassword = await verifyPassword(input.password, user?.passwordHash ?? dummyPasswordHash);
@@ -301,7 +310,14 @@ export async function loginAccount(input: {
     summary: "User signed in",
     requestId: input.requestId,
   });
-  return { authenticated: true, pair, organization: membership.organization, role: membership.role };
+  return {
+    authenticated: true,
+    pair,
+    user: { id: user.id, email: user.email, name: user.name },
+    organization: membership.organization,
+    role: membership.role,
+    permissions: effectiveOrganizationPermissions(membership.role, membership.permissions),
+  };
 }
 
 async function consumeMfaCode(tx: Prisma.TransactionClient, user: { id: string; mfaSecretEncrypted: string | null }, code: string, now: Date) {
@@ -341,7 +357,7 @@ export async function completeMfaLogin(input: {
     const challenge = await tx.mfaLoginChallenge.findUnique({
       where: { tokenHash: hashOpaqueToken(input.challengeToken) },
       include: {
-        user: { select: { id: true, mfaSecretEncrypted: true } },
+        user: { select: { id: true, email: true, name: true, mfaSecretEncrypted: true } },
         organization: { select: { id: true, name: true, slug: true } },
       },
     });
@@ -357,6 +373,11 @@ export async function completeMfaLogin(input: {
       return { invalid: true as const };
     }
     await tx.mfaLoginChallenge.update({ where: { id: challenge.id }, data: { consumedAt: now } });
+    const membership = await tx.organizationMembership.findUnique({
+      where: { organizationId_userId: { organizationId: challenge.organizationId, userId: challenge.userId } },
+      select: { role: true, permissions: true },
+    });
+    if (!membership) throw new AccountAuthError("This account has no active organization membership", 403);
     const pair = await issueTokenPair(
       { userId: challenge.userId, organizationId: challenge.organizationId },
       input.jwt,
@@ -372,7 +393,14 @@ export async function completeMfaLogin(input: {
       summary: "User completed MFA sign-in",
       requestId: input.requestId,
     });
-    return { authenticated: true as const, pair, organization: challenge.organization };
+    return {
+      authenticated: true as const,
+      pair,
+      user: { id: challenge.user.id, email: challenge.user.email, name: challenge.user.name },
+      organization: challenge.organization,
+      role: membership.role,
+      permissions: effectiveOrganizationPermissions(membership.role, membership.permissions),
+    };
   });
   if ("invalid" in result) throw new AccountAuthError("Invalid authentication code", 401);
   return result;
