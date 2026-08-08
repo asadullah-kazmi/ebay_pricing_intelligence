@@ -3025,3 +3025,500 @@
   color: #64748b;
   font-size: 12.5px;
 }
+
+/* Minimal Executive Listing Draft Modal */
+.drawer {
+  background: #ffffff;
+  border-radius: 20px;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.18);
+  border: 1px solid #e2e8f0;
+}
+
+.listingDrawer {
+  width: min(740px, 92vw) !important;
+  max-height: 88vh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  background: #ffffff !important;
+  border-radius: 20px !important;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.18) !important;
+  overflow: hidden !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+.listingDrawerHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 24px 14px;
+  border-bottom: 1px solid #f1f5f9;
+  flex-shrink: 0;
+  background: #ffffff;
+}
+
+.listingDrawerHeader h2 {
+  margin: 3px 0 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 800;
+  font-size: 16px;
+  color: #1d4ed8;
+}
+
+.listingDrawerHeader button {
+  background: transparent;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  font-size: 18px;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.listingDrawerHeader button:hover {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.listingDrawerEyebrow {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.listingDrawerSub {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  color: #64748b;
+}
+
+.listingDrawerBody {
+  padding: 20px 24px;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+
+.listingDetailsCard,
+.listingPublishCard {
+  background: #f8fafc;
+  border: 1px solid #f1f5f9;
+  border-radius: 14px;
+  padding: 16px 18px;
+}
+
+.listingSectionLabel {
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #2563eb;
+  margin-bottom: 12px;
+}
+
+.listingFieldWide,
+.listingField {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 10px;
+}
+
+.listingFieldWide span,
+.listingField span {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #475569;
+}
+
+.listingFieldWide input,
+.listingFieldWide select,
+.listingFieldWide textarea,
+.listingField input,
+.listingField select,
+.listingField textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  padding: 8px 12px;
+  background: #ffffff;
+  color: #0f172a;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-size: 13px;
+  outline: none;
+}
+
+.listingFieldWide input:focus,
+.listingFieldWide select:focus,
+.listingFieldWide textarea:focus,
+.listingField input:focus,
+.listingField select:focus,
+.listingField textarea:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.listingDetailsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.listingFormActions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 24px;
+  border-top: 1px solid #f1f5f9;
+  background: #ffffff;
+  flex-shrink: 0;
+}
+
+.listingCategoryRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.listingCategoryId {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.listingPriceRow {
+  display: flex;
+  gap: 8px;
+}
+
+.listingStockStatus {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.listingStockLow { background: #fffbebfb; color: #92400e; }
+.listingStockOk { background: #f0fdf4; color: #166534; }
+
+.listingReady { color: #166534; font-size: 14px; display: block; margin-top: 4px; }
+.listingBlocked { color: #991b1b; font-size: 14px; display: block; margin-top: 4px; }
+
+.listingPublishHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.listingPublishActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.listingIssues {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.blocker,
+.warning {
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.blocker { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+.warning { background: #fffbebfb; color: #92400e; border: 1px solid #fde68a; }
+
+/* Publication Readiness & Job Panels */
+.pricingPanel,
+.draftPanel,
+.fitmentPanel {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  padding: 20px 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
+}
+
+.pricingPanel header,
+.draftPanel header,
+.fitmentPanel header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.pricingPanel header h2,
+.draftPanel header h2,
+.fitmentPanel header h2 {
+  margin: 2px 0 0;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 800;
+  font-size: 20px;
+  color: #0c274d;
+}
+
+.draftSummary {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.draftGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 440px));
+  gap: 16px;
+}
+
+.draftGrid article {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 18px 20px;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+
+.draftGrid article:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+.draftGrid article > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.draftGrid article h3 {
+  margin: 0;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 750;
+  font-size: 15px;
+  line-height: 1.35;
+  color: #0c274d;
+}
+
+.draftGrid article p {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.readinessCounts {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.readinessCounts b {
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.readinessCounts span {
+  color: #d97706;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.readinessCounts strong {
+  margin-left: auto;
+  color: #0c274d;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.firstBlocker {
+  display: block;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.draftGrid article button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 16px;
+  border-radius: 9px;
+  border: none;
+  background: #2563eb;
+  color: #ffffff;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 700;
+  font-size: 12.5px;
+  cursor: pointer;
+  margin-top: 6px;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+  transition: all 140ms ease;
+  align-self: flex-start;
+}
+
+.draftGrid article button:hover {
+  background: #1d4ed8;
+}
+
+.jobStatus {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+}
+
+.job_completed { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+.job_failed { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+.job_queued { background: #eff6ff; color: #1d4ed8; border: 1px solid #dbeafe; }
+.job_running { background: #fffbebfb; color: #92400e; border: 1px solid #fde68a; }
+
+/* Sleek Ultra-Compact Publication Readiness Banner */
+.draftMiniBanner {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 10px 18px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.03);
+}
+
+.draftMiniLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.draftMiniBadge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #2563eb;
+  background: #eff6ff;
+  padding: 4px 10px;
+  border-radius: 7px;
+  border: 1px solid #dbeafe;
+}
+
+.draftSummaryCount {
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.draftMiniList {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow-x: auto;
+}
+
+.draftMiniChip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 12.5px;
+}
+
+.draftMiniTitle {
+  font-weight: 750;
+  color: #0c274d;
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.draftMiniBlocker {
+  font-size: 11px;
+  font-weight: 750;
+  color: #dc2626;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  padding: 2px 7px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.draftMiniPrice {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #0f172a;
+  white-space: nowrap;
+}
+
+.draftMiniBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 7px;
+  border: none;
+  background: #2563eb;
+  color: #ffffff;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 700;
+  font-size: 11.5px;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.2);
+  transition: all 140ms ease;
+}
+
+.draftMiniBtn:hover {
+  background: #1d4ed8;
+}

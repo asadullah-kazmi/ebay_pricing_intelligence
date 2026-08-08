@@ -1314,21 +1314,49 @@ export default function CatalogWorkspace() {
 
       </section>}
 
-      {drafts.length > 0 && <section id="listing-drafts" className={`${styles.pricingPanel} ${styles.draftPanel}`}>
+      {drafts.length > 0 && (
+        <section id="listing-drafts" className={styles.draftMiniBanner}>
+          <div className={styles.draftMiniLeft}>
+            <div className={styles.draftMiniBadge}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+              </svg>
+              <span>PUBLICATION READINESS</span>
+            </div>
+            <span className={styles.draftSummaryCount}>
+              {drafts.filter(({ status: s }) => s === "READY").length} ready · {drafts.filter(({ status: s }) => s === "BLOCKED").length} blocked
+            </span>
+          </div>
 
-        <header><div><span className={styles.eyebrow}>PUBLICATION READINESS</span><h2>Listing drafts</h2></div><span className={styles.draftSummary}>{drafts.filter(({ status: draftStatus }) => draftStatus === "READY").length} ready · {drafts.filter(({ status: draftStatus }) => draftStatus === "BLOCKED").length} blocked</span></header>
-
-        <div className={styles.draftGrid}>{drafts.map((draft) => {
-
-          const blockers = (draft.validationIssues ?? []).filter(({ severity }) => severity === "BLOCKER");
-
-          const warnings = (draft.validationIssues ?? []).filter(({ severity }) => severity === "WARNING");
-
-          return <article key={draft.id}><div><span className={`${styles.jobStatus} ${draft.status === "READY" ? styles.job_completed : styles.job_failed}`}>{humanStatus(draft.status)}</span><small>{draft.marketplace} · v{draft.version}</small></div><h3>{draft.title}</h3><p>{draft.part.sku} · {draft.part.primaryPartNumber}</p><div className={styles.readinessCounts}><b>{blockers.length} blockers</b><span>{warnings.length} warnings</span>{draft.price != null && <strong>{money(draft.price, draft.currency)}</strong>}</div>{blockers[0] && <small className={styles.firstBlocker}>{blockers[0].message}</small>}<button onClick={() => void openDraft(draft.id)}>Edit &amp; review</button></article>;
-
-        })}</div>
-
-      </section>}
+          <div className={styles.draftMiniList}>
+            {drafts.slice(0, 3).map((draft) => {
+              const blockers = (draft.validationIssues ?? []).filter(({ severity }) => severity === "BLOCKER");
+              return (
+                <div key={draft.id} className={styles.draftMiniChip}>
+                  <span className={`${styles.jobStatus} ${draft.status === "READY" ? styles.job_completed : styles.job_failed}`}>
+                    {humanStatus(draft.status)}
+                  </span>
+                  <span className={styles.draftMiniTitle} title={draft.title}>
+                    {draft.title}
+                  </span>
+                  {blockers.length > 0 && (
+                    <span className={styles.draftMiniBlocker}>
+                      {blockers.length} blocker{blockers.length === 1 ? "" : "s"}
+                    </span>
+                  )}
+                  {draft.price != null && <strong className={styles.draftMiniPrice}>{money(draft.price, draft.currency)}</strong>}
+                  <button type="button" className={styles.draftMiniBtn} onClick={() => void openDraft(draft.id)}>
+                    Edit &amp; review
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
       <section className={styles.catalogPanel}>
         <div className={styles.toolbar}>
           <label className={styles.searchBox}>
