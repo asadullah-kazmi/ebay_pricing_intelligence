@@ -1719,6 +1719,38 @@ export default function CatalogWorkspace() {
                       <span className={styles.emptyFitment}>No vehicle compatibility yet.</span>
                     )}
                   </section>
+
+                  <section className={styles.inventoryPanel}>
+                    <header className={styles.panelHead}>
+                      <div>
+                        <h4>Part Photos &amp; Media Vault</h4>
+                        <p>{detail.media.length ? `${detail.media.length} image asset${detail.media.length === 1 ? "" : "s"} attached` : "No photos attached yet"}</p>
+                      </div>
+                      <Link href="/media-drive" className={styles.uploadGhost}>
+                        + Upload via Media Drive
+                      </Link>
+                    </header>
+                    {detail.media.length > 0 ? (
+                      <div className={styles.photoGridModal}>
+                        {detail.media.map((item, idx) => (
+                          <div key={item.id} className={styles.modalPhotoCard}>
+                            <div className={styles.modalImgWrap}>
+                              <CatalogImage mediaId={item.mediaAsset.id} token={token} demo={demo} />
+                            </div>
+                            <div className={styles.modalPhotoFooter}>
+                              <code>photo_{idx + 1}.jpg</code>
+                              <span className={styles.photoSizeTag}>Attached</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className={styles.noImagesBox}>
+                        <b>No images attached to part {detail.sku}</b>
+                        <span>Upload photo folders in Media Drive to auto-assign images by part number</span>
+                      </div>
+                    )}
+                  </section>
                 </>
               );
             })()}
@@ -1750,6 +1782,38 @@ export default function CatalogWorkspace() {
               </label>
               <label className={styles.wide}><span>Internal notes</span><textarea name="notes" defaultValue={detail.notes ?? ""}/></label>
             </div>
+
+            <section className={styles.inventoryPanel} style={{ marginTop: 20 }}>
+              <header className={styles.panelHead}>
+                <div>
+                  <h4>Part Photos &amp; Media Vault</h4>
+                  <p>{detail.media.length ? `${detail.media.length} image asset${detail.media.length === 1 ? "" : "s"} attached` : "No photos attached yet"}</p>
+                </div>
+                <Link href="/media-drive" className={styles.uploadGhost}>
+                  + Upload via Media Drive
+                </Link>
+              </header>
+              {detail.media.length > 0 ? (
+                <div className={styles.photoGridModal}>
+                  {detail.media.map((item, idx) => (
+                    <div key={item.id} className={styles.modalPhotoCard}>
+                      <div className={styles.modalImgWrap}>
+                        <CatalogImage mediaId={item.mediaAsset.id} token={token} demo={demo} />
+                      </div>
+                      <div className={styles.modalPhotoFooter}>
+                        <code>photo_{idx + 1}.jpg</code>
+                        <span className={styles.photoSizeTag}>Attached</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className={styles.noImagesBox}>
+                  <b>No images attached to part {detail.sku}</b>
+                  <span>Upload photo folders in Media Drive to auto-assign images by part number</span>
+                </div>
+              )}
+            </section>
             <div className={styles.formActions}>
               <button type="button" onClick={() => setDetailMode("view")}>Back</button>
               <button type="button" onClick={() => setDetail(null)}>Cancel</button>
