@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../components/AuthProvider";
 import { accessOptions, accessRoles, defaultPermissionsForRole, roleLabel, type AccessRole } from "../../lib/organization-access";
 import styles from "./settings.module.css";
@@ -52,6 +52,7 @@ function AccessMatrix({ selected, onChange, disabled = false }: { selected: stri
 
 export default function UserManagement() {
   const { apiFetch, session } = useAuth();
+  const invitationFormRef = useRef<HTMLFormElement>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [role, setRole] = useState<AccessRole>("LISTING_MANAGER");
@@ -84,15 +85,29 @@ export default function UserManagement() {
   async function invite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const email = String(form.get("email") ?? "").trim().toLowerCase();
+    const activeMember = members.find((member) => member.user.email.trim().toLowerCase() === email);
+    if (activeMember) {
+      setNotice("");
+      setFallbackLink("");
+      setError(`${activeMember.user.name || activeMember.user.email} already has active access. Edit or remove their access below before sending a new invitation.`);
+      return;
+    }
     setBusy("invite"); setError(""); setNotice(""); setFallbackLink("");
     try {
-      const result = await apiFetch("/api/team/invitations", { method: "POST", body: JSON.stringify({ name: form.get("name"), email: form.get("email"), role, permissions }) }) as { invitationUrl: string; emailDelivery: string };
+      const result = await apiFetch("/api/team/invitations", { method: "POST", body: JSON.stringify({ name: form.get("name"), email, role, permissions }) }) as { invitationUrl: string; emailDelivery: string };
       setFallbackLink(result.emailDelivery === "sent" ? "" : result.invitationUrl);
       setNotice(result.emailDelivery === "sent" ? "Invitation sent successfully." : "Invitation created, but SMTP delivery failed. Use the secure link below.");
-      event.currentTarget.reset();
+      invitationFormRef.current?.reset();
       selectRole("LISTING_MANAGER");
       await load();
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to invite user"); }
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Unable to invite user";
+      setError(message.includes("already a member")
+        ? "This email still has active organization access. Remove it from Active access below, then send the invitation again."
+        : message);
+      await load();
+    }
     finally { setBusy(""); }
   }
 
@@ -113,9 +128,9 @@ export default function UserManagement() {
   }
 
   async function removeMember(member: Member) {
-    if (!confirm(`Remove ${member.user.email} from this organization?`)) return;
+    if (!confirm(`Remove ${member.user.email}'s access to this organization? They will need a new invitation to return.`)) return;
     setBusy(member.id); setError("");
-    try { await apiFetch(`/api/team/members/${member.id}`, { method: "DELETE" }); setNotice("User access removed."); await load(); }
+    try { await apiFetch(`/api/team/members/${member.id}`, { method: "DELETE" }); setNotice("User access removed. You can now send this email a new invitation."); await load(); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to remove user"); }
     finally { setBusy(""); }
   }
@@ -133,7 +148,7 @@ export default function UserManagement() {
     {error && <div className={styles.error}>{error}</div>}{notice && <div className={styles.notice}>{notice}</div>}
     <section className={styles.panel}>
       <div className={styles.panelHead}><div><span className={styles.eyebrow}>New access</span><h2>Invite a user</h2></div><p>The user receives a branded email and creates a password from a secure, seven-day link.</p></div>
-      <form className={styles.inviteForm} onSubmit={invite}>
+      <form ref={invitationFormRef} className={styles.inviteForm} onSubmit={invite}>
         <div className={styles.inviteIdentity}><label><span>Name</span><input name="name" required maxLength={100} placeholder="e.g. Sarah Ahmed" /></label><label><span>Email</span><input name="email" type="email" required maxLength={320} placeholder="sarah@company.com" /></label></div>
         <div><span className={styles.fieldLabel}>Access role</span><div className={styles.roleCards}>{accessRoles.map((item) => <button key={item} type="button" className={role === item ? styles.roleSelected : ""} onClick={() => selectRole(item)}><b>{roleLabel(item)}</b><small>{item === "ADMIN" ? "All organization access" : item === "LISTING_MANAGER" ? "Listing preparation and catalog" : "Store operations and fulfillment"}</small></button>)}</div></div>
         <div className={styles.accessHeading}><div><span className={styles.fieldLabel}>Tabs and actions</span><small>Review the preset and add or remove access before sending.</small></div><b>{permissions.filter((permission) => permission.startsWith("tab.")).length} tabs selected</b></div>
@@ -143,9 +158,9 @@ export default function UserManagement() {
       {fallbackLink && <div className={styles.fallbackLink}><span>Secure invitation link</span><input readOnly value={fallbackLink}/><button type="button" className={styles.ghostBtn} onClick={() => void navigator.clipboard.writeText(fallbackLink)}>Copy</button></div>}
     </section>
 
-    <section className={styles.panel}><div className={styles.panelHead}><div><span className={styles.eyebrow}>Organization users</span><h2>Active access</h2></div><p>{members.length} active {members.length === 1 ? "user" : "users"}</p></div><div className={styles.memberList}>{members.map((member) => <article key={member.id} className={styles.memberRow}><span className={styles.memberAvatar}>{(member.user.name || member.user.email).slice(0,2).toUpperCase()}</span><div><b>{member.user.name || "Unnamed user"}{member.user.id === session?.user.id ? " (you)" : ""}</b><small>{member.user.email}</small></div><span className={styles.rolePill}>{roleLabel(member.role)}</span><span className={styles.memberTabs}>{member.role === "OWNER" || member.role === "ADMIN" ? "All tabs" : `${member.permissions.filter((permission) => permission.startsWith("tab.")).length} tabs`}</span><div className={styles.memberActions}><button type="button" className={styles.ghostBtn} disabled={member.role === "OWNER"} onClick={() => openEditor(member)}>Edit access</button><button type="button" className={styles.textDanger} disabled={member.role === "OWNER" || busy === member.id} onClick={() => void removeMember(member)}>Remove</button></div></article>)}</div></section>
+    <section className={styles.panel}><div className={styles.panelHead}><div><span className={styles.eyebrow}>Organization users</span><h2>Active access</h2></div><p>{members.length} active {members.length === 1 ? "user" : "users"}</p></div><div className={styles.memberList}>{members.map((member) => <article key={member.id} className={styles.memberRow}><span className={styles.memberAvatar}>{(member.user.name || member.user.email).slice(0,2).toUpperCase()}</span><div><b>{member.user.name || "Unnamed user"}{member.user.id === session?.user.id ? " (you)" : ""}</b><small>{member.user.email}</small></div><span className={styles.rolePill}>{roleLabel(member.role)}</span><span className={styles.memberTabs}>{member.role === "OWNER" || member.role === "ADMIN" ? "All tabs" : `${member.permissions.filter((permission) => permission.startsWith("tab.")).length} tabs`}</span><div className={styles.memberActions}><button type="button" className={styles.ghostBtn} disabled={member.role === "OWNER"} onClick={() => openEditor(member)}>Edit access</button><button type="button" className={styles.textDanger} disabled={member.role === "OWNER" || busy === member.id} onClick={() => void removeMember(member)}>Remove access</button></div></article>)}</div></section>
 
-    {invitations.length > 0 && <section className={styles.panel}><div className={styles.panelHead}><div><span className={styles.eyebrow}>Pending</span><h2>Invitations</h2></div></div><div className={styles.memberList}>{invitations.map((invitation) => <article className={styles.memberRow} key={invitation.id}><span className={styles.memberAvatar}>@</span><div><b>{invitation.invitedName || invitation.email}</b><small>{invitation.email} · expires {new Date(invitation.expiresAt).toLocaleDateString()}</small></div><span className={styles.rolePill}>{roleLabel(invitation.role)}</span><span className={styles.memberTabs}>{invitation.permissions.filter((permission) => permission.startsWith("tab.")).length} tabs</span><div className={styles.memberActions}><button type="button" className={styles.textDanger} disabled={busy === invitation.id} onClick={() => void revoke(invitation)}>Revoke</button></div></article>)}</div></section>}
+    {invitations.length > 0 && <section className={styles.panel}><div className={styles.panelHead}><div><span className={styles.eyebrow}>Pending</span><h2>Invitations</h2></div></div><div className={styles.memberList}>{invitations.map((invitation) => <article className={styles.memberRow} key={invitation.id}><span className={styles.memberAvatar}>@</span><div><b>{invitation.invitedName || invitation.email}</b><small>{invitation.email} · expires {new Date(invitation.expiresAt).toLocaleDateString()}</small></div><span className={styles.rolePill}>{roleLabel(invitation.role)}</span><span className={styles.memberTabs}>{invitation.permissions.filter((permission) => permission.startsWith("tab.")).length} tabs</span><div className={styles.memberActions}><button type="button" className={styles.textDanger} disabled={busy === invitation.id} onClick={() => void revoke(invitation)}>Cancel invitation</button></div></article>)}</div></section>}
 
     {editing && <div className={styles.accessOverlay} role="dialog" aria-modal="true"><section className={styles.accessDialog}><div className={styles.dialogHead}><div><span className={styles.eyebrow}>Edit access</span><h2>{editing.user.name || editing.user.email}</h2><p>{editing.user.email}</p></div><button type="button" className={styles.ghostBtn} onClick={() => setEditing(null)}>Close</button></div><label className={styles.dialogRole}><span>Role</span><select value={editRole} onChange={(event) => { const next = event.target.value as AccessRole; setEditRole(next); setEditPermissions(defaultPermissionsForRole(next)); }}>{accessRoles.map((item) => <option key={item} value={item}>{roleLabel(item)}</option>)}</select></label><AccessMatrix selected={editPermissions} onChange={setEditPermissions} disabled={editRole === "ADMIN"}/><div className={styles.dialogActions}><button type="button" className={styles.ghostBtn} onClick={() => setEditing(null)}>Cancel</button><button type="button" className={styles.primary} disabled={busy === editing.id} onClick={() => void saveMember()}>Save access</button></div></section></div>}
   </div>;

@@ -99,7 +99,8 @@ export default function TeamManagement() {
 
   async function invite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     setBusy("invite");
     setError("");
     setNotice("");
@@ -113,7 +114,7 @@ export default function TeamManagement() {
       setNotice(result.emailDelivery === "sent"
         ? "Invitation emailed successfully. You can also copy the link below."
         : "Invitation created, but email was not delivered. Copy the link below and send it through a trusted channel.");
-      event.currentTarget.reset();
+      formElement.reset();
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to create invitation");

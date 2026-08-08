@@ -105,7 +105,12 @@ export async function createOrganizationInvitation(input: {
       where: { organizationId: input.organizationId, user: { email: { equals: email, mode: "insensitive" } } },
       select: { id: true },
     });
-    if (member) throw new OrganizationTeamError("This user is already a member of the organization", 409);
+    if (member) {
+      throw new OrganizationTeamError(
+        "This email already has active organization access. Remove the member's access before sending a new invitation",
+        409,
+      );
+    }
     const saved = await tx.organizationInvitation.upsert({
       where: { organizationId_email: { organizationId: input.organizationId, email } },
       create: {
