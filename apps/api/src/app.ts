@@ -19,6 +19,15 @@ import { applyExistingSkuConflicts, parseAndValidateImport } from "./import-pars
 import { ImageImportError, importImageArchive } from "./image-import-service.js";
 import { confirmImportBatch, correctImportMediaMatch, discardImportMediaMatch, getImportPreview, ImportReviewError } from "./import-review-service.js";
 import { getObjectStorage, ObjectStorageError } from "./object-storage.js";
+import {
+  deleteMediaDriveFolder,
+  getMediaDriveFolder,
+  ingestMediaDriveFolderArchive,
+  linkMediaDriveFolderToPart,
+  listMediaDriveFolders,
+  MediaDriveError,
+  rematchMediaDriveFolder,
+} from "./media-drive-service.js";
 import { createRateLimitMiddleware, requestLogMiddleware, requestSecurityMiddleware } from "./http-hardening.js";
 import { createPricingJob, getPricingJob, listPricingJobs, PricingJobError, startPricingJob } from "./pricing-service.js";
 import {
@@ -67,6 +76,15 @@ const searchSchema = z.object({
 const confirmMediaUploadSchema = z.object({ storageKey: z.string().min(1).max(1024) });
 const mediaDownloadUrlsSchema = z.object({
   ids: z.array(z.string().min(1)).min(1).max(50),
+});
+const mediaDriveArchiveBody = express.raw({ type: () => true, limit: getConfig().storage?.maxImageArchiveBytes ?? 104_857_600 });
+const mediaDriveArchiveFilenameSchema = z.string().trim().min(1).max(255).regex(/\.zip$/i, "Only .zip photo folder archives are supported");
+const mediaDriveLinkSchema = z.object({ partId: z.string().min(1).max(100) });
+const mediaDriveFolderQuerySchema = z.object({
+  search: z.string().trim().max(120).optional(),
+  status: z.enum(["AUTO_ASSIGNED", "MATCHED", "PENDING_CATALOG"]).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(50),
 });
 const mediaUploadRoles = requireOrganizationRoles(...organizationPermissionRoles.catalogWrite);
 const importFilenameSchema = z.string().trim().min(1).max(255).regex(/\.(?:csv|xlsx)$/i, "Only .csv and .xlsx files are supported");
@@ -1914,6 +1932,72 @@ app.post("/api/media/download-urls", requireTenantContext, async (req, res, next
   } catch (error) { next(error); }
 });
 
+app.post("/api/media-drive/ingest", importRateLimit, requireTenantContext, mediaUploadRoles, mediaDriveArchiveBody, async (req, res, next) => {
+  try {
+    const storage = getObjectStorage();
+    if (!storage) return res.status(503).json({ error: "Object storage is not configured" });
+    if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: "ZIP archive body is required" });
+    const filename = mediaDriveArchiveFilenameSchema.parse(req.get("x-file-name"));
+    const tenant = getTenantContext(res);
+    const storageConfig = getConfig().storage!;
+    const result = await ingestMediaDriveFolderArchive({
+      organizationId: tenant.organization.id,
+      userId: tenant.user.id,
+      filename,
+      bytes: req.body,
+      storage,
+      maxImageBytes: storageConfig.maxImageBytes,
+    });
+    res.status(201).json(result);
+  } catch (error) { next(error); }
+});
+
+app.get("/api/media-drive/folders", requireTenantContext, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const query = mediaDriveFolderQuerySchema.parse(req.query);
+    res.json(await listMediaDriveFolders({ organizationId: tenant.organization.id, ...query }));
+  } catch (error) { next(error); }
+});
+
+app.get("/api/media-drive/folders/:partNumber", requireTenantContext, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const partNumber = req.params.partNumber;
+    if (typeof partNumber !== "string" || !partNumber.trim()) return res.status(400).json({ error: "Invalid part number folder" });
+    const query = mediaDriveFolderQuerySchema.omit({ search: true, status: true }).parse(req.query);
+    res.json(await getMediaDriveFolder({ organizationId: tenant.organization.id, partNumber, ...query }));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/media-drive/folders/:partNumber/rematch", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const partNumber = req.params.partNumber;
+    if (typeof partNumber !== "string" || !partNumber.trim()) return res.status(400).json({ error: "Invalid part number folder" });
+    res.json(await rematchMediaDriveFolder({ organizationId: tenant.organization.id, partNumber, userId: tenant.user.id }));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/media-drive/folders/:partNumber/link", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const partNumber = req.params.partNumber;
+    if (typeof partNumber !== "string" || !partNumber.trim()) return res.status(400).json({ error: "Invalid part number folder" });
+    const { partId } = mediaDriveLinkSchema.parse(req.body);
+    res.json(await linkMediaDriveFolderToPart({ organizationId: tenant.organization.id, partNumber, partId, userId: tenant.user.id }));
+  } catch (error) { next(error); }
+});
+
+app.delete("/api/media-drive/folders/:partNumber", writeRateLimit, requireTenantContext, mediaUploadRoles, async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const partNumber = req.params.partNumber;
+    if (typeof partNumber !== "string" || !partNumber.trim()) return res.status(400).json({ error: "Invalid part number folder" });
+    res.json(await deleteMediaDriveFolder({ organizationId: tenant.organization.id, partNumber }));
+  } catch (error) { next(error); }
+});
+
 app.get("/api/ebay/account-deletion", (req, res) => {
   const challengeCode = typeof req.query.challenge_code === "string" ? req.query.challenge_code : undefined;
   const { endpoint, verificationToken } = getConfig().ebay.notifications;
@@ -2013,6 +2097,7 @@ app.use((error: unknown, req: express.Request, res: express.Response, _next: exp
   if (error instanceof AuthorizationError) return response(403, { error: error.message });
   if (error instanceof ObjectStorageError) return response(400, { error: error.message });
   if (error instanceof ImageImportError) return response(error.statusCode, { error: error.message });
+  if (error instanceof MediaDriveError) return response(error.statusCode, { error: error.message });
   if (error instanceof ImportReviewError) return response(error.statusCode, { error: error.message, ...(error.details ? { details: error.details } : {}) });
   if (error instanceof CatalogError) return response(error.statusCode, { error: error.message });
   if (error instanceof QuickSkuError) return response(error.statusCode, { error: error.message });

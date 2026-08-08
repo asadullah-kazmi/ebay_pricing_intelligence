@@ -133,6 +133,85 @@
 .error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
 .notice { background: #eff6ff; border: 1px solid #dbeafe; color: #1d4ed8; }
 
+/* Upload progress panel */
+.uploadProgressBox {
+  margin-bottom: 20px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid #bfdbfe;
+  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.08);
+}
+
+.uploadProgressHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.uploadProgressLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 750;
+  font-size: 13px;
+  color: #0c274d;
+}
+
+.uploadProgressLabel::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #2563eb;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
+  animation: uploadProgressPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes uploadProgressPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.8); }
+}
+
+.uploadProgressMeta {
+  color: #64748b;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 700;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.uploadProgressTrack {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.uploadProgressFill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2563eb, #60a5fa);
+  transition: width 200ms ease;
+}
+
+.uploadProgressFillIndeterminate {
+  width: 40%;
+  animation: uploadProgressSlide 1.3s ease-in-out infinite;
+}
+
+@keyframes uploadProgressSlide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
 /* Metrics Cards Grid */
 .metrics {
   display: grid;
@@ -888,4 +967,223 @@
 
 .primaryInlineBtn:hover {
   background: #1d4ed8;
+}
+
+/* Live thumbnails & placeholder */
+.thumbPlaceholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  border: 1px dashed #cbd5e1;
+  background: #f8fafc;
+  color: #94a3b8;
+}
+
+.modalImgPlaceholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: #cbd5e1;
+  background: #f8fafc;
+}
+
+/* Pagination hint & load more */
+.paginationHint {
+  align-self: flex-end;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.loadMoreRow {
+  display: flex;
+  justify-content: center;
+  padding: 16px;
+  border-top: 1px solid #f1f5f9;
+}
+
+/* Inspector quick actions */
+.quickActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+}
+
+.quickActions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.dangerBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 9px;
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 700;
+  font-size: 12.5px;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 140ms ease;
+}
+
+.dangerBtn:hover {
+  background: #fee2e2;
+  border-color: #f87171;
+}
+
+.dangerBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Part picker modal */
+.pickerModal {
+  width: min(560px, 96vw);
+  background: #ffffff;
+  border-radius: 20px;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.18);
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+}
+
+.pickerSearch {
+  position: relative;
+  margin-bottom: 14px;
+}
+
+.pickerSearch input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 44px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 0 14px;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 500;
+  font-size: 13.5px;
+  color: #0f172a;
+  outline: none;
+  transition: all 140ms ease;
+}
+
+.pickerSearch input:focus {
+  background: #ffffff;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.pickerSpinner {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #64748b;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.pickerList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pickerRow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #ffffff;
+  cursor: pointer;
+  text-align: left;
+  transition: all 140ms ease;
+}
+
+.pickerRow:hover {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.pickerRow:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.pickerSku code {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 7px;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+  color: #1d4ed8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 700;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.pickerTitle {
+  flex: 1;
+  color: #0f172a;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 650;
+  font-size: 13px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pickerAction {
+  color: #2563eb;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 700;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.pickerEmpty {
+  padding: 28px 20px;
+  text-align: center;
+  color: #64748b;
+  font-size: 13px;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+}
+
+@media (max-width: 900px) {
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .uploadCardGrid {
+    grid-template-columns: 1fr;
+  }
 }

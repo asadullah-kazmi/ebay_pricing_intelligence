@@ -1,7 +1,12 @@
+import type { Prisma } from "@prisma/client";
 import type { ConfirmedImageObject } from "./object-storage.js";
 import { prisma } from "./db.js";
 
-export async function saveConfirmedMediaAsset(organizationId: string, image: ConfirmedImageObject) {
+export async function saveConfirmedMediaAsset(
+  organizationId: string,
+  image: ConfirmedImageObject,
+  metadata?: { sourceType?: string; sourceMetadata?: Prisma.InputJsonValue },
+) {
   return prisma.mediaAsset.upsert({
     where: { organizationId_storageKey: { organizationId, storageKey: image.storageKey } },
     create: {
@@ -12,6 +17,8 @@ export async function saveConfirmedMediaAsset(organizationId: string, image: Con
       byteSize: image.byteSize,
       checksum: image.checksum,
       status: "UPLOADED",
+      ...(metadata?.sourceType ? { sourceType: metadata.sourceType } : {}),
+      ...(metadata?.sourceMetadata !== undefined ? { sourceMetadata: metadata.sourceMetadata } : {}),
     },
     update: {
       originalFilename: image.originalFilename,
@@ -19,6 +26,8 @@ export async function saveConfirmedMediaAsset(organizationId: string, image: Con
       byteSize: image.byteSize,
       checksum: image.checksum,
       status: "UPLOADED",
+      ...(metadata?.sourceType ? { sourceType: metadata.sourceType } : {}),
+      ...(metadata?.sourceMetadata !== undefined ? { sourceMetadata: metadata.sourceMetadata } : {}),
     },
   });
 }
