@@ -203,6 +203,7 @@ const bulkPricingUploadQuerySchema = z.object({
   marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).default("EBAY_US"),
   condition: z.enum(["ANY", "NEW", "USED"]).default("ANY"),
   currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).default("USD"),
+  pricingStrategy: z.enum(["CUSTOM_FORMULA", "MARKET_MEAN"]).default("CUSTOM_FORMULA"),
   targetMarginPercent: z.coerce.number().min(0).max(95).default(20),
   bufferPercent: z.coerce.number().min(0).max(95).default(0),
 });
@@ -1150,16 +1151,18 @@ app.post("/api/pricing/bulk", searchRateLimit, requireTenantContext, requireOrga
       return res.status(400).json({ error: "CSV file body is required" });
     }
     const filename = bulkPricingFilenameSchema.parse(req.get("x-file-name") ?? "bulk-pricing.csv");
-    let pricingFormula;
-    try {
-      const encodedPricingFormula = req.get("x-pricing-formula");
-      const pricingFormulaJson = encodedPricingFormula ? decodeURIComponent(encodedPricingFormula) : undefined;
-      pricingFormula = parseBulkPricingFormulaJson(pricingFormulaJson, {
-        profitMarginPercent: query.targetMarginPercent,
-        bufferPercent: query.bufferPercent,
-      });
-    } catch (error) {
-      throw new BulkPricingError(error instanceof Error ? error.message : "Invalid pricing formula");
+    let pricingFormula = null;
+    if (query.pricingStrategy === "CUSTOM_FORMULA") {
+      try {
+        const encodedPricingFormula = req.get("x-pricing-formula");
+        const pricingFormulaJson = encodedPricingFormula ? decodeURIComponent(encodedPricingFormula) : undefined;
+        pricingFormula = parseBulkPricingFormulaJson(pricingFormulaJson, {
+          profitMarginPercent: query.targetMarginPercent,
+          bufferPercent: query.bufferPercent,
+        });
+      } catch (error) {
+        throw new BulkPricingError(error instanceof Error ? error.message : "Invalid pricing formula");
+      }
     }
     const rows = parseBulkPricingCsv(req.body.toString("utf8"), {
       marketplace: query.marketplace,
@@ -1171,6 +1174,7 @@ app.post("/api/pricing/bulk", searchRateLimit, requireTenantContext, requireOrga
       userId: tenant.user.id,
       marketplace: query.marketplace,
       condition: query.condition,
+      pricingStrategy: query.pricingStrategy,
       targetMarginPercent: query.targetMarginPercent,
       bufferPercent: query.bufferPercent,
       pricingFormula,

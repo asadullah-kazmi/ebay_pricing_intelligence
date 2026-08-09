@@ -234,6 +234,67 @@
   min-width: 0;
 }
 
+.pricingStrategyFieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.pricingStrategyFieldset legend {
+  margin-bottom: 8px;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+}
+
+.pricingStrategyOptions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 5px;
+  border: 1px solid #dbe4f0;
+  border-radius: 12px;
+  background: #f1f5f9;
+}
+
+.pricingStrategyOptions button {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: #475569;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pricingStrategyOptions button span {
+  color: #0f2749;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.pricingStrategyOptions button small {
+  color: #64748b;
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+.pricingStrategyOptions button.pricingStrategyActive {
+  border-color: #b8d0ff;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(15, 39, 73, .08);
+}
+
+.pricingStrategyOptions button.pricingStrategyActive span {
+  color: #0052ff;
+}
+
 .searchForm label > span {
   font-size: 11px;
   font-weight: 700;
@@ -1936,6 +1997,10 @@
   }
 
   .searchRow {
+    grid-template-columns: 1fr;
+  }
+
+  .pricingStrategyOptions {
     grid-template-columns: 1fr;
   }
 

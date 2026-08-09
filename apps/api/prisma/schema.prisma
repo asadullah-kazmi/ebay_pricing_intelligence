@@ -933,6 +933,7 @@ model BulkPricingJob {
   noMatchItems     Int              @default(0)
   failedItems      Int              @default(0)
   sourceFilename   String?
+  pricingStrategy  String           @default("CUSTOM_FORMULA")
   targetMarginPercent Decimal?         @db.Decimal(6, 2)
   bufferPercent       Decimal?         @db.Decimal(6, 2)
   pricingFormula      Json?

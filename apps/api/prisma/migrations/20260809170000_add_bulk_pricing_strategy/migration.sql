@@ -1,0 +1,2 @@
+ALTER TABLE "BulkPricingJob"
+ADD COLUMN "pricingStrategy" TEXT NOT NULL DEFAULT 'CUSTOM_FORMULA';

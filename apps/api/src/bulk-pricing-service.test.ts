@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateBulkMarginPercent, calculateSimpleBulkSellingPrice, createBulkPricingTemplateCsv, parseBulkPricingCsv } from "./bulk-pricing-service.js";
+import { calculateAutomaticMarketPrice, calculateBulkMarginPercent, calculateSimpleBulkSellingPrice, createBulkPricingTemplateCsv, parseBulkPricingCsv } from "./bulk-pricing-service.js";
 import {
   createDefaultBulkPricingFormula,
   evaluateBulkPricingFormula,
@@ -188,6 +188,12 @@ describe("bulk pricing formula", () => {
 });
 
 describe("bulk pricing calculator", () => {
+  it("uses the competitor item-price mean in automatic mode and ignores shipping", () => {
+    const automatic = calculateAutomaticMarketPrice(80, 110);
+    expect(automatic.sellingPrice).toBe(110);
+    expect(automatic.marginPercent).toBe(27.27);
+  });
+
   it("reverse-solves the legacy calculator to achieve the selected net margin", () => {
     const result = calculateSimpleBulkSellingPrice({ costPrice: 14.54, targetMarginPercent: 20 });
 

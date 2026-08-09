@@ -87,6 +87,7 @@ type BulkPricingJob = {
   id: string;
   marketplace: string;
   defaultCondition: string;
+  pricingStrategy?: "CUSTOM_FORMULA" | "MARKET_MEAN";
   targetMarginPercent: number | null;
   bufferPercent: number | null;
   pricingFormula?: BulkPricingFormula | null;
@@ -541,6 +542,7 @@ export default function PricingWorkspace() {
   const [bulkCurrency, setBulkCurrency] = useState("USD");
   const [targetMarginPercent, setTargetMarginPercent] = useState("20");
   const [bulkBufferPercent, setBulkBufferPercent] = useState("0");
+  const [bulkPricingStrategy, setBulkPricingStrategy] = useState<"CUSTOM_FORMULA" | "MARKET_MEAN">("MARKET_MEAN");
   const [pricingFormula, setPricingFormula] = useState<BulkPricingFormula>(() => createDefaultPricingFormula());
   const [result, setResult] = useState<SearchResult | null>(null);
   const [error, setError] = useState("");
@@ -871,29 +873,32 @@ function getDemoHistoryJobs(): BulkPricingJob[] {
   async function startBulk(event: FormEvent) {
     event.preventDefault();
     if (!bulkFile || bulkBusy) return;
-    const enabledComponents = pricingFormula.components.filter((component) => component.enabled);
-    if (!enabledComponents.length) {
-      setError("Enable at least one selling-price formula component.");
-      return;
-    }
-    if (enabledComponents.some((component) => component.operator === "DIVIDE" && component.value === 0)) {
-      setError("A selling-price formula cannot divide by zero.");
-      return;
-    }
-    if (enabledComponents.some((component) => !component.label.trim())) {
-      setError("Every selling-price formula component needs a label.");
-      return;
-    }
-    const normalizedUploadFormula = normalizePricingFormula(pricingFormula);
-    const formulaValidation = evaluatePricingFormula(45, normalizedUploadFormula);
-    if (formulaValidation.error) {
-      setError(formulaValidation.error);
-      return;
+    let normalizedUploadFormula: BulkPricingFormula | null = null;
+    if (bulkPricingStrategy === "CUSTOM_FORMULA") {
+      const enabledComponents = pricingFormula.components.filter((component) => component.enabled);
+      if (!enabledComponents.length) {
+        setError("Enable at least one selling-price formula component.");
+        return;
+      }
+      if (enabledComponents.some((component) => component.operator === "DIVIDE" && component.value === 0)) {
+        setError("A selling-price formula cannot divide by zero.");
+        return;
+      }
+      if (enabledComponents.some((component) => !component.label.trim())) {
+        setError("Every selling-price formula component needs a label.");
+        return;
+      }
+      normalizedUploadFormula = normalizePricingFormula(pricingFormula);
+      const formulaValidation = evaluatePricingFormula(45, normalizedUploadFormula);
+      if (formulaValidation.error) {
+        setError(formulaValidation.error);
+        return;
+      }
     }
     setBulkBusy(true);
     setError("");
-    const formulaProfitMargin = normalizedUploadFormula.components.find((component) => component.enabled && component.kind === "PROFIT_MARGIN_PERCENT")?.value ?? 0;
-    const formulaBuffer = normalizedUploadFormula.components.find((component) => component.enabled && component.kind === "BUFFER_PERCENT")?.value ?? 0;
+    const formulaProfitMargin = normalizedUploadFormula?.components.find((component) => component.enabled && component.kind === "PROFIT_MARGIN_PERCENT")?.value ?? 0;
+    const formulaBuffer = normalizedUploadFormula?.components.find((component) => component.enabled && component.kind === "BUFFER_PERCENT")?.value ?? 0;
     try {
       if (demo) {
         await new Promise((resolve) => window.setTimeout(resolve, 600));
@@ -901,6 +906,7 @@ function getDemoHistoryJobs(): BulkPricingJob[] {
           id: `demo-bulk-${Date.now()}`,
           marketplace,
           defaultCondition: condition,
+          pricingStrategy: bulkPricingStrategy,
           targetMarginPercent: formulaProfitMargin,
           bufferPercent: formulaBuffer,
           pricingFormula: normalizedUploadFormula,
@@ -923,13 +929,13 @@ function getDemoHistoryJobs(): BulkPricingJob[] {
 
       const bytes = await bulkFile.arrayBuffer();
       const job = await apiFetch(
-        `/api/pricing/bulk?marketplace=${encodeURIComponent(marketplace)}&condition=${encodeURIComponent(condition)}&currency=${encodeURIComponent(bulkCurrency)}&targetMarginPercent=${encodeURIComponent(formulaProfitMargin)}&bufferPercent=${encodeURIComponent(formulaBuffer)}`,
+        `/api/pricing/bulk?marketplace=${encodeURIComponent(marketplace)}&condition=${encodeURIComponent(condition)}&currency=${encodeURIComponent(bulkCurrency)}&pricingStrategy=${encodeURIComponent(bulkPricingStrategy)}&targetMarginPercent=${encodeURIComponent(formulaProfitMargin)}&bufferPercent=${encodeURIComponent(formulaBuffer)}`,
         {
           method: "POST",
           headers: {
             "Content-Type": "text/csv",
             "X-File-Name": bulkFile.name,
-            "X-Pricing-Formula": encodeURIComponent(JSON.stringify(normalizedUploadFormula)),
+            ...(normalizedUploadFormula ? { "X-Pricing-Formula": encodeURIComponent(JSON.stringify(normalizedUploadFormula)) } : {}),
           },
           body: bytes,
         },
@@ -1087,7 +1093,9 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
     }
 
     const priceVar = ((index % 5) - 2) * 1.5;
-    const finalPrice = Math.round((template.price + priceVar) * 100) / 100;
+    const finalPrice = histJob?.pricingStrategy === "MARKET_MEAN"
+      ? template.market
+      : Math.round((template.price + priceVar) * 100) / 100;
     const finalFloor = Math.round((template.floor + priceVar * 0.5) * 100) / 100;
 
     return {
@@ -1133,9 +1141,10 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
     id: jobId,
     marketplace: histJob?.marketplace ?? "EBAY_US",
     defaultCondition: histJob?.defaultCondition ?? "NEW",
+    pricingStrategy: histJob?.pricingStrategy ?? "CUSTOM_FORMULA",
     targetMarginPercent: histJob?.targetMarginPercent ?? 20,
     bufferPercent: histJob?.bufferPercent ?? 0,
-    pricingFormula: histJob?.pricingFormula ?? createDefaultPricingFormula(),
+    pricingFormula: histJob ? histJob.pricingFormula : createDefaultPricingFormula(),
     status: histJob?.status ?? "COMPLETED",
     totalItems: totalCount,
     completedItems: completedCount,
@@ -1418,7 +1427,7 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
               <h2>Price a full sheet in one pass.</h2>
               <ul className={styles.trustList}>
                 <li>Upload part number, brand, and cost</li>
-                <li>Exact eBay comps + org margin rules</li>
+                <li>{bulkPricingStrategy === "MARKET_MEAN" ? "Verified eBay comps + mean item price" : "Exact eBay comps + your custom formula"}</li>
                 <li>Download priced results after the job completes</li>
               </ul>
               <button type="button" className={styles.ghostBtn} onClick={() => void downloadTemplate()}>
@@ -1427,6 +1436,30 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
             </div>
 
             <form className={styles.searchForm} onSubmit={startBulk}>
+              <fieldset className={styles.pricingStrategyFieldset}>
+                <legend>Pricing method</legend>
+                <div className={styles.pricingStrategyOptions}>
+                  <button
+                    type="button"
+                    className={bulkPricingStrategy === "MARKET_MEAN" ? styles.pricingStrategyActive : ""}
+                    onClick={() => setBulkPricingStrategy("MARKET_MEAN")}
+                    aria-pressed={bulkPricingStrategy === "MARKET_MEAN"}
+                  >
+                    <span>Automatic market pricing</span>
+                    <small>Use the mean selling price from verified eBay competitors. Shipping is excluded.</small>
+                  </button>
+                  <button
+                    type="button"
+                    className={bulkPricingStrategy === "CUSTOM_FORMULA" ? styles.pricingStrategyActive : ""}
+                    onClick={() => setBulkPricingStrategy("CUSTOM_FORMULA")}
+                    aria-pressed={bulkPricingStrategy === "CUSTOM_FORMULA"}
+                  >
+                    <span>Custom formula</span>
+                    <small>Calculate each selling price with your saved fee and profit formula.</small>
+                  </button>
+                </div>
+              </fieldset>
+
               <div className={styles.fileDropZone} onClick={() => fileInputRef.current?.click()}>
                 <input
                   ref={fileInputRef}
@@ -1481,14 +1514,16 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
                 </label>
               </div>
 
-              <PricingFormulaBuilder formula={pricingFormula} onChange={setPricingFormula} currency={bulkCurrency || "USD"} />
+              {bulkPricingStrategy === "CUSTOM_FORMULA" && (
+                <PricingFormulaBuilder formula={pricingFormula} onChange={setPricingFormula} currency={bulkCurrency || "USD"} />
+              )}
 
               <div className={styles.bulkActionsRow}>
                 <button hidden type="button" className={styles.calcTriggerBtn} onClick={() => setShowCalculatorModal(true)}>
                   🧮 Fee Calculator
                 </button>
                 <button type="submit" className={styles.primary} disabled={bulkBusy || !bulkFile}>
-                  {bulkBusy ? "Uploading…" : "Run bulk pricing"}
+                  {bulkBusy ? "Uploading…" : bulkPricingStrategy === "MARKET_MEAN" ? "Run automatic pricing" : "Run custom pricing"}
                 </button>
               </div>
               <p className={styles.bulkHint}>
@@ -1756,7 +1791,7 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
                                     <span className={styles.countBadge}>{item.competitorCount} Listings</span>
                                     {item.marketRecommended != null && (
                                       <span className={styles.marketBadge}>
-                                        Market Median {money(item.marketRecommended, item.currency)}
+                                        {bulkJob.pricingStrategy === "MARKET_MEAN" ? "Market Mean" : "Market Recommendation"} {money(item.marketRecommended, item.currency)}
                                       </span>
                                     )}
                                   </div>
@@ -1931,7 +1966,7 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
                         <div className={styles.historyMetaCol}>
                           <b className={styles.historyFilename}>{job.sourceFilename || job.id}</b>
                           <span className={styles.historyMetaInfo}>
-                            {job.marketplace.replace("EBAY_", "eBay ")} · {job.defaultCondition} · {job.targetMarginPercent ?? 20}% margin
+                            {job.marketplace.replace("EBAY_", "eBay ")} · {job.defaultCondition} · {job.pricingStrategy === "MARKET_MEAN" ? "Automatic mean" : `${job.targetMarginPercent ?? 20}% margin`}
                           </span>
                         </div>
                         <div className={styles.historyRatioCol}>
