@@ -17,6 +17,18 @@ import { searchEbay } from "./providers/ebay.js";
 import type { ListingCondition, Marketplace, MatchedListing } from "./types.js";
 
 export const bulkPricingTemplateFilename = "partpulse-bulk-pricing-template.csv";
+export const bulkPricingRetentionDays = 30;
+
+export function bulkPricingRetentionCutoff(now = new Date()): Date {
+  return new Date(now.getTime() - bulkPricingRetentionDays * 86_400_000);
+}
+
+export async function cleanupExpiredBulkPricingJobs(now = new Date()): Promise<number> {
+  const deleted = await prisma.bulkPricingJob.deleteMany({
+    where: { createdAt: { lte: bulkPricingRetentionCutoff(now) } },
+  });
+  return deleted.count;
+}
 
 export class BulkPricingError extends Error {
   constructor(message: string, readonly statusCode: 400 | 404 | 409 = 400) {
@@ -426,7 +438,7 @@ function isRateLimitError(error: unknown): boolean {
 
 export async function resumeBulkPricingJob(organizationId: string, jobId: string) {
   const job = await prisma.bulkPricingJob.findFirst({
-    where: { id: jobId, organizationId },
+    where: { id: jobId, organizationId, createdAt: { gt: bulkPricingRetentionCutoff() } },
   });
   if (!job) throw new BulkPricingError("Bulk pricing job not found", 404);
 
@@ -712,7 +724,7 @@ export async function createBulkPricingJob(input: {
 
 export async function getBulkPricingJob(organizationId: string, jobId: string) {
   const job = await prisma.bulkPricingJob.findFirst({
-    where: { id: jobId, organizationId },
+    where: { id: jobId, organizationId, createdAt: { gt: bulkPricingRetentionCutoff() } },
     include: { items: { orderBy: { rowNumber: "asc" } } },
   });
   if (!job) throw new BulkPricingError("Bulk pricing job not found", 404);
@@ -721,7 +733,7 @@ export async function getBulkPricingJob(organizationId: string, jobId: string) {
 
 export async function listBulkPricingJobs(organizationId: string, limit = 20) {
   const jobs = await prisma.bulkPricingJob.findMany({
-    where: { organizationId },
+    where: { organizationId, createdAt: { gt: bulkPricingRetentionCutoff() } },
     orderBy: { createdAt: "desc" },
     take: limit,
     select: {

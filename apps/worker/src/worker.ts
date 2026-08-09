@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   disconnectDatabase,
   consumeNotificationEvent,
+  cleanupExpiredBulkPricingJobs,
   getActiveBulkPricingJobCount,
   getActiveFitmentJobCount,
   getActivePricingJobCount,
@@ -55,6 +56,7 @@ let stopping = false;
 let pollInProgress = false;
 let pollTimer: NodeJS.Timeout | undefined;
 let heartbeatTimer: NodeJS.Timeout | undefined;
+let retentionCleanupTimer: NodeJS.Timeout | undefined;
 const metrics = {
   polls: 0,
   pollFailures: 0,
@@ -146,6 +148,7 @@ async function poll(): Promise<void> {
 
 async function start(): Promise<void> {
   await heartbeat();
+  const expiredBulkPricingJobs = await cleanupExpiredBulkPricingJobs();
   const [pricingJobs, bulkPricingJobs, fitmentJobs, inventoryPreparationJobs, ebayInventorySyncJobs, ebayOfferJobs, ebayListingOperationJobs, retentionRuns] = await Promise.all([
     resumeInterruptedPricingJobs(jobOptions),
     resumeInterruptedBulkPricingJobs(jobOptions),
@@ -163,6 +166,7 @@ async function start(): Promise<void> {
     leaseDurationMs,
     maxAttempts,
     recovered: { pricingJobs, bulkPricingJobs, fitmentJobs, inventoryPreparationJobs, ebayInventorySyncJobs, ebayOfferJobs, ebayListingOperationJobs, retentionRuns },
+    expiredBulkPricingJobs,
   }));
   pollTimer = setInterval(() => void poll(), pollIntervalMs);
   heartbeatTimer = setInterval(() => void heartbeat().catch((error) => {
@@ -171,12 +175,19 @@ async function start(): Promise<void> {
       error: error instanceof Error ? { name: error.name, message: error.message } : { name: "UnknownError" },
     }));
   }), heartbeatIntervalMs);
+  retentionCleanupTimer = setInterval(() => {
+    void cleanupExpiredBulkPricingJobs()
+      .then((count) => { if (count) console.info(JSON.stringify({ type: "bulk_pricing_retention_cleanup", count })); })
+      .catch((error) => console.error(JSON.stringify({ type: "bulk_pricing_retention_cleanup_failed", error: error instanceof Error ? { name: error.name, message: error.message } : { name: "UnknownError" } })));
+  }, 60 * 60 * 1000);
+  retentionCleanupTimer.unref();
 }
 
 async function shutdown(signal: string, exitCode = 0): Promise<void> {
   if (stopping) return;
   stopping = true;
   if (pollTimer) clearInterval(pollTimer);
+  if (retentionCleanupTimer) clearInterval(retentionCleanupTimer);
   console.info(JSON.stringify({ type: "worker_shutdown_started", signal, activeJobs: activeJobs() }));
   const deadline = Date.now() + shutdownTimeoutMs;
   while (activeJobs() > 0 && Date.now() < deadline) {

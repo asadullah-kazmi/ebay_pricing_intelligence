@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildRetentionCutoffs, defaultRetentionPolicy } from "./retention-service.js";
+import { bulkPricingRetentionCutoff, bulkPricingRetentionDays } from "./bulk-pricing-service.js";
 
 describe("retention cutoff snapshots", () => {
   it("freezes each policy window relative to one generated timestamp", () => {
@@ -26,5 +27,13 @@ describe("retention cutoff snapshots", () => {
     expect(snapshot.readNotificationsBefore).toBe("2026-06-24T00:00:00.000Z");
     expect(snapshot.publishedOutboxBefore).toBe("2026-07-17T00:00:00.000Z");
     expect(policy.publishedOutboxDays).toBe(7);
+  });
+});
+
+describe("bulk pricing retention", () => {
+  it("expires bulk pricing jobs exactly 30 days after creation", () => {
+    const now = new Date("2026-08-09T12:00:00.000Z");
+    expect(bulkPricingRetentionDays).toBe(30);
+    expect(bulkPricingRetentionCutoff(now).toISOString()).toBe("2026-07-10T12:00:00.000Z");
   });
 });
