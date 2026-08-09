@@ -54,7 +54,7 @@ export async function generateQuickUpdateExcel(): Promise<Blob> {
 
   const instructions = [
     "1. Click the 'Quick Update Intake' tab at the bottom of this workbook to enter your parts.",
-    "2. Enter your OEM Part Numbers (MPN), Selling Prices, and Available Quantities under the styled header row.",
+    "2. Enter your OEM Part Numbers (MPN), Brands, Selling Prices, and Available Quantities under the styled header row.",
     "3. Do not modify or delete the header names on Row 1 of the data sheet.",
     "4. Save this file (.xlsx or .csv) and upload it directly into PartPulse Pipeline (/pipeline).",
   ];
@@ -95,6 +95,7 @@ export async function generateQuickUpdateExcel(): Promise<Blob> {
   // Schema Rows
   const schemaData = [
     ["Part no", "REQUIRED", "Text", "OEM Part Number, MPN, or interchange number.", "8K0615301M"],
+    ["Brand", "REQUIRED", "Text", "Brand assigned directly to the catalog item.", "Audi"],
     ["Selling Price", "REQUIRED", "Decimal", "Target listing price without currency symbols (USD). Must be >= 0.", "149.99"],
     ["Quantity", "REQUIRED", "Integer", "Available inventory stock quantity. Whole non-negative number.", "12"],
   ];
@@ -127,6 +128,7 @@ export async function generateQuickUpdateExcel(): Promise<Blob> {
 
   dataSheet.columns = [
     { header: "Part no", key: "partNo", width: 24 },
+    { header: "Brand", key: "brand", width: 20 },
     { header: "Selling Price", key: "price", width: 18 },
     { header: "Quantity", key: "quantity", width: 16 },
   ];
@@ -134,12 +136,12 @@ export async function generateQuickUpdateExcel(): Promise<Blob> {
   // Header Styling for Data Sheet (Row 1)
   const dataHeaderRow = dataSheet.getRow(1);
   dataHeaderRow.height = 32;
-  ["Part no", "Selling Price", "Quantity"].forEach((text, idx) => {
+  ["Part no", "Brand", "Selling Price", "Quantity"].forEach((text, idx) => {
     const cell = dataHeaderRow.getCell(idx + 1);
     cell.value = text;
     cell.font = { name: "Segoe UI", size: 11, bold: true, color: { argb: "FFFFFF" } };
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "0C274D" } };
-    cell.alignment = { vertical: "middle", horizontal: idx === 0 ? "left" : "right" };
+    cell.alignment = { vertical: "middle", horizontal: idx < 2 ? "left" : "right" };
     cell.border = {
       bottom: { style: "medium", color: { argb: "2563EB" } },
     };
@@ -147,10 +149,10 @@ export async function generateQuickUpdateExcel(): Promise<Blob> {
 
   // Sample Data Rows
   const sampleRows = [
-    { partNo: "8K0615301M", price: 149.99, quantity: 12 },
-    { partNo: "4E0833051C", price: 89.50, quantity: 5 },
-    { partNo: "1GNEK13Z43R", price: 299.00, quantity: 3 },
-    { partNo: "84178783", price: 65.00, quantity: 8 },
+    { partNo: "8K0615301M", brand: "Audi", price: 149.99, quantity: 12 },
+    { partNo: "4E0833051C", brand: "Audi", price: 89.50, quantity: 5 },
+    { partNo: "1GNEK13Z43R", brand: "Chevrolet", price: 299.00, quantity: 3 },
+    { partNo: "84178783", brand: "GM", price: 65.00, quantity: 8 },
   ];
 
   sampleRows.forEach((item, idx) => {
@@ -163,18 +165,23 @@ export async function generateQuickUpdateExcel(): Promise<Blob> {
     cellPart.font = { name: "Segoe UI", size: 10, bold: true, color: { argb: "2563EB" } };
     cellPart.alignment = { vertical: "middle", horizontal: "left" };
 
-    const cellPrice = row.getCell(2);
+    const cellBrand = row.getCell(2);
+    cellBrand.value = item.brand;
+    cellBrand.font = { name: "Segoe UI", size: 10, color: { argb: "0F172A" } };
+    cellBrand.alignment = { vertical: "middle", horizontal: "left" };
+
+    const cellPrice = row.getCell(3);
     cellPrice.value = item.price;
     cellPrice.numFmt = "$#,##0.00";
     cellPrice.font = { name: "Segoe UI", size: 10, color: { argb: "0F172A" } };
     cellPrice.alignment = { vertical: "middle", horizontal: "right" };
 
-    const cellQty = row.getCell(3);
+    const cellQty = row.getCell(4);
     cellQty.value = item.quantity;
     cellQty.font = { name: "Segoe UI", size: 10, color: { argb: "0F172A" } };
     cellQty.alignment = { vertical: "middle", horizontal: "right" };
 
-    [cellPart, cellPrice, cellQty].forEach((cell) => {
+    [cellPart, cellBrand, cellPrice, cellQty].forEach((cell) => {
       cell.border = {
         bottom: { style: "thin", color: { argb: "F1F5F9" } },
       };

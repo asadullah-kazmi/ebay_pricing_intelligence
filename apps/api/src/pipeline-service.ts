@@ -247,7 +247,7 @@ async function processPipelineRow(input: {
         normalizedSku: data.normalizedSku,
         primaryPartNumber: data.primaryPartNumber,
         normalizedPartNumber: data.normalizedPartNumber,
-        brand: prepared.identifiedBrand || brand,
+        brand: data.brand?.trim() || prepared.identifiedBrand || brand,
         partName: prepared.partName,
         description: data.description ?? prepared.description,
         condition: input.condition,
@@ -304,7 +304,7 @@ async function processPipelineRow(input: {
     const aspects = {
       ...prepared.aspects,
       "Manufacturer Part Number": [data.primaryPartNumber],
-      Brand: [prepared.identifiedBrand || brand],
+      Brand: [data.brand?.trim() || prepared.identifiedBrand || brand],
       ...(prepared.placement || data.placement ? { Placement: [prepared.placement || data.placement!] } : {}),
     };
     const issues = [
@@ -365,7 +365,7 @@ async function processPipelineRow(input: {
       organizationId: input.organizationId,
       partId: result.partId,
       partNumber: data.primaryPartNumber,
-      brand: prepared.identifiedBrand || brand,
+      brand: data.brand?.trim() || prepared.identifiedBrand || brand,
       marketplace: input.marketplace,
       condition: input.condition,
       requestedCount: 2,

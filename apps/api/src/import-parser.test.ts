@@ -63,13 +63,14 @@ const validRow = {
 
 describe("catalog staging parser", () => {
   it("accepts the Basic pipeline template and preserves selling price", async () => {
-    const basic = Buffer.from("Part no,Selling Price,Quantity\n84178783,79.95,4\n", "utf8");
+    const basic = Buffer.from("Part no,Brand,Selling Price,Quantity\n84178783,GM,79.95,4\n", "utf8");
     const result = await parseAndValidateImport("basic.csv", basic);
     expect(result.errors).toEqual([]);
     expect(result.rows[0]).toMatchObject({
       status: "WARNING",
       normalizedData: {
         primaryPartNumber: "84178783",
+        brand: "GM",
         sellingPrice: 79.95,
         quantity: 4,
         cost: 0,
