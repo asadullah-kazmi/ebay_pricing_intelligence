@@ -460,7 +460,7 @@
 
 .formulaRow {
   display: grid;
-  grid-template-columns: 18px 50px 112px minmax(145px, 1fr) minmax(125px, .8fr) 112px 28px;
+  grid-template-columns: 18px 50px 102px minmax(145px, 1fr) minmax(145px, 1fr) minmax(125px, .8fr) 105px 28px;
   align-items: center;
   gap: 7px;
   padding: 8px 12px;
@@ -555,6 +555,17 @@
 .formulaPreviewBreakdown small { color: #94a3b8; font-size: 9px; }
 .formulaPreviewBreakdown strong { background: #f0fdf4; border-color: #bbf7d0; }
 .formulaPreviewBreakdown strong b { color: #15803d; }
+
+.formulaValidation {
+  margin: 0 14px 14px;
+  padding: 9px 11px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 11px;
+  line-height: 1.45;
+}
 
 .calcTriggerBtn {
   display: inline-flex;
@@ -1903,7 +1914,7 @@
   }
 
   .formulaRow {
-    grid-template-columns: 18px 50px 105px minmax(130px, 1fr) minmax(115px, .8fr) 105px 28px;
+    grid-template-columns: 18px 50px 96px minmax(125px, 1fr) minmax(135px, 1fr) minmax(110px, .8fr) 96px 28px;
   }
 }
 

@@ -4,11 +4,15 @@ import { Fragment, FormEvent, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../components/AuthProvider";
 import { permissionSet } from "../../lib/organization-access";
 import {
+  calculateFormulaProfitAtPrice,
   componentUnit,
   createDefaultPricingFormula,
   evaluatePricingFormula,
+  formulaCalculationBaseDefinitions,
   formulaComponentDefinitions,
+  normalizePricingFormula,
   type BulkPricingFormula,
+  type PricingFormulaCalculationBase,
   type PricingFormulaComponentKind,
   type PricingFormulaOperator,
 } from "../../lib/bulk-pricing-formula";
@@ -103,47 +107,64 @@ const formulaOperatorLabels: Record<PricingFormulaOperator, string> = { ADD: "+ 
 
 function PricingFormulaBuilder({ formula, onChange, currency }: { formula: BulkPricingFormula; onChange: (formula: BulkPricingFormula) => void; currency: string }) {
   const [sampleCost, setSampleCost] = useState("45");
-  const evaluated = evaluatePricingFormula(Number(sampleCost) || 0, formula);
+  const normalizedFormula = normalizePricingFormula(formula);
+  const evaluated = evaluatePricingFormula(Number(sampleCost) || 0, normalizedFormula);
 
   function update(index: number, patch: Partial<BulkPricingFormula["components"][number]>) {
-    onChange({ ...formula, components: formula.components.map((component, itemIndex) => itemIndex === index ? { ...component, ...patch } : component) });
+    onChange({ ...normalizedFormula, components: normalizedFormula.components.map((component, itemIndex) => itemIndex === index ? { ...component, ...patch } : component) });
   }
   function changeKind(index: number, kind: PricingFormulaComponentKind) {
     const definition = formulaComponentDefinitions.find((item) => item.kind === kind)!;
-    update(index, { kind, label: definition.label, value: definition.defaultValue });
+    update(index, { kind, label: definition.label, value: definition.defaultValue, operator: "ADD", calculationType: definition.calculationType, calculationBase: definition.calculationBase });
   }
   function move(index: number, direction: -1 | 1) {
     const nextIndex = index + direction;
-    if (nextIndex < 0 || nextIndex >= formula.components.length) return;
-    const components = [...formula.components];
+    if (nextIndex < 0 || nextIndex >= normalizedFormula.components.length) return;
+    const components = [...normalizedFormula.components];
     [components[index], components[nextIndex]] = [components[nextIndex]!, components[index]!];
-    onChange({ ...formula, components });
+    onChange({ ...normalizedFormula, components });
   }
   function addComponent() {
-    const unused = formulaComponentDefinitions.find((definition) => !formula.components.some((component) => component.kind === definition.kind && !definition.kind.startsWith("CUSTOM")))
+    const unused = formulaComponentDefinitions.find((definition) => !normalizedFormula.components.some((component) => component.kind === definition.kind && !definition.kind.startsWith("CUSTOM")))
       ?? formulaComponentDefinitions.find((definition) => definition.kind === "CUSTOM_FIXED")!;
-    onChange({ ...formula, components: [...formula.components, { id: `${unused.kind.toLowerCase()}-${Date.now()}`, kind: unused.kind, operator: "ADD", value: unused.defaultValue, label: unused.label, enabled: true }] });
+    onChange({ ...normalizedFormula, components: [...normalizedFormula.components, { id: `${unused.kind.toLowerCase()}-${Date.now()}`, kind: unused.kind, operator: "ADD", value: unused.defaultValue, label: unused.label, enabled: true, calculationType: unused.calculationType, calculationBase: unused.calculationBase }] });
+  }
+  function basesFor(component: BulkPricingFormula["components"][number]) {
+    if (component.calculationType === "TARGET_MARGIN") return formulaCalculationBaseDefinitions.filter((item) => item.value === "SELLING_PRICE");
+    if (component.calculationType === "MARKUP") return formulaCalculationBaseDefinitions.filter((item) => ["BASE_COST", "PREVIOUS_TOTAL"].includes(item.value));
+    if (component.calculationType === "FIXED_COST") return formulaCalculationBaseDefinitions.filter((item) => item.value === "PREVIOUS_TOTAL");
+    return formulaCalculationBaseDefinitions.filter((item) => item.value !== "CUSTOM");
+  }
+  function operatorsFor(component: BulkPricingFormula["components"][number]) {
+    if (component.calculationType === "TARGET_MARGIN" || component.calculationType === "MARKUP") return ["ADD"] as PricingFormulaOperator[];
+    if (component.calculationType === "PERCENTAGE_DEDUCTION" && component.calculationBase !== "PREVIOUS_TOTAL") return ["ADD", "SUBTRACT"] as PricingFormulaOperator[];
+    return Object.keys(formulaOperatorLabels) as PricingFormulaOperator[];
+  }
+  function expressionSymbol(component: BulkPricingFormula["components"][number]) {
+    if (component.calculationType === "PERCENTAGE_DEDUCTION" && component.calculationBase !== "PREVIOUS_TOTAL") return component.operator === "SUBTRACT" ? "+" : "−";
+    return formulaOperatorLabels[component.operator].split(" ")[0];
   }
 
   return <section className={styles.formulaBuilder}>
     <div className={styles.formulaBuilderHead}>
-      <div><span>SELLING PRICE FORMULA</span><h3>Build your calculation</h3><p>Percentages use the running subtotal at that step. Order matters.</p></div>
+      <div><span>SELLING PRICE FORMULA</span><h3>Build your calculation</h3><p>Fees use their selected base. Only Previous total components are sequential.</p></div>
       <button type="button" className={styles.ghostBtn} onClick={() => onChange(createDefaultPricingFormula())}>Reset default</button>
     </div>
-    <div className={styles.formulaExpression}><b>Cost price</b>{formula.components.filter((component) => component.enabled).map((component) => <span key={component.id}>{formulaOperatorLabels[component.operator].split(" ")[0]} {component.label} {component.value}{componentUnit(component.kind) === "%" ? "%" : ` ${currency}`}</span>)}<strong>= Selling price</strong></div>
+    <div className={styles.formulaExpression}><b>Reverse solve from cost</b>{normalizedFormula.components.filter((component) => component.enabled).map((component) => <span key={component.id}>{expressionSymbol(component)} {component.label} {component.value}{componentUnit(component.kind) === "%" ? `% of ${formulaCalculationBaseDefinitions.find((item) => item.value === component.calculationBase)?.label ?? "base"}` : ` ${currency}`}</span>)}<strong>= Selling price</strong></div>
     <div className={styles.formulaRows}>
-      {formula.components.map((component, index) => <div className={`${styles.formulaRow}${component.enabled ? "" : ` ${styles.formulaRowDisabled}`}`} key={component.id}>
+      {normalizedFormula.components.map((component, index) => <div className={`${styles.formulaRow}${component.enabled ? "" : ` ${styles.formulaRowDisabled}`}`} key={component.id}>
         <input aria-label={`Enable ${component.label}`} type="checkbox" checked={component.enabled} onChange={(event) => update(index, { enabled: event.currentTarget.checked })}/>
-        <div className={styles.orderButtons}><button type="button" disabled={index === 0} onClick={() => move(index, -1)}>↑</button><button type="button" disabled={index === formula.components.length - 1} onClick={() => move(index, 1)}>↓</button></div>
-        <select aria-label="Operation" value={component.operator} onChange={(event) => update(index, { operator: event.currentTarget.value as PricingFormulaOperator })}>{Object.entries(formulaOperatorLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+        <div className={styles.orderButtons}><button type="button" disabled={index === 0} onClick={() => move(index, -1)}>↑</button><button type="button" disabled={index === normalizedFormula.components.length - 1} onClick={() => move(index, 1)}>↓</button></div>
+        <select aria-label="Operation" value={component.operator} onChange={(event) => update(index, { operator: event.currentTarget.value as PricingFormulaOperator })}>{operatorsFor(component).map((value) => <option key={value} value={value}>{formulaOperatorLabels[value]}</option>)}</select>
         <select aria-label="Fee type" value={component.kind} onChange={(event) => changeKind(index, event.currentTarget.value as PricingFormulaComponentKind)}>{formulaComponentDefinitions.map((definition) => <option key={definition.kind} value={definition.kind}>{definition.label}</option>)}</select>
+        <select aria-label="Calculation base" value={component.calculationBase ?? "SELLING_PRICE"} onChange={(event) => update(index, { calculationBase: event.currentTarget.value as PricingFormulaCalculationBase, operator: component.operator === "MULTIPLY" || component.operator === "DIVIDE" ? "ADD" : component.operator })}>{basesFor(component).map((base) => <option key={base.value} value={base.value}>{base.label}</option>)}</select>
         <input aria-label="Component label" value={component.label} maxLength={80} onChange={(event) => update(index, { label: event.currentTarget.value })}/>
         <label className={styles.formulaValue}><input aria-label={`${component.label} value`} type="number" min="0" step="0.01" value={component.value} onChange={(event) => update(index, { value: Math.max(0, Number(event.currentTarget.value) || 0) })}/><span>{componentUnit(component.kind) === "%" ? "%" : currency}</span></label>
-        <button type="button" className={styles.removeFormulaButton} disabled={formula.components.length === 1} aria-label={`Remove ${component.label}`} onClick={() => onChange({ ...formula, components: formula.components.filter((_, itemIndex) => itemIndex !== index) })}>×</button>
+        <button type="button" className={styles.removeFormulaButton} disabled={normalizedFormula.components.length === 1} aria-label={`Remove ${component.label}`} onClick={() => onChange({ ...normalizedFormula, components: normalizedFormula.components.filter((_, itemIndex) => itemIndex !== index) })}>×</button>
       </div>)}
     </div>
-    <div className={styles.formulaBuilderActions}><button type="button" className={styles.ghostBtn} onClick={addComponent}>+ Add formula component</button><label>Preview cost<input type="number" min="0" step="0.01" value={sampleCost} onChange={(event) => setSampleCost(event.currentTarget.value)}/></label><div><span>Calculated selling price</span><b>{money(evaluated.sellingPrice, currency)}</b></div></div>
-    <div className={styles.formulaPreviewBreakdown}>{evaluated.breakdown.map((step) => <span key={step.id}><i>{step.label}</i><b>{step.changeAmount >= 0 ? "+" : ""}{money(step.changeAmount, currency)}</b><small>{money(step.subtotalAfter, currency)}</small></span>)}<strong><i>Net profit</i><b>{money(evaluated.netProfit, currency)}</b><small>{evaluated.actualProfitPercent?.toFixed(1) ?? "0.0"}%</small></strong></div>
+    <div className={styles.formulaBuilderActions}><button type="button" className={styles.ghostBtn} onClick={addComponent}>+ Add formula component</button><label>Preview cost<input type="number" min="0" step="0.01" value={sampleCost} onChange={(event) => setSampleCost(event.currentTarget.value)}/></label><div><span>Calculated selling price</span><b>{evaluated.error ? "—" : money(evaluated.sellingPrice, currency)}</b></div></div>
+    {evaluated.error ? <div className={styles.formulaValidation}>{evaluated.error}</div> : <div className={styles.formulaPreviewBreakdown}>{evaluated.breakdown.map((step) => <span key={step.id}><i>{step.label}</i><b>{step.role === "PERCENTAGE_FEE" || step.role === "FIXED_COST" ? "−" : "+"}{money(Math.abs(step.amount), currency)}</b><small>{step.value}{componentUnit(step.kind) === "%" ? "%" : ` ${currency}`}</small></span>)}<strong><i>Net profit</i><b>{money(evaluated.netProfit, currency)}</b><small>{evaluated.netMargin?.toFixed(1) ?? "0.0"}% margin</small></strong></div>}
   </section>;
 }
 
@@ -247,21 +268,6 @@ function feeBreakdown(sellingPrice: number | null, cost: number, currency: strin
   };
 }
 
-function formulaSellingPrice(cost: number, totalMarginPercent: number) {
-  const safeCost = Math.round(Math.max(0, cost) * 100) / 100;
-  const safeMargin = Math.max(0, Math.min(95, totalMarginPercent));
-  const multiplier = 1 + safeMargin / 100;
-  const firstTierFeeRate = 0.1135 + 0.043;
-  const breakEvenFirstTier = (safeCost + 0.4) / (1 - firstTierFeeRate);
-  if (breakEvenFirstTier <= 1000) {
-    return Math.ceil((breakEvenFirstTier * multiplier - Number.EPSILON) * 100) / 100;
-  }
-  const secondTierFeeRate = 0.0235 + 0.043;
-  const tierAdjustment = 1000 * 0.1135 - 1000 * 0.0235;
-  const breakEvenSecondTier = (safeCost + tierAdjustment + 0.4) / (1 - secondTierFeeRate);
-  return Math.ceil((breakEvenSecondTier * multiplier - Number.EPSILON) * 100) / 100;
-}
-
 function CalculatorModal({
   isOpen,
   onClose,
@@ -282,10 +288,14 @@ function CalculatorModal({
 
   const margin = Math.max(0, Math.min(95, Number(targetMarginPercent) || 0));
   const buffer = Math.max(0, Math.min(95, Number(bufferPercent) || 0));
-  const totalMargin = Math.min(95, margin + buffer);
   const cost = Number(sampleCost) || 0;
-  const price = formulaSellingPrice(cost, totalMargin);
-  const breakdown = feeBreakdown(price, cost, "USD", totalMargin);
+  const calculatorFormula = createDefaultPricingFormula();
+  calculatorFormula.components = calculatorFormula.components.map((component) => component.kind === "PROFIT_MARGIN_PERCENT"
+    ? { ...component, value: margin }
+    : component.kind === "BUFFER_PERCENT" ? { ...component, value: buffer } : component);
+  const calculated = evaluatePricingFormula(cost, calculatorFormula);
+  const ebayFee = calculated.breakdown.find((item) => item.kind === "EBAY_FEE_PERCENT")?.amount ?? 0;
+  const otherExpenses = calculated.expenseImpact - ebayFee;
 
   return (
     <div className={styles.calculatorModalOverlay} onClick={onClose}>
@@ -347,45 +357,34 @@ function CalculatorModal({
               <b>{money(cost, "USD")}</b>
             </div>
             <div className={styles.breakdownRow}>
-              <span>Target profit ({totalMargin.toFixed(1).replace(/\.0$/, "")}% target of selling price)</span>
-              <b>{money(breakdown.targetProfit, "USD")}</b>
+              <span>Target net profit ({margin.toFixed(1).replace(/\.0$/, "")}% of selling price)</span>
+              <b>{money(calculated.targetProfit, "USD")}</b>
             </div>
             <div className={styles.breakdownRow}>
               <span>eBay FVF fee</span>
-              <b>{money(breakdown.ebayFeeTotal, "USD")}</b>
+              <b>{money(ebayFee, "USD")}</b>
             </div>
             <div className={styles.breakdownRow}>
-              <span>Export & payment fees (1.3% exp + 2% pay + 1% buf + {money(0.4, "USD")})</span>
-              <b>{money(breakdown.exportPayoneerBufferFee, "USD")}</b>
+              <span>Export, payment, buffer & fixed charges</span>
+              <b>{money(otherExpenses, "USD")}</b>
             </div>
             <div className={`${styles.breakdownRow} ${styles.profitRow}`}>
               <span>Formula selling price</span>
-              <b>{money(price, "USD")}</b>
+              <b>{calculated.error ? "—" : money(calculated.sellingPrice, "USD")}</b>
             </div>
             <div className={styles.breakdownRow}>
               <span>Net profit</span>
-              <b>{money(breakdown.grossProfitBeforeShipping, "USD")} ({price > 0 ? `${((breakdown.grossProfitBeforeShipping / price) * 100).toFixed(1)}% margin` : "—"})</b>
+              <b>{calculated.error ? calculated.error : `${money(calculated.netProfit, "USD")} (${calculated.netMargin?.toFixed(1) ?? "0.0"}% margin)`}</b>
             </div>
             <div className={`${styles.breakdownRow} ${styles.landedRow}`}>
               <span>Selling formula</span>
-              <b style={{ fontSize: 11.5 }}>Selling = Break-even × (1 + (margin + buffer)% )</b>
+              <b style={{ fontSize: 11.5 }}>Selling = Fixed costs ÷ (1 − fee rates − target margin)</b>
             </div>
           </div>
         </div>
       </div>
     </div>
   );
-}
-
-function visibleSellingFormula(item: BulkPricingItem, targetMarginPercent: number, bufferPercent: number) {
-  if (item.sellingPrice === null) return null;
-  const breakdown = feeBreakdown(item.sellingPrice, item.costPrice, item.currency, Math.min(95, targetMarginPercent + bufferPercent));
-  return [
-    money(item.costPrice, item.currency),
-    money(breakdown.targetProfit, item.currency),
-    money(breakdown.ebayFeeTotal, item.currency),
-    money(breakdown.exportPayoneerBufferFee, item.currency),
-  ].join(" + ") + ` = ${money(item.sellingPrice, item.currency)}`;
 }
 
 function downloadTextFile(filename: string, content: string, mime = "text/csv;charset=utf-8") {
@@ -424,9 +423,9 @@ function BulkSellingCalculator({
   const totalMargin = Math.min(95, targetMargin + buffer);
   const breakdown = feeBreakdown(item.sellingPrice, item.costPrice, item.currency, totalMargin);
   const formulaEvaluation = pricingFormula ? evaluatePricingFormula(item.costPrice, pricingFormula) : null;
-  const activeFormulaProfit = item.sellingPrice === null || !formulaEvaluation
+  const activeFormula = item.sellingPrice === null || !pricingFormula || formulaEvaluation?.error
     ? null
-    : landedAmount(item.sellingPrice - item.costPrice - formulaEvaluation.expenseImpact, 0);
+    : calculateFormulaProfitAtPrice(item.costPrice, item.sellingPrice, pricingFormula);
   const [customPrice, setCustomPrice] = useState(item.sellingPrice !== null ? String(item.sellingPrice) : "");
   const [saving, setSaving] = useState(false);
 
@@ -498,9 +497,9 @@ function BulkSellingCalculator({
           <span>Part cost</span>
           <b>{money(item.costPrice, item.currency)}</b>
         </div>
-        {formulaEvaluation ? formulaEvaluation.breakdown.map((step) => <div className={styles.breakdownRow} key={step.id}>
-          <span>{step.label} <small>({formulaOperatorLabels[step.operator]} {step.value}{componentUnit(step.kind) === "%" ? "% of subtotal" : ` ${item.currency}`})</small></span>
-          <b>{step.changeAmount >= 0 ? "+" : ""}{money(step.changeAmount, item.currency)} <small>→ {money(step.subtotalAfter, item.currency)}</small></b>
+        {formulaEvaluation && !formulaEvaluation.error ? formulaEvaluation.breakdown.map((step) => <div className={styles.breakdownRow} key={step.id}>
+          <span>{step.label} <small>({step.value}{componentUnit(step.kind) === "%" ? `% of ${formulaCalculationBaseDefinitions.find((base) => base.value === step.calculationBase)?.label ?? "base"}` : ` ${item.currency}`})</small></span>
+          <b>{(step.role === "PERCENTAGE_FEE" || step.role === "FIXED_COST") && step.amount >= 0 ? "−" : "+"}{money(Math.abs(step.amount), item.currency)}</b>
         </div>) : <>
           <div className={styles.breakdownRow}><span>Target profit ({totalMargin.toFixed(1).replace(/\.0$/, "")}% of selling price)</span><b>{money(breakdown.targetProfit, item.currency)}</b></div>
           <div className={styles.breakdownRow}><span>eBay FVF fee</span><b>{money(breakdown.ebayFeeTotal, item.currency)}</b></div>
@@ -516,7 +515,7 @@ function BulkSellingCalculator({
         </div>
         <div className={`${styles.breakdownRow} ${styles.profitRow}`}>
           <span>Net profit</span>
-          <b>{money(activeFormulaProfit ?? breakdown.grossProfitBeforeShipping, item.currency)} ({item.marginPercent === null ? "—" : `${item.marginPercent.toFixed(1)}% margin`})</b>
+          <b>{money(activeFormula?.netProfit ?? breakdown.grossProfitBeforeShipping, item.currency)} ({activeFormula?.netMargin != null ? `${activeFormula.netMargin.toFixed(1)}% margin` : item.marginPercent === null ? "—" : `${item.marginPercent.toFixed(1)}% margin`})</b>
         </div>
         <div className={styles.breakdownRow}>
           <span>Shipping (estimate)</span>
@@ -524,7 +523,7 @@ function BulkSellingCalculator({
         </div>
         <div className={`${styles.breakdownRow} ${styles.landedRow}`}>
           <span>Total landed cost <small>(Cost + Platform Fees + Shipping)</small></span>
-          <b>{money(formulaEvaluation ? item.costPrice + formulaEvaluation.expenseImpact : breakdown.totalLandedCost, item.currency)}</b>
+          <b>{money(activeFormula ? activeFormula.totalFixedCosts + activeFormula.totalFees : breakdown.totalLandedCost, item.currency)}</b>
         </div>
       </div>
     </div>
@@ -592,8 +591,7 @@ export default function PricingWorkspace() {
             let marginPercent: number | null = null;
             if (price !== null && price > 0) {
               if (prev.pricingFormula) {
-                const evaluated = evaluatePricingFormula(cost, prev.pricingFormula);
-                marginPercent = Math.round((((price - cost - evaluated.expenseImpact) / price) * 100 + Number.EPSILON) * 100) / 100;
+                marginPercent = calculateFormulaProfitAtPrice(cost, price, prev.pricingFormula).netMargin;
               } else {
                 const breakdown = feeBreakdown(price, cost, it.currency, prev.targetMarginPercent ?? 20);
                 marginPercent = Math.round(((breakdown.grossProfitBeforeShipping / price) * 100 + Number.EPSILON) * 100) / 100;
@@ -886,10 +884,16 @@ function getDemoHistoryJobs(): BulkPricingJob[] {
       setError("Every selling-price formula component needs a label.");
       return;
     }
+    const normalizedUploadFormula = normalizePricingFormula(pricingFormula);
+    const formulaValidation = evaluatePricingFormula(45, normalizedUploadFormula);
+    if (formulaValidation.error) {
+      setError(formulaValidation.error);
+      return;
+    }
     setBulkBusy(true);
     setError("");
-    const formulaProfitMargin = pricingFormula.components.find((component) => component.enabled && component.kind === "PROFIT_MARGIN_PERCENT")?.value ?? 0;
-    const formulaBuffer = pricingFormula.components.find((component) => component.enabled && component.kind === "BUFFER_PERCENT")?.value ?? 0;
+    const formulaProfitMargin = normalizedUploadFormula.components.find((component) => component.enabled && component.kind === "PROFIT_MARGIN_PERCENT")?.value ?? 0;
+    const formulaBuffer = normalizedUploadFormula.components.find((component) => component.enabled && component.kind === "BUFFER_PERCENT")?.value ?? 0;
     try {
       if (demo) {
         await new Promise((resolve) => window.setTimeout(resolve, 600));
@@ -899,7 +903,7 @@ function getDemoHistoryJobs(): BulkPricingJob[] {
           defaultCondition: condition,
           targetMarginPercent: formulaProfitMargin,
           bufferPercent: formulaBuffer,
-          pricingFormula,
+          pricingFormula: normalizedUploadFormula,
           status: "RUNNING",
           totalItems: 249,
           completedItems: 0,
@@ -925,7 +929,7 @@ function getDemoHistoryJobs(): BulkPricingJob[] {
           headers: {
             "Content-Type": "text/csv",
             "X-File-Name": bulkFile.name,
-            "X-Pricing-Formula": encodeURIComponent(JSON.stringify(pricingFormula)),
+            "X-Pricing-Formula": encodeURIComponent(JSON.stringify(normalizedUploadFormula)),
           },
           body: bytes,
         },

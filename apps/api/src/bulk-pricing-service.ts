@@ -60,24 +60,13 @@ function money(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
-function ceilMoney(value: number) {
-  return Math.ceil((value - Number.EPSILON) * 100) / 100;
-}
-
-const EBAY_FVF_FIRST_TIER_RATE = 0.1135;
-const EBAY_FVF_SECOND_TIER_RATE = 0.0235;
-const EBAY_FVF_FIRST_TIER_LIMIT = 1000;
-const EXTRA_EXPENSE_RATE = 0.043;
-const EXTRA_EXPENSE_FIXED = 0.4;
-
 export function calculateBulkMarginPercent(costPrice: number, sellingPrice: number): number | null {
-  if (costPrice <= 0 || sellingPrice <= 0) return null;
-  const firstTierBase = Math.min(sellingPrice, EBAY_FVF_FIRST_TIER_LIMIT);
-  const secondTierBase = Math.max(sellingPrice - EBAY_FVF_FIRST_TIER_LIMIT, 0);
-  const ebayFee = money((firstTierBase * EBAY_FVF_FIRST_TIER_RATE) + (secondTierBase * EBAY_FVF_SECOND_TIER_RATE));
-  const extraExpenses = money((sellingPrice * EXTRA_EXPENSE_RATE) + EXTRA_EXPENSE_FIXED);
-  const actualProfit = money(sellingPrice - costPrice - ebayFee - extraExpenses);
-  return money((actualProfit / sellingPrice) * 100);
+  if (costPrice < 0 || sellingPrice <= 0) return null;
+  return calculateFormulaMarginForSellingPrice(
+    costPrice,
+    sellingPrice,
+    createDefaultBulkPricingFormula({ profitMarginPercent: 0, bufferPercent: 1 }),
+  );
 }
 
 export function calculateSimpleBulkSellingPrice(input: {
@@ -87,28 +76,15 @@ export function calculateSimpleBulkSellingPrice(input: {
 }) {
   const costPrice = money(Math.max(0, input.costPrice));
   const targetMarginPercent = Math.max(0, Math.min(95, input.targetMarginPercent));
-  const totalMarginPercent = Math.max(0, Math.min(95, targetMarginPercent + (input.bufferPercent ?? 0)));
-  const marginMultiplier = 1 + (totalMarginPercent / 100);
-  const firstTierFeeRate = EBAY_FVF_FIRST_TIER_RATE + EXTRA_EXPENSE_RATE;
-  const breakEvenFirstTier = (costPrice + EXTRA_EXPENSE_FIXED) / (1 - firstTierFeeRate);
-
-  let sellingPrice = 0;
-  if (breakEvenFirstTier <= EBAY_FVF_FIRST_TIER_LIMIT) {
-    sellingPrice = ceilMoney(breakEvenFirstTier * marginMultiplier);
-  } else {
-    const secondTierFeeRate = EBAY_FVF_SECOND_TIER_RATE + EXTRA_EXPENSE_RATE;
-    const tierAdjustment = (EBAY_FVF_FIRST_TIER_LIMIT * EBAY_FVF_FIRST_TIER_RATE) - (EBAY_FVF_FIRST_TIER_LIMIT * EBAY_FVF_SECOND_TIER_RATE);
-    const breakEvenSecondTier = (costPrice + tierAdjustment + EXTRA_EXPENSE_FIXED) / (1 - secondTierFeeRate);
-    sellingPrice = ceilMoney(breakEvenSecondTier * marginMultiplier);
-  }
-
-  const firstTierBase = Math.min(sellingPrice, EBAY_FVF_FIRST_TIER_LIMIT);
-  const secondTierBase = Math.max(sellingPrice - EBAY_FVF_FIRST_TIER_LIMIT, 0);
-  const ebayFee = money((firstTierBase * EBAY_FVF_FIRST_TIER_RATE) + (secondTierBase * EBAY_FVF_SECOND_TIER_RATE));
-  const extraExpenses = money((sellingPrice * EXTRA_EXPENSE_RATE) + EXTRA_EXPENSE_FIXED);
-  const actualProfit = money(sellingPrice - costPrice - ebayFee - extraExpenses);
-  const actualProfitPercent = sellingPrice > 0 ? money((actualProfit / sellingPrice) * 100) : null;
-  const targetProfit = money((costPrice + ebayFee + extraExpenses) * (targetMarginPercent / 100));
+  const bufferPercent = Math.max(0, input.bufferPercent ?? 0);
+  const formula = createDefaultBulkPricingFormula({ profitMarginPercent: targetMarginPercent, bufferPercent });
+  const calculated = evaluateBulkPricingFormula(costPrice, formula);
+  const ebayFee = calculated.breakdown.find((item) => item.kind === "EBAY_FEE_PERCENT")?.amount ?? 0;
+  const extraExpenses = money(calculated.expenseImpact - ebayFee);
+  const actualProfit = calculated.netProfit;
+  const actualProfitPercent = calculated.netMargin;
+  const targetProfit = calculated.targetProfit;
+  const sellingPrice = calculated.sellingPrice;
 
   return {
     sellingPrice,
@@ -118,7 +94,7 @@ export function calculateSimpleBulkSellingPrice(input: {
     extraExpenses,
     actualProfit,
     actualProfitPercent,
-    totalMarginPercent,
+    totalMarginPercent: targetMarginPercent,
   };
 }
 
@@ -628,6 +604,12 @@ export async function createBulkPricingJob(input: {
     });
   const configuredProfit = pricingFormula.components.find((component) => component.enabled && component.kind === "PROFIT_MARGIN_PERCENT")?.value;
   const configuredBuffer = pricingFormula.components.find((component) => component.enabled && component.kind === "BUFFER_PERCENT")?.value;
+  const validationRow = input.rows.reduce((lowest, row) => row.costPrice < lowest.costPrice ? row : lowest);
+  try {
+    evaluateBulkPricingFormula(validationRow.costPrice, pricingFormula);
+  } catch (error) {
+    throw new BulkPricingError(`Row ${validationRow.rowNumber}: ${error instanceof Error ? error.message : "Invalid pricing formula"}`);
+  }
 
   // Expire orphaned jobs that were queued but never picked up so they cannot block new jobs.
   // Running jobs are intentionally left alone: they are long-lived (rate limits) and are
