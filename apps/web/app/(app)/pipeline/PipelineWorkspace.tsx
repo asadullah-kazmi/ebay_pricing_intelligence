@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "../../components/AuthProvider";
 import { apiBase, refreshAccessSession } from "../../lib/auth-session";
@@ -14,6 +14,21 @@ type QueueItem = {
   condition: string;
   uploadedBy: string;
   createdAt: string;
+};
+
+type ListingTeam = {
+  id: string;
+  name: string;
+  color: string;
+};
+
+type PipelineJob = {
+  id: string;
+  originalFilename: string;
+  status: string;
+  defaultCondition: string | null;
+  createdAt: string;
+  createdBy: { name: string | null; email: string };
 };
 
 const demoQueue: QueueItem[] = [
@@ -34,15 +49,85 @@ function triggerBlobDownload(blob: Blob, filename: string) {
 }
 
 export default function PipelineWorkspace() {
-  const { status } = useAuth();
-  const [team, setTeam] = useState("default");
+  const { status, demo, apiFetch } = useAuth();
+  const [teams, setTeams] = useState<ListingTeam[]>([]);
+  const [team, setTeam] = useState("");
+  const [teamsLoading, setTeamsLoading] = useState(true);
   const [condition, setCondition] = useState("USED");
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [queue, setQueue] = useState<QueueItem[]>(demoQueue);
+  const [queue, setQueue] = useState<QueueItem[]>([]);
+
+  const loadQueue = useCallback(async () => {
+    if (status !== "ready" || demo) return;
+    const result = await apiFetch("/api/imports?limit=30") as { jobs: PipelineJob[] };
+    setQueue(result.jobs.map((job) => ({
+      id: job.id,
+      fileName: job.originalFilename,
+      status: job.status === "COMMITTING"
+        ? "PROCESSING"
+        : job.status === "COMMITTED"
+          ? "READY"
+          : job.status.includes("FAILED")
+            ? "FAILED"
+            : "UPLOADED",
+      condition: job.defaultCondition || "—",
+      uploadedBy: job.createdBy.name
+        ? job.createdBy.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()
+        : job.createdBy.email.slice(0, 2).toUpperCase(),
+      createdAt: job.createdAt,
+    })));
+  }, [apiFetch, demo, status]);
+
+  useEffect(() => {
+    if (status !== "ready") return;
+    if (demo) {
+      const sampleTeams = [{ id: "demo-operations", name: "Operations", color: "#2563EB" }];
+      setTeams(sampleTeams);
+      setTeam(sampleTeams[0].id);
+      setQueue(demoQueue);
+      setTeamsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setTeamsLoading(true);
+    void Promise.all([
+      apiFetch("/api/listing-teams") as Promise<{ teams: ListingTeam[] }>,
+      apiFetch("/api/imports?limit=30") as Promise<{ jobs: PipelineJob[] }>,
+    ]).then(([teamResult, jobResult]) => {
+      if (cancelled) return;
+      setTeams(teamResult.teams);
+      setTeam((current) => teamResult.teams.some((item) => item.id === current)
+        ? current
+        : teamResult.teams[0]?.id || "");
+      setQueue(jobResult.jobs.map((job) => ({
+        id: job.id,
+        fileName: job.originalFilename,
+        status: job.status === "COMMITTING"
+          ? "PROCESSING"
+          : job.status === "COMMITTED"
+            ? "READY"
+            : job.status.includes("FAILED")
+              ? "FAILED"
+              : "UPLOADED",
+        condition: job.defaultCondition || "—",
+        uploadedBy: job.createdBy.name
+          ? job.createdBy.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()
+          : job.createdBy.email.slice(0, 2).toUpperCase(),
+        createdAt: job.createdAt,
+      })));
+    }).catch((caught) => {
+      if (!cancelled) setError(caught instanceof Error ? caught.message : "Unable to load teams and pipeline jobs");
+    }).finally(() => {
+      if (!cancelled) setTeamsLoading(false);
+    });
+
+    return () => { cancelled = true; };
+  }, [apiFetch, demo, status]);
 
   async function handleDownloadQuickExcel() {
     setDownloading("quick");
@@ -70,20 +155,23 @@ export default function PipelineWorkspace() {
 
   async function uploadSpreadsheet(event: FormEvent) {
     event.preventDefault();
-    if (!file || busy) return;
+    if (!file || !team || busy) return;
     setBusy(true);
     setError("");
     setNotice("");
     try {
       let access = await refreshAccessSession();
+      const filename = file.name.replace(/[^A-Za-z0-9._ -]/g, "_");
       const send = async (accessToken: string) => {
-        const body = new FormData();
-        body.append("file", file);
         return fetch(`${apiBase}/api/imports/validate`, {
           method: "POST",
           credentials: "include",
-          headers: { Authorization: `Bearer ${accessToken}` },
-          body,
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": file.type || "application/octet-stream",
+            "X-File-Name": filename,
+          },
+          body: file,
         });
       };
       let response = await send(access.accessToken);
@@ -93,19 +181,14 @@ export default function PipelineWorkspace() {
       }
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || "Upload failed");
-      setQueue((current) => [
-        {
-          id: payload.id || `imp-${Math.floor(1000 + Math.random() * 9000)}`,
-          fileName: file.name,
-          status: "UPLOADED",
-          condition,
-          uploadedBy: "YOU",
-          createdAt: new Date().toISOString(),
-        },
-        ...current,
-      ]);
-      setNotice(`Import staged successfully${payload.id ? ` as ${payload.id}` : ""}. Continue review from the API preview workflow.`);
+      if (payload.invalidRows) throw new Error(`${payload.invalidRows} invalid row(s) found. Correct the spreadsheet and upload it again.`);
+      await apiFetch(`/api/imports/${payload.id}/start`, {
+        method: "POST",
+        body: JSON.stringify({ listingTeamId: team, condition, marketplace: "EBAY_US" }),
+      });
+      setNotice(`${filename} is processing. Items will appear in Catalog as each row completes.`);
       setFile(null);
+      await loadQueue();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to upload catalog file");
     } finally {
@@ -197,10 +280,11 @@ export default function PipelineWorkspace() {
           <div className={styles.uploadControls}>
             <label>
               <span>Team</span>
-              <select value={team} onChange={(event) => setTeam(event.target.value)}>
-                <option value="default">Operations</option>
-                <option value="yard">Yard intake</option>
-                <option value="pricing">Pricing desk</option>
+              <select value={team} onChange={(event) => setTeam(event.target.value)} disabled={teamsLoading} required>
+                <option value="" disabled>
+                  {teamsLoading ? "Loading teams..." : teams.length ? "Select team" : "No active teams"}
+                </option>
+                {teams.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
               </select>
             </label>
             <label>
@@ -228,7 +312,7 @@ export default function PipelineWorkspace() {
             <span>Supports Basic &amp; Standard PartPulse Excel Workbooks (.xlsx)</span>
           </label>
           <div className={styles.formActions}>
-            <button type="submit" className={styles.primary} disabled={!file || busy}>
+            <button type="submit" className={styles.primary} disabled={!file || !team || busy || teamsLoading}>
               {busy ? "Uploading..." : "Upload to pipeline"}
             </button>
           </div>
