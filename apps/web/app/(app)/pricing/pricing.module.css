@@ -2073,24 +2073,39 @@
 
 .currencyPrefix {
   position: absolute;
-  left: 8px;
-  color: #64748b;
-  font-size: 12px;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #475569;
+  font-size: 13px;
   font-weight: 700;
   pointer-events: none;
+  z-index: 2;
+  line-height: 1;
 }
 
-.inlinePriceInput {
-  width: 90px;
-  height: 30px;
-  padding: 0 6px 0 20px;
-  border: 1.5px solid #0052ff;
-  border-radius: 6px;
-  background: #fff;
-  color: #0f172a;
-  font: 700 12px/1 "Plus Jakarta Sans", sans-serif;
-  outline: none;
-  box-shadow: 0 0 0 3px #0052ff22;
+.inlinePriceInput,
+.inlineInputGroup input,
+.calculatorPriceInputGroup .inlinePriceInput,
+.calculatorPriceInputGroup input.inlinePriceInput {
+  width: 120px !important;
+  height: 36px !important;
+  padding-left: 26px !important;
+  padding-right: 10px !important;
+  border: 1.5px solid #0052ff !important;
+  border-radius: 8px !important;
+  background: #ffffff !important;
+  color: #0f172a !important;
+  font: 700 13px/1 "Plus Jakarta Sans", sans-serif !important;
+  outline: none !important;
+  box-shadow: 0 0 0 3px #0052ff18 !important;
+  box-sizing: border-box !important;
+}
+
+.inlinePriceInput:focus,
+.inlineInputGroup input:focus {
+  border-color: #0044cc !important;
+  box-shadow: 0 0 0 3.5px #0052ff30 !important;
 }
 
 .inlineSaveBtn,
