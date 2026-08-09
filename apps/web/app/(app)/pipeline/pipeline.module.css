@@ -526,7 +526,7 @@
 
 .pipelineSetup {
   display: grid;
-  grid-template-columns: minmax(280px, 0.78fr) minmax(460px, 1.22fr);
+  grid-template-columns: minmax(340px, 0.92fr) minmax(520px, 1.08fr);
   gap: 20px;
   margin-bottom: 24px;
 }
@@ -549,6 +549,34 @@
   letter-spacing: -0.4px;
 }
 
+.pipelineBenefits {
+  display: grid;
+  gap: 10px;
+  margin: 20px 0 22px;
+  padding: 0;
+  list-style: none;
+}
+
+.pipelineBenefits li {
+  position: relative;
+  padding-left: 25px;
+  color: #52647d;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.pipelineBenefits li::before {
+  position: absolute;
+  top: 3px;
+  left: 0;
+  width: 14px;
+  height: 14px;
+  border: 3px solid #dbeafe;
+  border-radius: 50%;
+  background: #2563eb;
+  content: "";
+}
+
 .setupIntro p {
   margin: 0;
   color: #64748b;
@@ -561,14 +589,118 @@
   margin-top: 20px;
 }
 
+.templateChoiceGrid {
+  display: grid;
+  gap: 9px;
+}
+
+.templateChoiceGrid article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 13px;
+  border: 1px solid #dbe5f1;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.templateChoiceGrid article > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.templateChoiceGrid b {
+  color: #10213c;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.templateChoiceGrid span {
+  color: #718198;
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.templateChoiceGrid button {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.templateChoiceGrid button:disabled { cursor: default; opacity: 0.6; }
+
 .pipelineForm {
   background: #102f59;
   border-color: #173f70;
 }
 
+.sheetField {
+  display: grid;
+  gap: 7px;
+}
+
+.sheetField > span:first-child {
+  color: #93c5fd;
+  font-size: 10.5px;
+  font-weight: 750;
+  letter-spacing: 0.45px;
+}
+
+.filePicker {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 48px;
+  overflow: hidden;
+  border: 1px solid #31547c;
+  border-radius: 10px;
+  background: #0d294d;
+  cursor: pointer;
+}
+
+.filePicker input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.filePicker b {
+  flex: 1;
+  overflow: hidden;
+  padding: 0 14px;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filePicker small {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding: 0 15px;
+  border-left: 1px solid #31547c;
+  background: #173f70;
+  color: #bfdbfe;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .pipelineForm .uploadControls {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: 0;
+  margin: 20px 0 0;
 }
 
 .pipelineForm .uploadControls label span {
@@ -608,6 +740,25 @@
   color: #92400e;
   font-size: 12px;
   line-height: 1.45;
+}
+
+.formHint {
+  margin: 18px 0 0;
+  color: #bfdbfe;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.pipelineForm .formActions {
+  justify-content: flex-start;
+  margin-top: 16px;
+}
+
+.pipelineForm .primary {
+  min-height: 38px;
+  padding: 0 17px;
+  font-size: 12px;
+  box-shadow: none;
 }
 
 .emptyState {

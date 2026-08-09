@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "../../components/AuthProvider";
 import { apiBase, refreshAccessSession } from "../../lib/auth-session";
+import { generateFullCatalogExcel, generateQuickUpdateExcel } from "./excel-templates";
 import styles from "./pipeline.module.css";
 
 type Team = { id: string; name: string; color: string };
@@ -47,6 +48,7 @@ export default function PipelineWorkspace() {
   const [openedId, setOpenedId] = useState("");
   const [detail, setDetail] = useState<JobDetail | null>(null);
   const [busy, setBusy] = useState("");
+  const [downloading, setDownloading] = useState<"basic" | "standard" | "">("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -86,11 +88,13 @@ export default function PipelineWorkspace() {
     return () => window.clearInterval(timer);
   }, [demo, hasRunningJobs, loadDetail, loadJobs, openedId]);
 
-  function downloadTemplate() {
-    const headers = ["TemplateVersion", "VIN", "SKU", "PartNumber", "Condition", "Quantity", "Cost", "Currency", "ImageGroup", "Brand", "PartName", "InterchangeNumbers", "Description", "DonorMileage", "DonorColor", "Placement", "Warehouse", "BinLocation", "Weight", "WeightUnit", "Length", "Width", "Height", "DimensionUnit", "Notes"];
-    const example = ["1.0", "UNAVAILABLE", "SKU-001", "84178783", "USED", "1", "35.00", "USD", "SKU-001", "GM", "HVAC Blower Motor Control Module", "13598091|F011500138", "Tested working", "", "", "Front", "MAIN", "A-01-03", "2.5", "LB", "12", "8", "6", "IN", ""];
-    const contents = `${headers.join(",")}\r\n${example.join(",")}\r\n`;
-    triggerBlobDownload(new Blob([contents], { type: "text/csv;charset=utf-8" }), "partpulse-catalog-pipeline-template.csv");
+  async function downloadTemplate(kind: "basic" | "standard") {
+    setDownloading(kind); setError("");
+    try {
+      const blob = kind === "basic" ? await generateQuickUpdateExcel() : await generateFullCatalogExcel();
+      triggerBlobDownload(blob, kind === "basic" ? "PartPulse_Basic_Pipeline_Template.xlsx" : "PartPulse_Standard_Pipeline_Template.xlsx");
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to generate template"); }
+    finally { setDownloading(""); }
   }
 
   async function upload(event: FormEvent) {
@@ -137,16 +141,25 @@ export default function PipelineWorkspace() {
     {notice && <div className={styles.notice}>{notice}</div>}{error && <div className={styles.error}>{error}</div>}
 
     <section className={styles.pipelineSetup}>
-      <div className={styles.setupIntro}><span className={styles.eyebrow}>NEW PIPELINE JOB</span><h2>Upload and enrich a catalog sheet</h2><p>Rows run one at a time: identify part, retrieve compatibility, build title and description, then add the listing draft to Catalog.</p><div className={styles.templateActions}><button type="button" className={styles.ghostBtn} onClick={downloadTemplate}>Download catalog template</button></div></div>
+      <div className={styles.setupIntro}>
+        <span className={styles.eyebrow}>CATALOG PIPELINE</span>
+        <h2>Build a full catalog in one pass.</h2>
+        <ul className={styles.pipelineBenefits}><li>Upload parts and inventory values</li><li>Automatic eBay title, specifics, and fitment</li><li>Create editable catalog drafts row by row</li></ul>
+        <div className={styles.templateChoiceGrid}>
+          <article><div><b>Basic template</b><span>Part Number · Selling Price · Quantity</span></div><button type="button" onClick={() => void downloadTemplate("basic")} disabled={Boolean(downloading)}>{downloading === "basic" ? "Generating..." : "Download"}</button></article>
+          <article><div><b>Standard template</b><span>Basic fields + Brand · Description · PicsURL · SKU</span></div><button type="button" onClick={() => void downloadTemplate("standard")} disabled={Boolean(downloading)}>{downloading === "standard" ? "Generating..." : "Download"}</button></article>
+        </div>
+      </div>
       <form className={styles.pipelineForm} onSubmit={upload}>
+        <label className={styles.sheetField}><span>CATALOG SHEET (.CSV / .XLSX)</span><span className={styles.filePicker}><input type="file" accept=".csv,.xlsx" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /><b>{file?.name || "Choose a file"}</b><small>Browse</small></span></label>
         <div className={styles.uploadControls}>
           <label><span>Listing team</span><select value={teamId} onChange={(event) => setTeamId(event.target.value)} required><option value="" disabled>Select team</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></label>
           <label><span>Default condition</span><select value={condition} onChange={(event) => setCondition(event.target.value)}><option value="USED">Used</option><option value="NEW">New</option></select></label>
           <label><span>Marketplace</span><select value={marketplace} onChange={(event) => setMarketplace(event.target.value)}><option value="EBAY_US">eBay US</option><option value="EBAY_GB">eBay UK</option><option value="EBAY_DE">eBay Germany</option></select></label>
         </div>
         {!teams.length && <div className={styles.inlineWarning}>Create an active team in Settings → Teams before starting a pipeline job.</div>}
-        <label className={styles.dropzone}><input type="file" accept=".csv,.xlsx" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /><strong>{file?.name || "Choose a CSV or XLSX catalog sheet"}</strong><span>Condition and team selected above apply to every row.</span></label>
-        <div className={styles.formActions}><button className={styles.primary} disabled={!file || !teamId || busy === "upload"}>{busy === "upload" ? "Starting pipeline…" : "Upload and start pipeline"}</button></div>
+        <p className={styles.formHint}>The selected team and condition apply to every row. Both Basic and Standard templates are accepted.</p>
+        <div className={styles.formActions}><button className={styles.primary} disabled={!file || !teamId || busy === "upload"}>{busy === "upload" ? "Starting pipeline…" : "Run catalog pipeline"}</button></div>
       </form>
     </section>
 

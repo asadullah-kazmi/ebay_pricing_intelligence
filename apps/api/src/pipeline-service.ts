@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Prisma, type PartCondition } from "@prisma/client";
 import { recordAuditEvent } from "./audit-service.js";
 import { prisma } from "./db.js";
@@ -193,7 +194,7 @@ async function processPipelineRow(input: {
   await prisma.importRow.update({ where: { id: row.id }, data: { enrichmentData: asJson(enrichmentData) } });
 
   await updateRowStage(row.id, "CATALOG");
-  const uniqueMediaIds = [...new Set(row.mediaMatches.map(({ mediaAssetId }) => mediaAssetId))];
+  const stagedMediaIds = [...new Set(row.mediaMatches.map(({ mediaAssetId }) => mediaAssetId))];
   const result = await prisma.$transaction(async (tx) => {
     const existing = await tx.part.findFirst({ where: { organizationId: input.organizationId, normalizedSku: data.normalizedSku }, select: { id: true } });
     if (existing) throw new PipelineError(`SKU ${data.sku} already exists in the catalog`, 409);
@@ -210,6 +211,30 @@ async function processPipelineRow(input: {
       create: { organizationId: input.organizationId, warehouseId: warehouse.id, code: data.binLocation }, update: {}, select: { id: true },
     }) : null;
 
+    const externalMediaIds: string[] = [];
+    for (const [index, imageUrl] of (data.imageUrls ?? []).entries()) {
+      const checksum = createHash("sha256").update(imageUrl).digest("hex");
+      const mediaAsset = await tx.mediaAsset.upsert({
+        where: { organizationId_storageKey: { organizationId: input.organizationId, storageKey: `external/pipeline/${checksum}` } },
+        create: {
+          organizationId: input.organizationId,
+          storageKey: `external/pipeline/${checksum}`,
+          externalUrl: imageUrl,
+          sourceType: "PIPELINE_URL",
+          sourceMetadata: asJson({ importBatchId: input.batchId, importRowId: row.id, imageUrl }),
+          originalFilename: `${data.sku}-image-${index + 1}.jpg`.slice(0, 255),
+          mimeType: "image/jpeg",
+          byteSize: 0,
+          checksum,
+          status: "READY",
+        },
+        update: { externalUrl: imageUrl, status: "READY" },
+        select: { id: true },
+      });
+      externalMediaIds.push(mediaAsset.id);
+    }
+    const uniqueMediaIds = [...new Set([...stagedMediaIds, ...externalMediaIds])];
+
     const part = await tx.part.create({
       data: {
         organizationId: input.organizationId,
@@ -219,7 +244,7 @@ async function processPipelineRow(input: {
         normalizedPartNumber: data.normalizedPartNumber,
         brand: prepared.identifiedBrand || brand,
         partName: prepared.partName,
-        description: prepared.description ?? data.description,
+        description: data.description ?? prepared.description,
         condition: input.condition,
         imageGroup: data.imageGroup,
         status: uniqueMediaIds.length ? "READY_FOR_ENRICHMENT" : "NEEDS_IMAGES",
@@ -279,7 +304,7 @@ async function processPipelineRow(input: {
     };
     const issues = [
       ...(!uniqueMediaIds.length ? [{ code: "IMAGES_REQUIRED", severity: "BLOCKER", field: "images", message: "Add approved listing images" }] : []),
-      { code: "PRICE_REQUIRED", severity: "BLOCKER", field: "price", message: "Set a selling price" },
+      ...(data.sellingPrice === undefined ? [{ code: "PRICE_REQUIRED", severity: "BLOCKER", field: "price", message: "Set a selling price" }] : []),
       { code: "POLICIES_REQUIRED", severity: "BLOCKER", field: "policies", message: "Assign eBay business policies" },
     ];
     const draft = await tx.listingDraft.create({
@@ -289,11 +314,11 @@ async function processPipelineRow(input: {
         marketplace: input.marketplace,
         status: "BLOCKED",
         title: prepared.listingTitle,
-        description: prepared.description,
+        description: data.description ?? prepared.description,
         categoryId: prepared.categoryId,
         condition: input.condition,
         ebayCondition: input.condition === "NEW" ? "NEW" : null,
-        price: null,
+        price: data.sellingPrice === undefined ? null : new Prisma.Decimal(data.sellingPrice),
         currency: data.currency,
         quantity: data.quantity,
         aspects: asJson(aspects),
@@ -309,7 +334,7 @@ async function processPipelineRow(input: {
         organizationId: input.organizationId,
         listingDraftId: draft.id,
         version: 1,
-        snapshot: asJson({ title: prepared.listingTitle, description: prepared.description, categoryId: prepared.categoryId, condition: input.condition, price: null, currency: data.currency, quantity: data.quantity, aspects, status: "BLOCKED", validationIssues: issues }),
+        snapshot: asJson({ title: prepared.listingTitle, description: data.description ?? prepared.description, categoryId: prepared.categoryId, condition: input.condition, price: data.sellingPrice ?? null, currency: data.currency, quantity: data.quantity, aspects, status: "BLOCKED", validationIssues: issues }),
         reason: "Created by automated catalog pipeline",
         createdById: input.userId,
       },

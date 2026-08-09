@@ -25,8 +25,10 @@ export interface NormalizedImportRow {
   condition: "NEW" | "USED";
   quantity: number;
   cost: number;
+  sellingPrice?: number;
   currency: string;
   imageGroup: string;
+  imageUrls: string[];
   brand?: string;
   partName?: string;
   interchangeNumbers: string[];
@@ -155,11 +157,32 @@ function parseRow(rowNumber: number, headers: string[], cells: Cell[]): Validate
   }
   const quantity = nonnegativeInteger(values.Quantity);
   if (quantity === null) errors.push(issue("INVALID_QUANTITY", "error", "Quantity must be a non-negative whole number", "Quantity"));
-  const cost = nonnegativeDecimal(values.Cost);
+  const hasSellingPriceColumn = Object.prototype.hasOwnProperty.call(values, "SellingPrice");
+  const sellingPrice = hasSellingPriceColumn ? nonnegativeDecimal(values.SellingPrice) : undefined;
+  if (hasSellingPriceColumn && sellingPrice === null) {
+    errors.push(issue("INVALID_SELLING_PRICE", "error", "Selling Price must be a non-negative decimal without a currency symbol", "SellingPrice"));
+  }
+  const cost = values.Cost === undefined && sellingPrice !== undefined && sellingPrice !== null
+    ? 0
+    : nonnegativeDecimal(values.Cost);
   if (cost === null) errors.push(issue("INVALID_COST", "error", "Cost must be a non-negative decimal without a currency symbol", "Cost"));
+  if (values.Cost === undefined) warnings.push(issue("COST_UNAVAILABLE", "warning", "Inventory cost was not supplied and will be stored as zero", "Cost"));
   const currency = required("Currency").toUpperCase();
   if (currency && !/^[A-Z]{3}$/.test(currency)) errors.push(issue("INVALID_CURRENCY", "error", "Currency must be a three-letter code", "Currency"));
   const imageGroup = required("ImageGroup");
+  const imageUrls = (optionalText(values.PicsURL) ?? "")
+    .split("|")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  for (const imageUrl of imageUrls) {
+    try {
+      const parsed = new URL(imageUrl);
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") throw new Error("protocol");
+    } catch {
+      errors.push(issue("INVALID_IMAGE_URL", "error", "PicsURL must contain HTTP image URLs separated by |", "PicsURL"));
+      break;
+    }
+  }
 
   const donorMileageRaw = optionalText(values.DonorMileage);
   const donorMileage = donorMileageRaw === undefined ? undefined : nonnegativeInteger(values.DonorMileage);
@@ -214,8 +237,10 @@ function parseRow(rowNumber: number, headers: string[], cells: Cell[]): Validate
     condition: conditionValue as "NEW" | "USED",
     quantity: quantity!,
     cost: cost!,
+    sellingPrice: sellingPrice ?? undefined,
     currency,
     imageGroup,
+    imageUrls,
     brand: optionalText(values.Brand),
     partName: optionalText(values.PartName),
     interchangeNumbers,
@@ -280,18 +305,18 @@ function readXlsxMatrix(bytes: Buffer): Cell[][] {
     },
   });
   const decoder = new TextDecoder("utf-8", { fatal: true });
-  const worksheetName = Object.keys(files)
+  const worksheetNames = Object.keys(files)
     .filter((name) => /^xl\/worksheets\/sheet\d+\.xml$/i.test(name))
-    .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }))[0];
-  if (!worksheetName) throw new Error("INVALID_XLSX");
-  const worksheet = decoder.decode(files[worksheetName]);
-  if (/<f(?:\s|>|\/)/i.test(worksheet)) throw new Error("FORMULAS_NOT_ALLOWED");
+    .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }));
+  if (!worksheetNames.length) throw new Error("INVALID_XLSX");
 
   const sharedStringsXml = files["xl/sharedStrings.xml"] ? decoder.decode(files["xl/sharedStrings.xml"]) : "";
   const sharedStrings = [...sharedStringsXml.matchAll(/<si(?:\s[^>]*)?>([\s\S]*?)<\/si>/gi)]
     .map((match) => textNodes(match[1] ?? ""));
-  const rows: Cell[][] = [];
-  for (const rowMatch of worksheet.matchAll(/<row\b([^>]*)>([\s\S]*?)<\/row>/gi)) {
+  const parseWorksheet = (worksheet: string) => {
+    if (/<f(?:\s|>|\/)/i.test(worksheet)) throw new Error("FORMULAS_NOT_ALLOWED");
+    const rows: Cell[][] = [];
+    for (const rowMatch of worksheet.matchAll(/<row\b([^>]*)>([\s\S]*?)<\/row>/gi)) {
     const attributes = rowMatch[1] ?? "";
     const rowNumber = Number(attributes.match(/\br="(\d+)"/i)?.[1] ?? rows.length + 1);
     if (!Number.isSafeInteger(rowNumber) || rowNumber < 1) throw new Error("INVALID_XLSX");
@@ -315,9 +340,16 @@ function readXlsxMatrix(bytes: Buffer): Cell[][] {
       }
       row[columnIndex(reference)] = value;
     }
-    rows[rowNumber - 1] = row;
-  }
-  return rows.map((row) => row ?? []);
+      rows[rowNumber - 1] = row;
+    }
+    return rows.map((row) => row ?? []);
+  };
+  const matrices = worksheetNames.map((name) => parseWorksheet(decoder.decode(files[name])));
+  return matrices.find((matrix) => {
+    const header = matrix.find((row) => row.some((value) => text(value) !== ""))?.map((value) => text(value).toLowerCase()) ?? [];
+    return header.some((value) => ["part no", "part number", "partnumber"].includes(value))
+      && header.some((value) => ["quantity", "qty"].includes(value));
+  }) ?? matrices[0]!;
 }
 
 async function readMatrix(filename: string, bytes: Buffer): Promise<Cell[][]> {
@@ -357,24 +389,30 @@ export async function parseAndValidateImport(filename: string, bytes: Buffer): P
   const rawHeaders = matrix[0]!.map((value) => text(value));
   const headers = rawHeaders.map((header) => {
     const clean = header.trim();
-    if (clean === "Part no" || clean === "Part No" || clean === "PartNo") return "PartNumber";
-    if (clean === "Selling Price" || clean === "Price") return "Cost";
-    if (clean === "PicsURL" || clean === "PicURL" || clean === "PhotoURL") return "ImageGroup";
+    if (["Part no", "Part No", "PartNo", "Part Number"].includes(clean)) return "PartNumber";
+    if (clean === "Selling Price" || clean === "Price") return "SellingPrice";
+    if (clean === "PicsURL" || clean === "PicURL" || clean === "PhotoURL") return "PicsURL";
     return clean;
   });
 
-  const isBasicTemplate = headers.includes("PartNumber") && headers.includes("Cost") && headers.includes("Quantity");
-  const isStandardTemplate = isBasicTemplate && (headers.includes("Brand") || headers.includes("Description") || headers.includes("ImageGroup") || headers.includes("SKU"));
+  const isPipelineTemplate = headers.includes("PartNumber") && headers.includes("SellingPrice") && headers.includes("Quantity");
+  const pipelineHeaders = ["PartNumber", "SellingPrice", "Quantity", "Brand", "Description", "PicsURL", "SKU"];
   const expectedHeaders = catalogImportColumns.map(({ name }) => name);
 
   const duplicates = headers.filter((header, index) => header && headers.indexOf(header) !== index);
   if (duplicates.length) errors.push(issue("DUPLICATE_HEADERS", "error", `Duplicate headers: ${[...new Set(duplicates)].join(", ")}`));
 
-  if (!isBasicTemplate && !isStandardTemplate) {
+  if (isPipelineTemplate) {
+    const unknown = headers.filter((header) => header && !pipelineHeaders.includes(header));
+    if (unknown.length) errors.push(issue("UNKNOWN_HEADERS", "error", `Unknown headers: ${unknown.join(", ")}`));
+  } else {
     const missing = expectedHeaders.filter((header) => !headers.includes(header));
     const unknown = headers.filter((header) => header && !expectedHeaders.includes(header));
     if (missing.length) errors.push(issue("MISSING_HEADERS", "error", `Missing headers: ${missing.join(", ")}`));
     if (unknown.length) errors.push(issue("UNKNOWN_HEADERS", "error", `Unknown headers: ${unknown.join(", ")}`));
+    if (headers.length === expectedHeaders.length && headers.some((header, index) => header !== expectedHeaders[index])) {
+      errors.push(issue("HEADER_ORDER", "error", "Template columns must remain in the published order"));
+    }
   }
   if (errors.length) return { rows: [], errors, warnings };
 
@@ -386,7 +424,7 @@ export async function parseAndValidateImport(filename: string, bytes: Buffer): P
 
   const skuRows = new Map<string, ValidatedImportRow[]>();
   for (const row of rows) {
-    const normalizedSku = text(row.rawData.SKU).toUpperCase();
+    const normalizedSku = row.normalizedData?.normalizedSku ?? text(row.rawData.SKU).toUpperCase();
     if (!normalizedSku) continue;
     const matches = skuRows.get(normalizedSku) ?? [];
     matches.push(row);
@@ -405,7 +443,7 @@ export async function parseAndValidateImport(filename: string, bytes: Buffer): P
 
 export function applyExistingSkuConflicts(parsed: ParsedImport, existingNormalizedSkus: ReadonlySet<string>): ParsedImport {
   for (const row of parsed.rows) {
-    const normalizedSku = text(row.rawData.SKU).toUpperCase();
+    const normalizedSku = row.normalizedData?.normalizedSku ?? text(row.rawData.SKU).toUpperCase();
     if (!normalizedSku || !existingNormalizedSkus.has(normalizedSku)) continue;
     row.errors.push(issue("SKU_ALREADY_EXISTS", "error", `SKU ${text(row.rawData.SKU)} already exists in the catalog`, "SKU"));
     row.normalizedData = null;

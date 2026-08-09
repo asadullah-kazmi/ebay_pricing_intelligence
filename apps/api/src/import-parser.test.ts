@@ -62,6 +62,35 @@ const validRow = {
 };
 
 describe("catalog staging parser", () => {
+  it("accepts the Basic pipeline template and preserves selling price", async () => {
+    const basic = Buffer.from("Part no,Selling Price,Quantity\n84178783,79.95,4\n", "utf8");
+    const result = await parseAndValidateImport("basic.csv", basic);
+    expect(result.errors).toEqual([]);
+    expect(result.rows[0]).toMatchObject({
+      status: "WARNING",
+      normalizedData: {
+        primaryPartNumber: "84178783",
+        sellingPrice: 79.95,
+        quantity: 4,
+        cost: 0,
+        imageUrls: [],
+      },
+    });
+  });
+
+  it("accepts the Standard pipeline template with listing metadata and images", async () => {
+    const standard = Buffer.from("Part Number,Selling Price,Quantity,Brand,Description,PicsURL,SKU\n8K0615301M,149.99,2,Audi,Brake rotor,https://cdn.example.com/rotor.jpg,AUDI-ROTOR-1\n", "utf8");
+    const result = await parseAndValidateImport("standard.csv", standard);
+    expect(result.errors).toEqual([]);
+    expect(result.rows[0]?.normalizedData).toMatchObject({
+      sku: "AUDI-ROTOR-1",
+      brand: "Audi",
+      description: "Brake rotor",
+      sellingPrice: 149.99,
+      imageUrls: ["https://cdn.example.com/rotor.jpg"],
+    });
+  });
+
   it("normalizes a valid CSV row without committing catalog data", async () => {
     const result = await parseAndValidateImport("parts.csv", csv([validRow]));
     expect(result.errors).toEqual([]);
