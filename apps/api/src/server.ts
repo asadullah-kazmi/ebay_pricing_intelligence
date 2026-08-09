@@ -1,10 +1,11 @@
 import "./env.js";
 import { app } from "./app.js";
 import { getConfig } from "./config.js";
-import { disconnectDatabase } from "./db.js";
+import { databaseIsReachable, disconnectDatabase } from "./db.js";
 import { resumeInterruptedPricingJobs } from "./pricing-service.js";
 import { resumeInterruptedFitmentJobs } from "./fitment-service.js";
 import { cleanupExpiredBulkPricingJobs, resumeInterruptedBulkPricingJobs } from "./bulk-pricing-service.js";
+import { resumeInterruptedPipelineJobs } from "./pipeline-service.js";
 
 const { port, ebay, shutdownTimeoutMs, jobs } = getConfig();
 const server = app.listen(port, () => console.log(`API listening on http://localhost:${port}`));
@@ -22,24 +23,40 @@ async function runBulkPricingRetentionCleanup() {
   }
 }
 
+let recoveryInProgress = false;
+async function runInlineRecoveries() {
+  if (recoveryInProgress) return;
+  recoveryInProgress = true;
+  try {
+    if (!(await databaseIsReachable())) {
+      console.warn(JSON.stringify({ type: "background_recovery_deferred", reason: "database_unavailable" }));
+      return;
+    }
+    const recoveries = [
+      ["pricing_jobs_resumed", resumeInterruptedPricingJobs],
+      ["fitment_jobs_resumed", resumeInterruptedFitmentJobs],
+      ["bulk_pricing_jobs_resumed", resumeInterruptedBulkPricingJobs],
+      ["pipeline_jobs_resumed", resumeInterruptedPipelineJobs],
+    ] as const;
+    for (const [type, recovery] of recoveries) {
+      const count = await recovery();
+      if (count) console.info(JSON.stringify({ type, count }));
+    }
+  } catch (error) {
+    console.error(JSON.stringify({
+      type: "background_recovery_failed",
+      error: error instanceof Error ? { name: error.name, message: error.message } : { name: "UnknownError" },
+    }));
+  } finally {
+    recoveryInProgress = false;
+  }
+}
+
 if (jobs.executionMode === "inline") {
-  void runBulkPricingRetentionCleanup();
-  void resumeInterruptedPricingJobs()
-    .then((count) => { if (count) console.info(JSON.stringify({ type: "pricing_jobs_resumed", count })); })
-    .catch((error) => console.error(JSON.stringify({ type: "pricing_job_recovery_failed", error: error instanceof Error ? { name: error.name, message: error.message } : { name: "UnknownError" } })));
-  void resumeInterruptedFitmentJobs()
-    .then((count) => { if (count) console.info(JSON.stringify({ type: "fitment_jobs_resumed", count })); })
-    .catch((error) => console.error(JSON.stringify({ type: "fitment_job_recovery_failed", error: error instanceof Error ? { name: error.name, message: error.message } : { name: "UnknownError" } })));
-  void resumeInterruptedBulkPricingJobs()
-    .then((count) => { if (count) console.info(JSON.stringify({ type: "bulk_pricing_jobs_resumed", count })); })
-    .catch((error) => console.error(JSON.stringify({ type: "bulk_pricing_job_recovery_failed", error: error instanceof Error ? { name: error.name, message: error.message } : { name: "UnknownError" } })));
+  void runInlineRecoveries().then(() => runBulkPricingRetentionCleanup());
 }
 const inlineRecoveryTimer = jobs.executionMode === "inline"
-  ? setInterval(() => {
-    void resumeInterruptedPricingJobs().catch((error) => console.error(JSON.stringify({ type: "pricing_job_recovery_failed", error: error instanceof Error ? { name: error.name, message: error.message } : { name: "UnknownError" } })));
-    void resumeInterruptedFitmentJobs().catch((error) => console.error(JSON.stringify({ type: "fitment_job_recovery_failed", error: error instanceof Error ? { name: error.name, message: error.message } : { name: "UnknownError" } })));
-    void resumeInterruptedBulkPricingJobs().catch((error) => console.error(JSON.stringify({ type: "bulk_pricing_job_recovery_failed", error: error instanceof Error ? { name: error.name, message: error.message } : { name: "UnknownError" } })));
-  }, 30_000)
+  ? setInterval(() => void runInlineRecoveries(), 60_000)
   : undefined;
 inlineRecoveryTimer?.unref();
 const bulkPricingRetentionTimer = jobs.executionMode === "inline"

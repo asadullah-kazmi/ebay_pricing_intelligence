@@ -70,6 +70,7 @@ import { getNotificationPreferences, listNotifications, markAllNotificationsRead
 import { assembleQuickSkuPrepared, createQuickSku, enhanceQuickSkuWithAi, fetchQuickSkuFitment, finalizeQuickSku, identifyQuickSkuPart, QuickSkuError } from "./quick-sku-service.js";
 import { createRetentionRun, getRetentionPolicy, listRetentionRuns, RetentionError, startRetentionJob, updateRetentionPolicy } from "./retention-service.js";
 import { archiveListingTeam, createListingTeam, ListingTeamError, listListingTeams, restoreListingTeam, updateListingTeam } from "./listing-team-service.js";
+import { getPipelineJob, listPipelineJobs, PipelineError, retryPipelineJob, startPipelineJob } from "./pipeline-service.js";
 
 const searchSchema = z.object({
   oem: z.string().trim().min(2).max(80),
@@ -107,6 +108,12 @@ const importPreviewQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(50),
 });
+const pipelineStartSchema = z.object({
+  listingTeamId: z.string().min(1),
+  condition: z.enum(["NEW", "USED"]),
+  marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).default("EBAY_US"),
+});
+const pipelineListQuerySchema = z.object({ limit: z.coerce.number().int().min(1).max(100).default(30) });
 const imageMatchCorrectionSchema = z.object({
   importRowId: z.string().min(1).nullable(),
   displayOrder: z.number().int().min(0).optional(),
@@ -855,6 +862,21 @@ app.get("/api/imports/template", requireTenantContext, (_req, res) => {
 app.get("/api/imports/template/schema", requireTenantContext, (_req, res) => {
   res.set("Cache-Control", "private, max-age=3600");
   res.json(catalogImportTemplate);
+});
+
+app.get("/api/imports", requireTenantContext, requireOrganizationPermission("pipeline.view"), async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const { limit } = pipelineListQuerySchema.parse(req.query);
+    res.json(await listPipelineJobs(tenant.organization.id, limit));
+  } catch (error) { next(error); }
+});
+
+app.get("/api/imports/:id", requireTenantContext, requireOrganizationPermission("pipeline.view"), async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    res.json(await getPipelineJob(tenant.organization.id, z.string().min(1).parse(req.params.id)));
+  } catch (error) { next(error); }
 });
 
 app.post("/api/imports/validate", importRateLimit, requireTenantContext, requireOrganizationPermission("pipeline.upload"), importBody, async (req, res, next) => {
@@ -1824,7 +1846,29 @@ app.get("/api/team", requireTenantContext, requireOrganizationPermission("team.m
   } catch (error) { next(error); }
 });
 
-app.get("/api/listing-teams", requireTenantContext, requireOrganizationPermission("admin.manage"), async (req, res, next) => {
+app.post("/api/imports/:id/start", importRateLimit, requireTenantContext, requireOrganizationPermission("pipeline.manage"), async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const config = pipelineStartSchema.parse(req.body);
+    res.status(202).json(await startPipelineJob({
+      organizationId: tenant.organization.id,
+      importBatchId: z.string().min(1).parse(req.params.id),
+      ...config,
+    }));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/imports/:id/retry", importRateLimit, requireTenantContext, requireOrganizationPermission("pipeline.manage"), async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    res.status(202).json(await retryPipelineJob({
+      organizationId: tenant.organization.id,
+      importBatchId: z.string().min(1).parse(req.params.id),
+    }));
+  } catch (error) { next(error); }
+});
+
+app.get("/api/listing-teams", requireTenantContext, requireAnyOrganizationPermission("admin.manage", "pipeline.view", "catalog.view"), async (req, res, next) => {
   try {
     const includeArchived = req.query.includeArchived === "true";
     res.json(await listListingTeams(getTenantContext(res).organization.id, includeArchived));
@@ -2210,6 +2254,7 @@ app.use((error: unknown, req: express.Request, res: express.Response, _next: exp
   if (error instanceof AdminOperationsError) return response(error.statusCode, { error: error.message });
   if (error instanceof OrganizationTeamError) return response(error.statusCode, { error: error.message });
   if (error instanceof ListingTeamError) return response(error.statusCode, { error: error.message });
+  if (error instanceof PipelineError) return response(error.statusCode, { error: error.message });
   if (error instanceof AccountAuthError) return response(error.statusCode, { error: error.message, ...(error.details ? { details: error.details } : {}) });
   if (error instanceof EmailDeliveryError) return response(503, { error: error.message });
   if (error instanceof EbaySellerOAuthError) return response(error.statusCode, { error: error.message });

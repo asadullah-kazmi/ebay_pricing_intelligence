@@ -38,6 +38,16 @@ enum ImportRowStatus {
   COMMITTED
 }
 
+enum PipelineRowStage {
+  QUEUED
+  IDENTIFYING
+  FITMENT
+  BUILDING_LISTING
+  CATALOG
+  COMPLETED
+  FAILED
+}
+
 enum PartCondition {
   NEW
   USED
@@ -634,8 +644,16 @@ model ImportBatch {
   warnings             Json?
   imageIssues          Json?
   confirmedAt          DateTime?
+  listingTeamId        String?
+  defaultCondition     PartCondition?
+  marketplace          String             @default("EBAY_US")
+  processedRows        Int                @default(0)
+  failedRows           Int                @default(0)
+  startedAt            DateTime?
+  completedAt          DateTime?
   organization         Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdBy            User               @relation("ImportCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  listingTeam          ListingTeam?       @relation(fields: [listingTeamId], references: [id], onDelete: SetNull)
   rows                 ImportRow[]
   mediaMatches         ImportMediaMatch[]
   createdAt            DateTime           @default(now())
@@ -643,6 +661,7 @@ model ImportBatch {
 
   @@unique([organizationId, checksum])
   @@index([organizationId, status, createdAt])
+  @@index([organizationId, updatedAt])
   @@index([createdById])
 }
 
@@ -657,6 +676,9 @@ model ImportRow {
   errors          Json?
   warnings        Json?
   committedPartId String?            @unique
+  pipelineStage   PipelineRowStage   @default(QUEUED)
+  pipelineError   String?
+  enrichmentData Json?
   organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   importBatch     ImportBatch        @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
   committedPart   Part?              @relation("CommittedImportPart", fields: [committedPartId], references: [id], onDelete: SetNull)
@@ -666,6 +688,7 @@ model ImportRow {
 
   @@unique([importBatchId, rowNumber])
   @@index([organizationId, status])
+  @@index([importBatchId, pipelineStage, rowNumber])
 }
 
 model Vehicle {
@@ -1306,6 +1329,7 @@ model ListingTeam {
   isArchived     Boolean            @default(false)
   organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   listingDrafts  ListingDraftTeam[]
+  importBatches  ImportBatch[]
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
 
