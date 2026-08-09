@@ -319,111 +319,112 @@ enum UserAuthTokenType {
 }
 
 model Organization {
-  id                   String                      @id @default(cuid())
-  name                 String
-  slug                 String                      @unique
-  memberships          OrganizationMembership[]
-  refreshSessions      RefreshSession[]
-  importBatches        ImportBatch[]
-  importRows           ImportRow[]
-  vehicles             Vehicle[]
-  parts                Part[]
-  partNumbers          PartNumber[]
-  inventoryItems       InventoryItem[]
-  warehouses           Warehouse[]
-  binLocations         BinLocation[]
-  mediaAssets          MediaAsset[]
-  partMedia            PartMedia[]
-  importMediaMatches   ImportMediaMatch[]
-  pricingJobs          PricingJob[]
-  pricingJobItems      PricingJobItem[]
-  bulkPricingJobs      BulkPricingJob[]
-  bulkPricingJobItems  BulkPricingJobItem[]
-  pricingRule          PricingRule?
-  pricingProposals     PricingProposal[]
-  competitorListings   CompetitorListingSnapshot[]
-  fitmentJobs          FitmentJob[]
-  fitmentJobItems      FitmentJobItem[]
-  fitmentCandidates    FitmentCandidate[]
-  fitmentApplications  FitmentApplication[]
+  id                          String                       @id @default(cuid())
+  name                        String
+  slug                        String                       @unique
+  memberships                 OrganizationMembership[]
+  refreshSessions             RefreshSession[]
+  importBatches               ImportBatch[]
+  importRows                  ImportRow[]
+  vehicles                    Vehicle[]
+  parts                       Part[]
+  partNumbers                 PartNumber[]
+  inventoryItems              InventoryItem[]
+  warehouses                  Warehouse[]
+  binLocations                BinLocation[]
+  mediaAssets                 MediaAsset[]
+  partMedia                   PartMedia[]
+  importMediaMatches          ImportMediaMatch[]
+  pricingJobs                 PricingJob[]
+  pricingJobItems             PricingJobItem[]
+  bulkPricingJobs             BulkPricingJob[]
+  bulkPricingJobItems         BulkPricingJobItem[]
+  pricingRule                 PricingRule?
+  pricingProposals            PricingProposal[]
+  competitorListings          CompetitorListingSnapshot[]
+  fitmentJobs                 FitmentJob[]
+  fitmentJobItems             FitmentJobItem[]
+  fitmentCandidates           FitmentCandidate[]
+  fitmentApplications         FitmentApplication[]
   fitmentApplicationRevisions FitmentApplicationRevision[]
-  ebaySellerConnection EbaySellerConnection?
-  ebayOAuthStates      EbayOAuthState[]
-  idempotencyRecords   IdempotencyRecord[]
-  outboxEvents         OutboxEvent[]
-  deadLetterEntries    DeadLetterEntry[]
-  listingDrafts        ListingDraft[]
-  listingDraftVersions ListingDraftVersion[]
-  ebaySellerResources  EbaySellerResource[]
-  ebayPublishedImages  EbayPublishedImage[]
-  inventoryPreparations EbayInventoryPreparation[]
-  inventoryPreparationJobs InventoryPreparationJob[]
-  ebayInventorySyncJobs EbayInventorySyncJob[]
-  ebayOffers            EbayOffer[]
-  ebayOfferJobs         EbayOfferJob[]
-  ebayListingOperationJobs EbayListingOperationJob[]
-  auditEvents          OrganizationAuditEvent[]
-  catalogSavedViews    CatalogSavedView[]
-  notifications        UserNotification[]
-  notificationPreferences NotificationPreference[]
-  retentionPolicy       OrganizationRetentionPolicy?
-  retentionRuns         DataRetentionRun[]
-  invitations          OrganizationInvitation[]
-  mfaLoginChallenges   MfaLoginChallenge[]
-  createdAt            DateTime                    @default(now())
-  updatedAt            DateTime                    @updatedAt
+  ebaySellerConnection        EbaySellerConnection?
+  ebayOAuthStates             EbayOAuthState[]
+  idempotencyRecords          IdempotencyRecord[]
+  outboxEvents                OutboxEvent[]
+  deadLetterEntries           DeadLetterEntry[]
+  listingDrafts               ListingDraft[]
+  listingTeams                ListingTeam[]
+  listingDraftVersions        ListingDraftVersion[]
+  ebaySellerResources         EbaySellerResource[]
+  ebayPublishedImages         EbayPublishedImage[]
+  inventoryPreparations       EbayInventoryPreparation[]
+  inventoryPreparationJobs    InventoryPreparationJob[]
+  ebayInventorySyncJobs       EbayInventorySyncJob[]
+  ebayOffers                  EbayOffer[]
+  ebayOfferJobs               EbayOfferJob[]
+  ebayListingOperationJobs    EbayListingOperationJob[]
+  auditEvents                 OrganizationAuditEvent[]
+  catalogSavedViews           CatalogSavedView[]
+  notifications               UserNotification[]
+  notificationPreferences     NotificationPreference[]
+  retentionPolicy             OrganizationRetentionPolicy?
+  retentionRuns               DataRetentionRun[]
+  invitations                 OrganizationInvitation[]
+  mfaLoginChallenges          MfaLoginChallenge[]
+  createdAt                   DateTime                     @default(now())
+  updatedAt                   DateTime                     @updatedAt
 }
 
 model User {
-  id                  String                   @id @default(cuid())
-  email               String                   @unique
-  name                String?
-  memberships         OrganizationMembership[]
-  refreshSessions     RefreshSession[]
-  createdImports      ImportBatch[]            @relation("ImportCreator")
-  createdParts        Part[]                   @relation("PartCreator")
-  createdPricingJobs  PricingJob[]             @relation("PricingJobCreator")
-  createdBulkPricingJobs BulkPricingJob[]      @relation("BulkPricingJobCreator")
-  updatedPricingRules PricingRule[]             @relation("PricingRuleUpdater")
-  decidedPricingProposals PricingProposal[]     @relation("PricingProposalDecider")
-  createdFitmentApplications FitmentApplication[] @relation("FitmentApplicationCreator")
-  approvedFitmentApplications FitmentApplication[] @relation("FitmentApplicationApprover")
-  fitmentApplicationRevisions FitmentApplicationRevision[] @relation("FitmentApplicationRevisionCreator")
-  createdFitmentJobs  FitmentJob[]             @relation("FitmentJobCreator")
-  createdListingDrafts ListingDraft[]           @relation("ListingDraftCreator")
-  updatedListingDrafts ListingDraft[]           @relation("ListingDraftUpdater")
-  listingDraftVersions ListingDraftVersion[]    @relation("ListingDraftVersionCreator")
-  connectedEbayStores EbaySellerConnection[]   @relation("EbayConnectionCreator")
-  ebayOAuthStates     EbayOAuthState[]
-  inventoryPreparations EbayInventoryPreparation[] @relation("InventoryPreparationCreator")
-  createdInventoryPreparationJobs InventoryPreparationJob[] @relation("InventoryPreparationJobCreator")
-  createdEbayInventorySyncJobs EbayInventorySyncJob[] @relation("EbayInventorySyncJobCreator")
-  createdEbayOfferJobs  EbayOfferJob[] @relation("EbayOfferJobCreator")
-  approvedEbayOffers    EbayOffer[]    @relation("EbayOfferApprover")
-  createdEbayListingOperationJobs EbayListingOperationJob[] @relation("EbayListingOperationJobCreator")
-  auditEvents          OrganizationAuditEvent[] @relation("AuditEventActor")
-  catalogSavedViews    CatalogSavedView[]
-  notifications        UserNotification[]
-  notificationPreferences NotificationPreference[]
-  updatedRetentionPolicies OrganizationRetentionPolicy[] @relation("RetentionPolicyUpdater")
-  createdRetentionRuns DataRetentionRun[] @relation("RetentionRunCreator")
-  sentInvitations      OrganizationInvitation[] @relation("InvitationSender")
-  acceptedInvitations  OrganizationInvitation[] @relation("InvitationAcceptor")
-  passwordHash         String?
-  passwordChangedAt    DateTime?
-  emailVerifiedAt      DateTime?
-  failedLoginAttempts  Int                      @default(0)
-  lockedUntil          DateTime?
-  mfaEnabled           Boolean                  @default(false)
-  mfaSecretEncrypted   String?
-  pendingMfaSecretEncrypted String?
-  pendingMfaCreatedAt  DateTime?
-  mfaLastUsedStep      Int?
-  authTokens           UserAuthToken[]
-  mfaLoginChallenges   MfaLoginChallenge[]
-  mfaRecoveryCodes     MfaRecoveryCode[]
-  createdAt           DateTime                 @default(now())
-  updatedAt           DateTime                 @updatedAt
+  id                              String                        @id @default(cuid())
+  email                           String                        @unique
+  name                            String?
+  memberships                     OrganizationMembership[]
+  refreshSessions                 RefreshSession[]
+  createdImports                  ImportBatch[]                 @relation("ImportCreator")
+  createdParts                    Part[]                        @relation("PartCreator")
+  createdPricingJobs              PricingJob[]                  @relation("PricingJobCreator")
+  createdBulkPricingJobs          BulkPricingJob[]              @relation("BulkPricingJobCreator")
+  updatedPricingRules             PricingRule[]                 @relation("PricingRuleUpdater")
+  decidedPricingProposals         PricingProposal[]             @relation("PricingProposalDecider")
+  createdFitmentApplications      FitmentApplication[]          @relation("FitmentApplicationCreator")
+  approvedFitmentApplications     FitmentApplication[]          @relation("FitmentApplicationApprover")
+  fitmentApplicationRevisions     FitmentApplicationRevision[]  @relation("FitmentApplicationRevisionCreator")
+  createdFitmentJobs              FitmentJob[]                  @relation("FitmentJobCreator")
+  createdListingDrafts            ListingDraft[]                @relation("ListingDraftCreator")
+  updatedListingDrafts            ListingDraft[]                @relation("ListingDraftUpdater")
+  listingDraftVersions            ListingDraftVersion[]         @relation("ListingDraftVersionCreator")
+  connectedEbayStores             EbaySellerConnection[]        @relation("EbayConnectionCreator")
+  ebayOAuthStates                 EbayOAuthState[]
+  inventoryPreparations           EbayInventoryPreparation[]    @relation("InventoryPreparationCreator")
+  createdInventoryPreparationJobs InventoryPreparationJob[]     @relation("InventoryPreparationJobCreator")
+  createdEbayInventorySyncJobs    EbayInventorySyncJob[]        @relation("EbayInventorySyncJobCreator")
+  createdEbayOfferJobs            EbayOfferJob[]                @relation("EbayOfferJobCreator")
+  approvedEbayOffers              EbayOffer[]                   @relation("EbayOfferApprover")
+  createdEbayListingOperationJobs EbayListingOperationJob[]     @relation("EbayListingOperationJobCreator")
+  auditEvents                     OrganizationAuditEvent[]      @relation("AuditEventActor")
+  catalogSavedViews               CatalogSavedView[]
+  notifications                   UserNotification[]
+  notificationPreferences         NotificationPreference[]
+  updatedRetentionPolicies        OrganizationRetentionPolicy[] @relation("RetentionPolicyUpdater")
+  createdRetentionRuns            DataRetentionRun[]            @relation("RetentionRunCreator")
+  sentInvitations                 OrganizationInvitation[]      @relation("InvitationSender")
+  acceptedInvitations             OrganizationInvitation[]      @relation("InvitationAcceptor")
+  passwordHash                    String?
+  passwordChangedAt               DateTime?
+  emailVerifiedAt                 DateTime?
+  failedLoginAttempts             Int                           @default(0)
+  lockedUntil                     DateTime?
+  mfaEnabled                      Boolean                       @default(false)
+  mfaSecretEncrypted              String?
+  pendingMfaSecretEncrypted       String?
+  pendingMfaCreatedAt             DateTime?
+  mfaLastUsedStep                 Int?
+  authTokens                      UserAuthToken[]
+  mfaLoginChallenges              MfaLoginChallenge[]
+  mfaRecoveryCodes                MfaRecoveryCode[]
+  createdAt                       DateTime                      @default(now())
+  updatedAt                       DateTime                      @updatedAt
 }
 
 model OrganizationMembership {
@@ -484,14 +485,14 @@ model RefreshSession {
 }
 
 model UserAuthToken {
-  id        String            @id @default(cuid())
-  userId    String
-  type      UserAuthTokenType
-  tokenHash String            @unique
-  expiresAt DateTime
+  id         String            @id @default(cuid())
+  userId     String
+  type       UserAuthTokenType
+  tokenHash  String            @unique
+  expiresAt  DateTime
   consumedAt DateTime?
-  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime          @default(now())
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime          @default(now())
 
   @@index([userId, type, createdAt])
   @@index([expiresAt])
@@ -514,12 +515,12 @@ model MfaLoginChallenge {
 }
 
 model MfaRecoveryCode {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
-  codeHash  String   @unique
+  codeHash  String    @unique
   usedAt    DateTime?
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
 
   @@index([userId, usedAt])
 }
@@ -668,20 +669,20 @@ model ImportRow {
 }
 
 model Vehicle {
-  id             String       @id @default(cuid())
-  organizationId String
-  vin            String
-  year           Int?
-  make           String?
-  model          String?
-  trim           String?
-  engine         String?
-  bodyStyle      String?
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  parts          Part[]
+  id                  String               @id @default(cuid())
+  organizationId      String
+  vin                 String
+  year                Int?
+  make                String?
+  model               String?
+  trim                String?
+  engine              String?
+  bodyStyle           String?
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parts               Part[]
   fitmentApplications FitmentApplication[] @relation("FitmentSourceVehicle")
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   @@unique([organizationId, vin])
   @@index([organizationId, year, make, model])
@@ -698,7 +699,7 @@ model Part {
   partName             String?
   description          String?
   condition            PartCondition
-  productSource        PartProductSource   @default(OEM)
+  productSource        PartProductSource    @default(OEM)
   imageGroup           String?
   status               CatalogPartStatus    @default(IMPORTED)
   donorVehicleId       String?
@@ -801,11 +802,11 @@ model InventoryItem {
 }
 
 model MediaAsset {
-  id               String             @id @default(cuid())
+  id               String               @id @default(cuid())
   organizationId   String
   storageKey       String
   externalUrl      String?
-  sourceType       String             @default("USER_UPLOAD")
+  sourceType       String               @default("USER_UPLOAD")
   sourceMetadata   Json?
   originalFilename String
   mimeType         String
@@ -813,13 +814,13 @@ model MediaAsset {
   checksum         String
   width            Int?
   height           Int?
-  status           MediaStatus        @default(UPLOADED)
-  organization     Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  status           MediaStatus          @default(UPLOADED)
+  organization     Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   parts            PartMedia[]
   importMatches    ImportMediaMatch[]
   ebayImages       EbayPublishedImage[]
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
 
   @@unique([organizationId, storageKey])
   @@index([organizationId, checksum])
@@ -922,29 +923,29 @@ model PricingJob {
 }
 
 model BulkPricingJob {
-  id               String           @id @default(cuid())
-  organizationId   String
-  createdById      String
-  marketplace      String
-  defaultCondition String           @default("ANY")
-  status           PricingJobStatus @default(QUEUED)
-  totalItems       Int
-  completedItems   Int              @default(0)
-  noMatchItems     Int              @default(0)
-  failedItems      Int              @default(0)
-  sourceFilename   String?
-  pricingStrategy  String           @default("CUSTOM_FORMULA")
-  targetMarginPercent Decimal?         @db.Decimal(6, 2)
-  bufferPercent       Decimal?         @db.Decimal(6, 2)
+  id                  String               @id @default(cuid())
+  organizationId      String
+  createdById         String
+  marketplace         String
+  defaultCondition    String               @default("ANY")
+  status              PricingJobStatus     @default(QUEUED)
+  totalItems          Int
+  completedItems      Int                  @default(0)
+  noMatchItems        Int                  @default(0)
+  failedItems         Int                  @default(0)
+  sourceFilename      String?
+  pricingStrategy     String               @default("CUSTOM_FORMULA")
+  targetMarginPercent Decimal?             @db.Decimal(6, 2)
+  bufferPercent       Decimal?             @db.Decimal(6, 2)
   pricingFormula      Json?
-  lastError        String?
-  startedAt        DateTime?
-  completedAt      DateTime?
-  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy        User             @relation("BulkPricingJobCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  items            BulkPricingJobItem[]
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+  lastError           String?
+  startedAt           DateTime?
+  completedAt         DateTime?
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy           User                 @relation("BulkPricingJobCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  items               BulkPricingJobItem[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   @@index([organizationId, createdAt])
   @@index([organizationId, status])
@@ -953,38 +954,38 @@ model BulkPricingJob {
 }
 
 model BulkPricingJobItem {
-  id                 String               @id @default(cuid())
-  organizationId     String
-  bulkPricingJobId   String
-  rowNumber          Int
-  sku                String
-  partNumber         String
-  brand              String
-  costPrice          Decimal              @db.Decimal(12, 2)
-  quantity           Int                  @default(1)
-  currency           String
-  condition          String
-  notes              String?
-  catalogMatch       Boolean              @default(false)
-  catalogPartId      String?
-  status             PricingJobItemStatus @default(QUEUED)
-  competitorCount    Int                  @default(0)
-  lowest             Decimal?             @db.Decimal(12, 2)
-  average            Decimal?             @db.Decimal(12, 2)
-  median             Decimal?             @db.Decimal(12, 2)
-  highest            Decimal?             @db.Decimal(12, 2)
-  marketRecommended  Decimal?             @db.Decimal(12, 2)
-  sellingPrice       Decimal?             @db.Decimal(12, 2)
-  floorPrice         Decimal?             @db.Decimal(12, 2)
-  marginPercent      Decimal?             @db.Decimal(8, 2)
-  competitors        Json?
-  error              String?
-  startedAt          DateTime?
-  completedAt        DateTime?
-  organization       Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  bulkPricingJob     BulkPricingJob       @relation(fields: [bulkPricingJobId], references: [id], onDelete: Cascade)
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
+  id                String               @id @default(cuid())
+  organizationId    String
+  bulkPricingJobId  String
+  rowNumber         Int
+  sku               String
+  partNumber        String
+  brand             String
+  costPrice         Decimal              @db.Decimal(12, 2)
+  quantity          Int                  @default(1)
+  currency          String
+  condition         String
+  notes             String?
+  catalogMatch      Boolean              @default(false)
+  catalogPartId     String?
+  status            PricingJobItemStatus @default(QUEUED)
+  competitorCount   Int                  @default(0)
+  lowest            Decimal?             @db.Decimal(12, 2)
+  average           Decimal?             @db.Decimal(12, 2)
+  median            Decimal?             @db.Decimal(12, 2)
+  highest           Decimal?             @db.Decimal(12, 2)
+  marketRecommended Decimal?             @db.Decimal(12, 2)
+  sellingPrice      Decimal?             @db.Decimal(12, 2)
+  floorPrice        Decimal?             @db.Decimal(12, 2)
+  marginPercent     Decimal?             @db.Decimal(8, 2)
+  competitors       Json?
+  error             String?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  organization      Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  bulkPricingJob    BulkPricingJob       @relation(fields: [bulkPricingJobId], references: [id], onDelete: Cascade)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
 
   @@unique([bulkPricingJobId, rowNumber])
   @@index([organizationId, status])
@@ -1024,47 +1025,47 @@ model PricingJobItem {
 }
 
 model PricingRule {
-  id                       String       @id @default(cuid())
-  organizationId           String       @unique
-  marketAdjustmentPercent  Decimal      @default(0) @db.Decimal(6, 2)
-  minimumMarginPercent     Decimal      @default(20) @db.Decimal(6, 2)
-  minimumProfitAmount      Decimal      @default(10) @db.Decimal(12, 2)
-  requireApproval          Boolean      @default(true)
-  updatedById              String?
-  organization             Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  updatedBy                User?        @relation("PricingRuleUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
-  createdAt                DateTime     @default(now())
-  updatedAt                DateTime     @updatedAt
+  id                      String       @id @default(cuid())
+  organizationId          String       @unique
+  marketAdjustmentPercent Decimal      @default(0) @db.Decimal(6, 2)
+  minimumMarginPercent    Decimal      @default(20) @db.Decimal(6, 2)
+  minimumProfitAmount     Decimal      @default(10) @db.Decimal(12, 2)
+  requireApproval         Boolean      @default(true)
+  updatedById             String?
+  organization            Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  updatedBy               User?        @relation("PricingRuleUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt               DateTime     @default(now())
+  updatedAt               DateTime     @updatedAt
 
   @@index([updatedById])
 }
 
 model PricingProposal {
-  id                       String                @id @default(cuid())
-  organizationId           String
-  partId                   String
-  pricingJobItemId         String                @unique
-  marketplace              String
-  currency                 String
-  status                   PricingProposalStatus @default(PENDING)
-  marketRecommendedPrice   Decimal               @db.Decimal(12, 2)
-  costAmount               Decimal?              @db.Decimal(12, 2)
-  costCurrency             String?
-  floorPrice               Decimal?              @db.Decimal(12, 2)
-  proposedPrice            Decimal               @db.Decimal(12, 2)
-  approvedPrice            Decimal?              @db.Decimal(12, 2)
-  belowFloor               Boolean               @default(false)
-  floorUnavailableReason   String?
-  ruleSnapshot             Json
-  decisionReason           String?
-  decidedById              String?
-  decidedAt                DateTime?
-  organization             Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  part                     Part                  @relation(fields: [partId], references: [id], onDelete: Cascade)
-  pricingJobItem           PricingJobItem        @relation(fields: [pricingJobItemId], references: [id], onDelete: Cascade)
-  decidedBy                User?                 @relation("PricingProposalDecider", fields: [decidedById], references: [id], onDelete: SetNull)
-  createdAt                DateTime              @default(now())
-  updatedAt                DateTime              @updatedAt
+  id                     String                @id @default(cuid())
+  organizationId         String
+  partId                 String
+  pricingJobItemId       String                @unique
+  marketplace            String
+  currency               String
+  status                 PricingProposalStatus @default(PENDING)
+  marketRecommendedPrice Decimal               @db.Decimal(12, 2)
+  costAmount             Decimal?              @db.Decimal(12, 2)
+  costCurrency           String?
+  floorPrice             Decimal?              @db.Decimal(12, 2)
+  proposedPrice          Decimal               @db.Decimal(12, 2)
+  approvedPrice          Decimal?              @db.Decimal(12, 2)
+  belowFloor             Boolean               @default(false)
+  floorUnavailableReason String?
+  ruleSnapshot           Json
+  decisionReason         String?
+  decidedById            String?
+  decidedAt              DateTime?
+  organization           Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  part                   Part                  @relation(fields: [partId], references: [id], onDelete: Cascade)
+  pricingJobItem         PricingJobItem        @relation(fields: [pricingJobItemId], references: [id], onDelete: Cascade)
+  decidedBy              User?                 @relation("PricingProposalDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
 
   @@index([organizationId, status, createdAt])
   @@index([organizationId, partId, marketplace, decidedAt])
@@ -1153,15 +1154,15 @@ model FitmentJobItem {
 }
 
 model WorkerHeartbeat {
-  id          String   @id
-  service     String
-  status      String
-  startedAt   DateTime @default(now())
-  lastSeenAt  DateTime @default(now())
-  stoppedAt   DateTime?
-  metadata    Json?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String    @id
+  service    String
+  status     String
+  startedAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+  stoppedAt  DateTime?
+  metadata   Json?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   @@index([service, lastSeenAt])
   @@index([status, lastSeenAt])
@@ -1230,9 +1231,9 @@ model DeadLetterEntry {
 }
 
 model OrganizationAuditEvent {
-  id             String          @id @default(cuid())
+  id             String         @id @default(cuid())
   organizationId String
-  actorType      AuditActorType  @default(USER)
+  actorType      AuditActorType @default(USER)
   actorUserId    String?
   action         String
   resourceType   String
@@ -1252,47 +1253,75 @@ model OrganizationAuditEvent {
 }
 
 model ListingDraft {
-  id                  String             @id @default(cuid())
-  organizationId      String
-  partId              String
-  marketplace         String
-  status              ListingDraftStatus @default(DRAFT)
-  title               String
-  description         String?
-  categoryId          String?
-  condition           PartCondition
-  ebayCondition       String?
-  price               Decimal?           @db.Decimal(12, 2)
-  currency            String              @default("USD")
-  quantity            Int                 @default(0)
-  aspects             Json
-  paymentPolicyId     String?
-  returnPolicyId      String?
-  shippingPolicyId    String?
-  merchantLocationKey String?
-  validationIssues    Json?
-  validatedAt         DateTime?
-  liveValidatedAt     DateTime?
-  version             Int                @default(1)
-  createdById         String
-  updatedById         String
-  organization        Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  part                Part               @relation(fields: [partId], references: [id], onDelete: Cascade)
-  createdBy           User               @relation("ListingDraftCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  updatedBy           User               @relation("ListingDraftUpdater", fields: [updatedById], references: [id], onDelete: Restrict)
-  versions            ListingDraftVersion[]
-  inventoryPreparations EbayInventoryPreparation[]
+  id                       String                     @id @default(cuid())
+  organizationId           String
+  partId                   String
+  marketplace              String
+  status                   ListingDraftStatus         @default(DRAFT)
+  title                    String
+  description              String?
+  categoryId               String?
+  condition                PartCondition
+  ebayCondition            String?
+  price                    Decimal?                   @db.Decimal(12, 2)
+  currency                 String                     @default("USD")
+  quantity                 Int                        @default(0)
+  aspects                  Json
+  paymentPolicyId          String?
+  returnPolicyId           String?
+  shippingPolicyId         String?
+  merchantLocationKey      String?
+  validationIssues         Json?
+  validatedAt              DateTime?
+  liveValidatedAt          DateTime?
+  version                  Int                        @default(1)
+  createdById              String
+  updatedById              String
+  organization             Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  part                     Part                       @relation(fields: [partId], references: [id], onDelete: Cascade)
+  createdBy                User                       @relation("ListingDraftCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy                User                       @relation("ListingDraftUpdater", fields: [updatedById], references: [id], onDelete: Restrict)
+  versions                 ListingDraftVersion[]
+  inventoryPreparations    EbayInventoryPreparation[]
   inventoryPreparationJobs InventoryPreparationJob[]
-  ebayInventorySyncJobs EbayInventorySyncJob[]
-  ebayOffers            EbayOffer[]
-  ebayOfferJobs         EbayOfferJob[]
+  ebayInventorySyncJobs    EbayInventorySyncJob[]
+  ebayOffers               EbayOffer[]
+  ebayOfferJobs            EbayOfferJob[]
   ebayListingOperationJobs EbayListingOperationJob[]
-  createdAt           DateTime           @default(now())
-  updatedAt           DateTime           @updatedAt
+  teams                    ListingDraftTeam[]
+  createdAt                DateTime                   @default(now())
+  updatedAt                DateTime                   @updatedAt
 
   @@unique([partId, marketplace])
   @@index([organizationId, status, updatedAt])
   @@index([organizationId, marketplace])
+}
+
+model ListingTeam {
+  id             String             @id @default(cuid())
+  organizationId String
+  name           String
+  normalizedName String
+  color          String             @default("#2563EB")
+  isArchived     Boolean            @default(false)
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  listingDrafts  ListingDraftTeam[]
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@unique([organizationId, normalizedName])
+  @@index([organizationId, isArchived, name])
+}
+
+model ListingDraftTeam {
+  listingDraftId String
+  listingTeamId  String
+  listingDraft   ListingDraft @relation(fields: [listingDraftId], references: [id], onDelete: Cascade)
+  listingTeam    ListingTeam  @relation(fields: [listingTeamId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@id([listingDraftId, listingTeamId])
+  @@index([listingTeamId, listingDraftId])
 }
 
 model CatalogSavedView {
@@ -1312,41 +1341,41 @@ model CatalogSavedView {
 }
 
 model NotificationPreference {
-  id                 String       @id @default(cuid())
-  organizationId     String
-  userId             String
-  emailPricing       Boolean      @default(false)
-  emailFitment       Boolean      @default(false)
-  emailPublishing    Boolean      @default(false)
-  emailFailures      Boolean      @default(true)
-  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user               User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt          DateTime     @default(now())
-  updatedAt          DateTime     @updatedAt
+  id              String       @id @default(cuid())
+  organizationId  String
+  userId          String
+  emailPricing    Boolean      @default(false)
+  emailFitment    Boolean      @default(false)
+  emailPublishing Boolean      @default(false)
+  emailFailures   Boolean      @default(true)
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 
   @@unique([organizationId, userId])
 }
 
 model UserNotification {
-  id                 String                  @id @default(cuid())
-  organizationId     String
-  userId             String
-  sourceEventId      String
-  category           NotificationCategory
-  severity           NotificationSeverity
-  title              String
-  message            String
-  actionUrl          String?
-  resourceType       String?
-  resourceId         String?
-  emailStatus        NotificationEmailStatus @default(NOT_REQUESTED)
-  emailError         String?
-  emailedAt          DateTime?
-  readAt             DateTime?
-  organization       Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user               User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt          DateTime                @default(now())
-  updatedAt          DateTime                @updatedAt
+  id             String                  @id @default(cuid())
+  organizationId String
+  userId         String
+  sourceEventId  String
+  category       NotificationCategory
+  severity       NotificationSeverity
+  title          String
+  message        String
+  actionUrl      String?
+  resourceType   String?
+  resourceId     String?
+  emailStatus    NotificationEmailStatus @default(NOT_REQUESTED)
+  emailError     String?
+  emailedAt      DateTime?
+  readAt         DateTime?
+  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
 
   @@unique([userId, sourceEventId])
   @@index([organizationId, userId, readAt, createdAt])
@@ -1354,40 +1383,40 @@ model UserNotification {
 }
 
 model OrganizationRetentionPolicy {
-  id                         String       @id @default(cuid())
-  organizationId             String       @unique
-  readNotificationDays       Int          @default(90)
-  competitorSnapshotDays     Int          @default(90)
-  publishedOutboxDays        Int          @default(30)
-  resolvedDeadLetterDays     Int          @default(180)
-  auditArchiveAfterDays      Int          @default(365)
-  updatedById                String?
-  organization               Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  updatedBy                  User?        @relation("RetentionPolicyUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
-  createdAt                  DateTime     @default(now())
-  updatedAt                  DateTime     @updatedAt
+  id                     String       @id @default(cuid())
+  organizationId         String       @unique
+  readNotificationDays   Int          @default(90)
+  competitorSnapshotDays Int          @default(90)
+  publishedOutboxDays    Int          @default(30)
+  resolvedDeadLetterDays Int          @default(180)
+  auditArchiveAfterDays  Int          @default(365)
+  updatedById            String?
+  organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  updatedBy              User?        @relation("RetentionPolicyUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
 
   @@index([updatedById])
 }
 
 model DataRetentionRun {
-  id                 String             @id @default(cuid())
-  organizationId     String
-  createdById        String
-  mode               RetentionRunMode
-  status             RetentionRunStatus @default(QUEUED)
-  cutoffSnapshot     Json
-  result             Json?
-  attemptCount       Int                @default(0)
-  leaseOwner         String?
-  leaseExpiresAt     DateTime?
-  lastError          String?
-  startedAt          DateTime?
-  completedAt        DateTime?
-  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy          User               @relation("RetentionRunCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  id             String             @id @default(cuid())
+  organizationId String
+  createdById    String
+  mode           RetentionRunMode
+  status         RetentionRunStatus @default(QUEUED)
+  cutoffSnapshot Json
+  result         Json?
+  attemptCount   Int                @default(0)
+  leaseOwner     String?
+  leaseExpiresAt DateTime?
+  lastError      String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy      User               @relation("RetentionRunCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
 
   @@index([organizationId, createdAt])
   @@index([organizationId, status])
@@ -1395,7 +1424,7 @@ model DataRetentionRun {
 }
 
 model EbayInventoryPreparation {
-  id                   String       @id @default(cuid())
+  id                   String                   @id @default(cuid())
   organizationId       String
   listingDraftId       String
   draftVersion         Int
@@ -1405,12 +1434,12 @@ model EbayInventoryPreparation {
   compatibilityPayload Json?
   warnings             Json
   createdById          String
-  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  listingDraft         ListingDraft @relation(fields: [listingDraftId], references: [id], onDelete: Cascade)
-  createdBy            User         @relation("InventoryPreparationCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  organization         Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  listingDraft         ListingDraft             @relation(fields: [listingDraftId], references: [id], onDelete: Cascade)
+  createdBy            User                     @relation("InventoryPreparationCreator", fields: [createdById], references: [id], onDelete: Restrict)
   job                  InventoryPreparationJob?
   syncJob              EbayInventorySyncJob?
-  createdAt            DateTime     @default(now())
+  createdAt            DateTime                 @default(now())
 
   @@unique([listingDraftId, draftVersion])
   @@index([organizationId, createdAt])
@@ -1449,42 +1478,42 @@ model EbayInventorySyncJob {
 }
 
 model EbayOffer {
-  id                 String          @id @default(cuid())
-  organizationId     String
-  listingDraftId     String          @unique
-  inventorySyncJobId String          @unique
-  preparationId      String
-  draftVersion       Int
-  sku                String
-  marketplace        String
-  payloadHash        String
-  offerPayload       Json
-  ebayOfferId        String?
-  ebayListingId      String?
-  status             EbayOfferStatus @default(PREPARING)
-  feeResponse        Json?
-  feeTotal           Decimal?        @db.Decimal(12, 2)
-  feeCurrency        String?
-  warnings           Json?
-  lastError          String?
-  approvedById       String?
-  approvedAt         DateTime?
-  publishedAt        DateTime?
-  lastRevisionAt     DateTime?
-  revisionCount      Int             @default(0)
-  withdrawnAt        DateTime?
-  remoteListingStatus String?
-  remoteSnapshot     Json?
-  driftIssues        Json?
-  lastReconciledAt   DateTime?
-  organization       Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  listingDraft       ListingDraft    @relation(fields: [listingDraftId], references: [id], onDelete: Cascade)
-  inventorySyncJob   EbayInventorySyncJob @relation(fields: [inventorySyncJobId], references: [id], onDelete: Restrict)
-  approvedBy         User?           @relation("EbayOfferApprover", fields: [approvedById], references: [id], onDelete: SetNull)
-  jobs               EbayOfferJob[]
+  id                   String                    @id @default(cuid())
+  organizationId       String
+  listingDraftId       String                    @unique
+  inventorySyncJobId   String                    @unique
+  preparationId        String
+  draftVersion         Int
+  sku                  String
+  marketplace          String
+  payloadHash          String
+  offerPayload         Json
+  ebayOfferId          String?
+  ebayListingId        String?
+  status               EbayOfferStatus           @default(PREPARING)
+  feeResponse          Json?
+  feeTotal             Decimal?                  @db.Decimal(12, 2)
+  feeCurrency          String?
+  warnings             Json?
+  lastError            String?
+  approvedById         String?
+  approvedAt           DateTime?
+  publishedAt          DateTime?
+  lastRevisionAt       DateTime?
+  revisionCount        Int                       @default(0)
+  withdrawnAt          DateTime?
+  remoteListingStatus  String?
+  remoteSnapshot       Json?
+  driftIssues          Json?
+  lastReconciledAt     DateTime?
+  organization         Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  listingDraft         ListingDraft              @relation(fields: [listingDraftId], references: [id], onDelete: Cascade)
+  inventorySyncJob     EbayInventorySyncJob      @relation(fields: [inventorySyncJobId], references: [id], onDelete: Restrict)
+  approvedBy           User?                     @relation("EbayOfferApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  jobs                 EbayOfferJob[]
   listingOperationJobs EbayListingOperationJob[]
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
 
   @@index([organizationId, status, updatedAt])
   @@index([ebayOfferId])
@@ -1551,25 +1580,25 @@ model EbayOfferJob {
 }
 
 model InventoryPreparationJob {
-  id               String                        @id @default(cuid())
-  organizationId   String
-  createdById      String
-  listingDraftId   String
-  draftVersion     Int
-  status           InventoryPreparationJobStatus @default(QUEUED)
-  attemptCount     Int                           @default(0)
-  leaseOwner       String?
-  leaseExpiresAt   DateTime?
-  lastError        String?
-  preparationId    String?                       @unique
-  startedAt        DateTime?
-  completedAt      DateTime?
-  organization     Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy        User                          @relation("InventoryPreparationJobCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  listingDraft     ListingDraft                  @relation(fields: [listingDraftId], references: [id], onDelete: Cascade)
-  preparation      EbayInventoryPreparation?     @relation(fields: [preparationId], references: [id], onDelete: SetNull)
-  createdAt        DateTime                      @default(now())
-  updatedAt        DateTime                      @updatedAt
+  id             String                        @id @default(cuid())
+  organizationId String
+  createdById    String
+  listingDraftId String
+  draftVersion   Int
+  status         InventoryPreparationJobStatus @default(QUEUED)
+  attemptCount   Int                           @default(0)
+  leaseOwner     String?
+  leaseExpiresAt DateTime?
+  lastError      String?
+  preparationId  String?                       @unique
+  startedAt      DateTime?
+  completedAt    DateTime?
+  organization   Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy      User                          @relation("InventoryPreparationJobCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  listingDraft   ListingDraft                  @relation(fields: [listingDraftId], references: [id], onDelete: Cascade)
+  preparation    EbayInventoryPreparation?     @relation(fields: [preparationId], references: [id], onDelete: SetNull)
+  createdAt      DateTime                      @default(now())
+  updatedAt      DateTime                      @updatedAt
 
   @@unique([listingDraftId, draftVersion])
   @@index([organizationId, createdAt])
@@ -1616,32 +1645,32 @@ model FitmentCandidate {
 }
 
 model FitmentApplication {
-  id               String                   @id @default(cuid())
+  id               String                       @id @default(cuid())
   organizationId   String
   fitmentJobItemId String?
   partId           String
-  marketplace      String                   @default("EBAY_US")
-  source           FitmentApplicationSource @default(EBAY_CATALOG)
-  status           FitmentApplicationStatus @default(APPROVED)
+  marketplace      String                       @default("EBAY_US")
+  source           FitmentApplicationSource     @default(EBAY_CATALOG)
+  status           FitmentApplicationStatus     @default(APPROVED)
   fingerprint      String
   properties       Json
   notes            String?
   sourceVehicleId  String?
   sourceEvidence   Json?
-  revision         Int                      @default(1)
+  revision         Int                          @default(1)
   createdById      String?
   approvedById     String?
   decisionReason   String?
-  organization     Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  fitmentJobItem   FitmentJobItem?           @relation(fields: [fitmentJobItemId], references: [id], onDelete: Cascade)
-  part             Part                     @relation(fields: [partId], references: [id], onDelete: Cascade)
-  sourceVehicle    Vehicle?                  @relation("FitmentSourceVehicle", fields: [sourceVehicleId], references: [id], onDelete: SetNull)
-  createdBy        User?                     @relation("FitmentApplicationCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  approvedBy       User?                     @relation("FitmentApplicationApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  organization     Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  fitmentJobItem   FitmentJobItem?              @relation(fields: [fitmentJobItemId], references: [id], onDelete: Cascade)
+  part             Part                         @relation(fields: [partId], references: [id], onDelete: Cascade)
+  sourceVehicle    Vehicle?                     @relation("FitmentSourceVehicle", fields: [sourceVehicleId], references: [id], onDelete: SetNull)
+  createdBy        User?                        @relation("FitmentApplicationCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  approvedBy       User?                        @relation("FitmentApplicationApprover", fields: [approvedById], references: [id], onDelete: SetNull)
   revisions        FitmentApplicationRevision[]
   approvedAt       DateTime?
-  createdAt        DateTime                 @default(now())
-  updatedAt        DateTime                 @updatedAt
+  createdAt        DateTime                     @default(now())
+  updatedAt        DateTime                     @updatedAt
 
   @@unique([fitmentJobItemId, fingerprint])
   @@index([organizationId, partId, marketplace, status])
@@ -1651,17 +1680,17 @@ model FitmentApplication {
 }
 
 model FitmentApplicationRevision {
-  id                    String                 @id @default(cuid())
-  organizationId        String
-  fitmentApplicationId  String
-  revision              Int
-  snapshot              Json
-  reason                String?
-  createdById           String?
-  organization          Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  fitmentApplication    FitmentApplication     @relation(fields: [fitmentApplicationId], references: [id], onDelete: Cascade)
-  createdBy             User?                  @relation("FitmentApplicationRevisionCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt             DateTime               @default(now())
+  id                   String             @id @default(cuid())
+  organizationId       String
+  fitmentApplicationId String
+  revision             Int
+  snapshot             Json
+  reason               String?
+  createdById          String?
+  organization         Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  fitmentApplication   FitmentApplication @relation(fields: [fitmentApplicationId], references: [id], onDelete: Cascade)
+  createdBy            User?              @relation("FitmentApplicationRevisionCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt            DateTime           @default(now())
 
   @@unique([fitmentApplicationId, revision])
   @@index([organizationId, createdAt])

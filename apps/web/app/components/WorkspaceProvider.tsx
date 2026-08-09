@@ -71,20 +71,6 @@ function isShellWorkspace(pathname: string) {
   );
 }
 
-function SignInPanel() {
-  return (
-    <section className={styles.signInPanel}>
-      <BrandMark />
-      <span className={styles.eyebrow}>PARTPULSE WORKSPACE</span>
-      <h1>Sign in to continue</h1>
-      <p>Your session has ended. Sign in again to keep working in PartPulse.</p>
-      <Link className={styles.signInButton} href="/login">
-        Sign in to PartPulse
-      </Link>
-    </section>
-  );
-}
-
 function AccessDeniedPanel({ href }: { href: string }) {
   return (
     <section className={styles.signInPanel}>
@@ -138,9 +124,7 @@ function WorkspaceFrame({ children }: { children: ReactNode }) {
         onSignOut={() => void logout()}
         onNavigate={navigateOptimistic}
       >
-        {status === "required" ? (
-          <SignInPanel />
-        ) : status === "ready" && !canOpenActive ? (
+        {status !== "ready" ? null : !canOpenActive ? (
           <AccessDeniedPanel href={firstAllowedHref} />
         ) : isShellWorkspace(pathname) ? (
           <WorkspaceViews pathname={pathname} />

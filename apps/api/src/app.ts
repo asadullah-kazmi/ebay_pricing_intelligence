@@ -69,12 +69,22 @@ import { CatalogSavedViewError, deleteCatalogSavedView, listCatalogSavedViews, s
 import { getNotificationPreferences, listNotifications, markAllNotificationsRead, markNotificationRead, NotificationError, updateNotificationPreferences } from "./notification-service.js";
 import { assembleQuickSkuPrepared, createQuickSku, enhanceQuickSkuWithAi, fetchQuickSkuFitment, finalizeQuickSku, identifyQuickSkuPart, QuickSkuError } from "./quick-sku-service.js";
 import { createRetentionRun, getRetentionPolicy, listRetentionRuns, RetentionError, startRetentionJob, updateRetentionPolicy } from "./retention-service.js";
+import { archiveListingTeam, createListingTeam, ListingTeamError, listListingTeams, restoreListingTeam, updateListingTeam } from "./listing-team-service.js";
 
 const searchSchema = z.object({
   oem: z.string().trim().min(2).max(80),
   marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).default("EBAY_US"),
   condition: z.enum(["ANY", "NEW", "USED"]).default("ANY"),
 });
+const listingTeamColorSchema = z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Color must be a six-digit hex value");
+const createListingTeamSchema = z.object({
+  name: z.string().trim().min(1).max(60),
+  color: listingTeamColorSchema.default("#2563EB"),
+});
+const updateListingTeamSchema = z.object({
+  name: z.string().trim().min(1).max(60).optional(),
+  color: listingTeamColorSchema.optional(),
+}).refine((value) => value.name !== undefined || value.color !== undefined, "At least one field is required");
 const confirmMediaUploadSchema = z.object({ storageKey: z.string().min(1).max(1024) });
 const mediaDownloadUrlsSchema = z.object({
   ids: z.array(z.string().min(1)).min(1).max(50),
@@ -1814,6 +1824,54 @@ app.get("/api/team", requireTenantContext, requireOrganizationPermission("team.m
   } catch (error) { next(error); }
 });
 
+app.get("/api/listing-teams", requireTenantContext, requireOrganizationPermission("admin.manage"), async (req, res, next) => {
+  try {
+    const includeArchived = req.query.includeArchived === "true";
+    res.json(await listListingTeams(getTenantContext(res).organization.id, includeArchived));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/listing-teams", writeRateLimit, requireTenantContext, requireOrganizationPermission("admin.manage"), async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const input = createListingTeamSchema.parse(req.body);
+    res.status(201).json(await createListingTeam({
+      organizationId: tenant.organization.id,
+      actorUserId: tenant.user.id,
+      ...input,
+      requestId: res.locals.requestId,
+    }));
+  } catch (error) { next(error); }
+});
+
+app.patch("/api/listing-teams/:id", writeRateLimit, requireTenantContext, requireOrganizationPermission("admin.manage"), async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const input = updateListingTeamSchema.parse(req.body);
+    res.json(await updateListingTeam({
+      organizationId: tenant.organization.id,
+      actorUserId: tenant.user.id,
+      teamId: z.string().min(1).parse(req.params.id),
+      ...input,
+      requestId: res.locals.requestId,
+    }));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/listing-teams/:id/archive", writeRateLimit, requireTenantContext, requireOrganizationPermission("admin.manage"), async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    res.json(await archiveListingTeam({ organizationId: tenant.organization.id, actorUserId: tenant.user.id, teamId: z.string().min(1).parse(req.params.id), requestId: res.locals.requestId }));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/listing-teams/:id/restore", writeRateLimit, requireTenantContext, requireOrganizationPermission("admin.manage"), async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    res.json(await restoreListingTeam({ organizationId: tenant.organization.id, actorUserId: tenant.user.id, teamId: z.string().min(1).parse(req.params.id), requestId: res.locals.requestId }));
+  } catch (error) { next(error); }
+});
+
 app.post("/api/team/invitations", writeRateLimit, requireTenantContext, requireOrganizationPermission("team.manage"), async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
@@ -2151,6 +2209,7 @@ app.use((error: unknown, req: express.Request, res: express.Response, _next: exp
   if (error instanceof EbayListingOperationError) return response(error.statusCode, { error: error.message });
   if (error instanceof AdminOperationsError) return response(error.statusCode, { error: error.message });
   if (error instanceof OrganizationTeamError) return response(error.statusCode, { error: error.message });
+  if (error instanceof ListingTeamError) return response(error.statusCode, { error: error.message });
   if (error instanceof AccountAuthError) return response(error.statusCode, { error: error.message, ...(error.details ? { details: error.details } : {}) });
   if (error instanceof EmailDeliveryError) return response(503, { error: error.message });
   if (error instanceof EbaySellerOAuthError) return response(error.statusCode, { error: error.message });

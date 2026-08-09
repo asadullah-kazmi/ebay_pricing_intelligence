@@ -11,6 +11,7 @@ import {
 } from "react";
 import {
   apiGetCached,
+  clearAccessSessionCache,
   getCachedAccessSession,
   getCachedWorkspaceSession,
   logoutSession,
@@ -84,10 +85,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [demo, setDemo] = useState(boot.demo);
 
   const markRequired = useCallback(() => {
+    clearAccessSessionCache();
     setToken("");
     setSession(null);
-    setCachedWorkspaceSession(null);
     setStatus("required");
+    if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+      // Replace prevents the browser Back button from reopening a protected
+      // workspace with an expired session.
+      window.location.replace("/login?session=expired");
+    }
   }, []);
 
   const syncToken = useCallback(() => {

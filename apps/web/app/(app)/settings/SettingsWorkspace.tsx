@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useAuth } from "../../components/AuthProvider";
 import styles from "./settings.module.css";
 import UserManagement from "./UserManagement";
+import ListingTeamsManagement from "./ListingTeamsManagement";
 
 interface Security {
   email: string;
@@ -38,8 +39,9 @@ export default function SettingsWorkspace() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [tab, setTab] = useState<"security" | "workspace" | "users">("security");
+  const [tab, setTab] = useState<"security" | "workspace" | "users" | "teams">("security");
   const canManageUsers = session?.role === "OWNER" || session?.role === "ADMIN" || session?.permissions?.includes("team.manage");
+  const canManageTeams = session?.role === "OWNER" || session?.role === "ADMIN" || session?.permissions?.includes("admin.manage");
 
   const load = useCallback(async () => {
     if (authStatus !== "ready") return;
@@ -249,6 +251,15 @@ export default function SettingsWorkspace() {
         >
           User management
         </button>}
+        {canManageTeams && <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "teams"}
+          className={tab === "teams" ? styles.tabActive : undefined}
+          onClick={() => setTab("teams")}
+        >
+          Teams
+        </button>}
       </div>
 
       {tab === "security" && (
@@ -400,8 +411,12 @@ export default function SettingsWorkspace() {
             </div>
             <div className={styles.linkList}>
               {canManageUsers && <button type="button" onClick={() => setTab("users")}>
-                <b>Team management</b>
+                <b>User management</b>
                 <span>Invite users and assign Admin, Listing Manager, or Store Manager access</span>
+              </button>}
+              {canManageTeams && <button type="button" onClick={() => setTab("teams")}>
+                <b>Listing teams</b>
+                <span>Create and manage classification tags used to group listings</span>
               </button>}
               <Link href="/reports">
                 <b>Operations reports</b>
@@ -437,6 +452,7 @@ export default function SettingsWorkspace() {
       )}
 
       {tab === "users" && canManageUsers && <UserManagement />}
+      {tab === "teams" && canManageTeams && <ListingTeamsManagement />}
     </div>
   );
 }

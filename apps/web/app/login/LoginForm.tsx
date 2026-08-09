@@ -31,7 +31,11 @@ export default function LoginForm() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [verificationRequired, setVerificationRequired] = useState(false);
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState(() =>
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("session") === "expired"
+      ? "Your session expired. Sign in again to continue."
+      : "",
+  );
 
   useEffect(() => {
     router.prefetch("/dashboard");
