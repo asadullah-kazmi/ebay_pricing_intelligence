@@ -565,8 +565,23 @@ export default function PricingWorkspace() {
   const [editingPriceValue, setEditingPriceValue] = useState<string>("");
   const [savingItemId, setSavingItemId] = useState<string | null>(null);
   const [showCalculatorModal, setShowCalculatorModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bulkResultsRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (!showHistoryModal) return;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setShowHistoryModal(false);
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [showHistoryModal]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -1170,6 +1185,7 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
       if (demo) {
         const demoJobWithItems = createDemoJobWithItems(jobId, histJob);
         setBulkJob(demoJobWithItems);
+        setShowHistoryModal(false);
         requestAnimationFrame(() => {
           bulkResultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
         });
@@ -1182,6 +1198,7 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
       } else if (histJob) {
         setBulkJob(createDemoJobWithItems(jobId, histJob));
       }
+      setShowHistoryModal(false);
       requestAnimationFrame(() => {
         bulkResultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
@@ -1189,6 +1206,7 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
       // Fallback in preview mode: open job with sample items so user is never stuck on empty workspace
       if (histJob) {
         setBulkJob(createDemoJobWithItems(jobId, histJob));
+        setShowHistoryModal(false);
         requestAnimationFrame(() => {
           bulkResultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
         });
@@ -1228,14 +1246,33 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
           <h1>Pricing</h1>
           <p>Validate exact automotive part matches and turn active eBay listings into a clear pricing decision.</p>
         </div>
-        <div className={styles.modeToggle} role="tablist" aria-label="Pricing mode">
-          <button type="button" role="tab" aria-selected={mode === "single"} className={mode === "single" ? styles.modeActive : undefined} onClick={() => setMode("single")}>
-            Single search
-          </button>
-          <button type="button" role="tab" aria-selected={mode === "bulk"} className={mode === "bulk" ? styles.modeActive : undefined} onClick={() => setMode("bulk")}>
-            Bulk pricing
-          </button>
-
+        <div className={styles.topbarActions}>
+          {mode === "bulk" && (
+            <button
+              type="button"
+              className={styles.historyTrigger}
+              onClick={() => {
+                setShowHistoryModal(true);
+                void loadBulkHistory();
+              }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+                <path d="M3 3v5h5" />
+                <path d="M12 7v5l3 2" />
+              </svg>
+              History
+              {bulkHistory.length > 0 && <span>{bulkHistory.length}</span>}
+            </button>
+          )}
+          <div className={styles.modeToggle} role="tablist" aria-label="Pricing mode">
+            <button type="button" role="tab" aria-selected={mode === "single"} className={mode === "single" ? styles.modeActive : undefined} onClick={() => setMode("single")}>
+              Single search
+            </button>
+            <button type="button" role="tab" aria-selected={mode === "bulk"} className={mode === "bulk" ? styles.modeActive : undefined} onClick={() => setMode("bulk")}>
+              Bulk pricing
+            </button>
+          </div>
         </div>
       </header>
 
@@ -1931,18 +1968,42 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
             </section>
           )}
 
-          {!bulkJob && (
-            <section className={styles.historyPanel}>
-              <div className={styles.historyHead}>
-                <div>
-                  <span className={styles.eyebrow}>Pricing history</span>
-                  <h3>Bulk pricing jobs</h3>
-                  <p>Open a previous upload, monitor running jobs, or download completed pricing results.</p>
-                </div>
-                <button type="button" className={styles.ghostBtn} onClick={() => void loadBulkHistory()} disabled={historyBusy}>
-                  {historyBusy ? "Refreshing…" : "Refresh history"}
+        </>
+      )}
+      {showHistoryModal && (
+        <div
+          className={styles.historyModalOverlay}
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setShowHistoryModal(false);
+          }}
+        >
+          <section className={styles.historyModal} role="dialog" aria-modal="true" aria-labelledby="bulk-history-title">
+            <header className={styles.historyModalHeader}>
+              <div>
+                <span className={styles.eyebrow}>Pricing history</span>
+                <h2 id="bulk-history-title">Bulk pricing jobs</h2>
+                <p>Review previous uploads and reopen any pricing workspace.</p>
+              </div>
+              <div className={styles.historyModalHeaderActions}>
+                <button type="button" className={styles.historyRefreshBtn} onClick={() => void loadBulkHistory()} disabled={historyBusy}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5" />
+                    <path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5" />
+                  </svg>
+                  {historyBusy ? "Refreshing…" : "Refresh"}
+                </button>
+                <button type="button" className={styles.historyCloseBtn} onClick={() => setShowHistoryModal(false)} aria-label="Close pricing history">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                    <path d="M18 6 6 18M6 6l12 12" />
+                  </svg>
                 </button>
               </div>
+            </header>
+            <div className={styles.historyModalColumns} aria-hidden="true">
+              <span>Upload</span><span>Results</span><span>Created</span><span>Action</span>
+            </div>
+            <div className={styles.historyModalBody}>
               {bulkHistory.length ? (
                 <div className={styles.historyList}>
                   {bulkHistory.map((job) => {
@@ -1952,7 +2013,7 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
                     );
                     const created = job.createdAt ? new Date(job.createdAt).toLocaleString() : "—";
                     return (
-                      <article key={job.id}>
+                      <article key={job.id} className={bulkJob?.id === job.id ? styles.historyActive : undefined}>
                         <div className={styles.historyMetaCol}>
                           <b className={styles.historyFilename}>{job.sourceFilename || job.id}</b>
                           <span className={styles.historyMetaInfo}>
@@ -1961,9 +2022,7 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
                         </div>
                         <div className={styles.historyRatioCol}>
                           <b className={styles.historyRatio}>{processed}/{job.totalItems}</b>
-                          <span className={styles.historyRatioLabel}>
-                            {job.noMatchItems ? `${job.noMatchItems} no match` : "All matched"}
-                          </span>
+                          <span className={styles.historyRatioLabel}>{job.noMatchItems ? `${job.noMatchItems} no match` : "All matched"}</span>
                         </div>
                         <div className={styles.historyDateCol}>
                           <span className={styles.historyDate}>{created}</span>
@@ -1971,24 +2030,14 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
                             {job.status.toLowerCase().replaceAll("_", " ")}
                           </span>
                         </div>
-                        <div className={styles.historyActionsCol} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <div className={styles.historyActionsCol}>
                           {job.status === "PAUSED" && (
-                            <button
-                              type="button"
-                              className={styles.resumeJobBtn}
-                              disabled={resumingJobId === job.id}
-                              onClick={() => void resumeJob(job.id)}
-                            >
-                              {resumingJobId === job.id ? "Resuming…" : "Resume job"}
+                            <button type="button" className={styles.resumeJobBtn} disabled={resumingJobId === job.id} onClick={() => void resumeJob(job.id)}>
+                              {resumingJobId === job.id ? "Resuming…" : "Resume"}
                             </button>
                           )}
-                          <button
-                            type="button"
-                            className={styles.openJobBtn}
-                            disabled={openingJobId === job.id}
-                            onClick={() => void openBulkHistoryJob(job.id)}
-                          >
-                            {openingJobId === job.id ? "Opening…" : "Open job"}
+                          <button type="button" className={styles.openJobBtn} disabled={openingJobId === job.id} onClick={() => void openBulkHistoryJob(job.id)}>
+                            {openingJobId === job.id ? "Opening…" : bulkJob?.id === job.id ? "Reopen" : "Open job"}
                           </button>
                         </div>
                       </article>
@@ -1996,11 +2045,15 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
                   })}
                 </div>
               ) : (
-                <div className={styles.historyEmpty}>No bulk pricing jobs yet. Start an upload and it will appear here.</div>
+                <div className={styles.historyEmpty}>{historyBusy ? "Loading pricing history…" : "No bulk pricing jobs yet. Your completed and running uploads will appear here."}</div>
               )}
-            </section>
-          )}
-        </>
+            </div>
+            <footer className={styles.historyModalFooter}>
+              <span>{bulkHistory.length} {bulkHistory.length === 1 ? "job" : "jobs"}</span>
+              <button type="button" onClick={() => setShowHistoryModal(false)}>Close</button>
+            </footer>
+          </section>
+        </div>
       )}
       <CalculatorModal
         isOpen={showCalculatorModal}
