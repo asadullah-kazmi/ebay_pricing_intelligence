@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { calculateBulkMarginPercent, calculateSimpleBulkSellingPrice, createBulkPricingTemplateCsv, parseBulkPricingCsv } from "./bulk-pricing-service.js";
+import { createDefaultBulkPricingFormula, evaluateBulkPricingFormula, normalizeBulkPricingFormula } from "./bulk-pricing-formula.js";
 
 describe("bulk pricing sheet parser", () => {
   it("parses required columns and defaults currency/condition", () => {
@@ -51,6 +52,26 @@ describe("bulk pricing sheet parser", () => {
     expect(createBulkPricingTemplateCsv()).not.toContain("SKU");
     expect(createBulkPricingTemplateCsv()).not.toContain("Currency");
     expect(createBulkPricingTemplateCsv()).not.toContain("Condition");
+  });
+});
+
+describe("bulk pricing formula", () => {
+  it("applies ordered fees and profit to the running subtotal", () => {
+    const result = evaluateBulkPricingFormula(45, createDefaultBulkPricingFormula());
+    expect(result.sellingPrice).toBe(63.23);
+    expect(result.netProfit).toBe(10.54);
+    expect(result.breakdown.map((step) => step.subtotalAfter)).toEqual([50.11, 51.11, 51.77, 52.29, 52.69, 63.23]);
+  });
+
+  it("supports safe mathematical operations and rejects division by zero", () => {
+    const formula = createDefaultBulkPricingFormula();
+    formula.components = [
+      { id: "fixed", kind: "CUSTOM_FIXED", operator: "ADD", value: 5, label: "Handling", enabled: true },
+      { id: "double", kind: "CUSTOM_FIXED", operator: "MULTIPLY", value: 2, label: "Multiplier", enabled: true },
+      { id: "discount", kind: "CUSTOM_PERCENT", operator: "SUBTRACT", value: 10, label: "Discount", enabled: true },
+    ];
+    expect(evaluateBulkPricingFormula(20, formula).sellingPrice).toBe(45);
+    expect(() => normalizeBulkPricingFormula({ ...formula, components: [{ ...formula.components[0], operator: "DIVIDE", value: 0 }] })).toThrow(/divide by zero/i);
   });
 });
 

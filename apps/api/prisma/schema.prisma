@@ -935,6 +935,7 @@ model BulkPricingJob {
   sourceFilename   String?
   targetMarginPercent Decimal?         @db.Decimal(6, 2)
   bufferPercent       Decimal?         @db.Decimal(6, 2)
+  pricingFormula      Json?
   lastError        String?
   startedAt        DateTime?
   completedAt      DateTime?

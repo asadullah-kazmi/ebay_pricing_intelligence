@@ -43,6 +43,7 @@ import {
   resumeBulkPricingJob,
   updateBulkPricingItemSellingPrice,
 } from "./bulk-pricing-service.js";
+import { parseBulkPricingFormulaJson } from "./bulk-pricing-formula.js";
 import { approveFitmentCandidate, createFitmentJob, FitmentJobError, getFitmentJob, listFitmentJobs, startFitmentJob } from "./fitment-service.js";
 import { completeEbayAuthorization, createEbayAuthorization, disconnectEbayConnection, EbaySellerOAuthError, ebayOAuthRedirectMessage, ebayOAuthRedirectReason, getEbayConnection } from "./ebay-seller-oauth.js";
 import { getTenantContext, requireAnyOrganizationPermission, requireOrganizationPermission, requireOrganizationRoles, requireTenantContext } from "./tenant-context.js";
@@ -1149,6 +1150,17 @@ app.post("/api/pricing/bulk", searchRateLimit, requireTenantContext, requireOrga
       return res.status(400).json({ error: "CSV file body is required" });
     }
     const filename = bulkPricingFilenameSchema.parse(req.get("x-file-name") ?? "bulk-pricing.csv");
+    let pricingFormula;
+    try {
+      const encodedPricingFormula = req.get("x-pricing-formula");
+      const pricingFormulaJson = encodedPricingFormula ? decodeURIComponent(encodedPricingFormula) : undefined;
+      pricingFormula = parseBulkPricingFormulaJson(pricingFormulaJson, {
+        profitMarginPercent: query.targetMarginPercent,
+        bufferPercent: query.bufferPercent,
+      });
+    } catch (error) {
+      throw new BulkPricingError(error instanceof Error ? error.message : "Invalid pricing formula");
+    }
     const rows = parseBulkPricingCsv(req.body.toString("utf8"), {
       marketplace: query.marketplace,
       condition: query.condition,
@@ -1161,6 +1173,7 @@ app.post("/api/pricing/bulk", searchRateLimit, requireTenantContext, requireOrga
       condition: query.condition,
       targetMarginPercent: query.targetMarginPercent,
       bufferPercent: query.bufferPercent,
+      pricingFormula,
       rows,
       sourceFilename: filename,
     });

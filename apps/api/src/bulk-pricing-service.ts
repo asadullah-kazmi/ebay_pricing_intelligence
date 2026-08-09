@@ -5,6 +5,13 @@ import { prisma } from "./db.js";
 import { calculateAnalytics } from "./domain/analytics.js";
 import { normalizePartNumber } from "./domain/matching.js";
 import { inlineJobOptions, runWithRetry, type JobRunOptions } from "./job-runtime.js";
+import {
+  calculateFormulaMarginForSellingPrice,
+  createDefaultBulkPricingFormula,
+  evaluateBulkPricingFormula,
+  normalizeBulkPricingFormula,
+  type BulkPricingFormula,
+} from "./bulk-pricing-formula.js";
 import { selectExactCompetitors } from "./pricing-service.js";
 import { searchEbay } from "./providers/ebay.js";
 import type { ListingCondition, Marketplace, MatchedListing } from "./types.js";
@@ -356,6 +363,7 @@ async function processBulkItem(
   marketplace: Marketplace,
   targetMarginPercent: number,
   bufferPercent: number,
+  pricingFormula: BulkPricingFormula | null,
   options: JobRunOptions,
 ) {
   await prisma.bulkPricingJobItem.update({
@@ -371,7 +379,9 @@ async function processBulkItem(
     const analytics = calculateAnalytics(listings);
     const completedAt = new Date();
     const cost = Number(item.costPrice.toString());
-    const simplePrice = calculateSimpleBulkSellingPrice({ costPrice: cost, targetMarginPercent, bufferPercent });
+    const simplePrice = pricingFormula
+      ? evaluateBulkPricingFormula(cost, pricingFormula)
+      : calculateSimpleBulkSellingPrice({ costPrice: cost, targetMarginPercent, bufferPercent });
     if (!analytics) {
       await prisma.bulkPricingJobItem.update({
         where: { id: item.id },
@@ -481,6 +491,7 @@ async function runBulkPricingJob(jobId: string, options: JobRunOptions = inlineJ
         marketplace: true,
         targetMarginPercent: true,
         bufferPercent: true,
+        pricingFormula: true,
         items: {
           where: { status: "QUEUED" },
           orderBy: { rowNumber: "asc" },
@@ -499,9 +510,10 @@ async function runBulkPricingJob(jobId: string, options: JobRunOptions = inlineJ
 
     const targetMarginPercent = job.targetMarginPercent === null ? 20 : Number(job.targetMarginPercent.toString());
     const bufferPercent = job.bufferPercent === null ? 0 : Number(job.bufferPercent.toString());
+    const pricingFormula = job.pricingFormula === null ? null : normalizeBulkPricingFormula(job.pricingFormula);
     for (const item of job.items) {
       try {
-        await processBulkItem(item, job.marketplace as Marketplace, targetMarginPercent, bufferPercent, options);
+        await processBulkItem(item, job.marketplace as Marketplace, targetMarginPercent, bufferPercent, pricingFormula, options);
         await refreshJobProgress(jobId);
       } catch (err) {
         if (isRateLimitError(err)) {
@@ -603,10 +615,19 @@ export async function createBulkPricingJob(input: {
   condition: ListingCondition;
   targetMarginPercent?: number | null;
   bufferPercent?: number | null;
+  pricingFormula?: BulkPricingFormula | null;
   rows: BulkPricingRowInput[];
   sourceFilename?: string | null;
 }) {
   if (!input.rows.length) throw new BulkPricingError("At least one row is required.");
+  const pricingFormula = input.pricingFormula
+    ? normalizeBulkPricingFormula(input.pricingFormula)
+    : createDefaultBulkPricingFormula({
+      profitMarginPercent: input.targetMarginPercent ?? 20,
+      bufferPercent: input.bufferPercent ?? 1,
+    });
+  const configuredProfit = pricingFormula.components.find((component) => component.enabled && component.kind === "PROFIT_MARGIN_PERCENT")?.value;
+  const configuredBuffer = pricingFormula.components.find((component) => component.enabled && component.kind === "BUFFER_PERCENT")?.value;
 
   // Expire orphaned jobs that were queued but never picked up so they cannot block new jobs.
   // Running jobs are intentionally left alone: they are long-lived (rate limits) and are
@@ -649,8 +670,9 @@ export async function createBulkPricingJob(input: {
       createdById: input.userId,
       marketplace: input.marketplace,
       defaultCondition: input.condition,
-      targetMarginPercent: input.targetMarginPercent ?? null,
-      bufferPercent: input.bufferPercent ?? null,
+      targetMarginPercent: configuredProfit ?? input.targetMarginPercent ?? null,
+      bufferPercent: configuredBuffer ?? input.bufferPercent ?? null,
+      pricingFormula: pricingFormula as unknown as Prisma.InputJsonValue,
       totalItems: input.rows.length,
       sourceFilename: input.sourceFilename?.slice(0, 255) || null,
       items: {
@@ -702,6 +724,7 @@ export async function listBulkPricingJobs(organizationId: string, limit = 20) {
       defaultCondition: true,
       targetMarginPercent: true,
       bufferPercent: true,
+      pricingFormula: true,
       status: true,
       totalItems: true,
       completedItems: true,
@@ -764,7 +787,7 @@ export async function updateBulkPricingItemSellingPrice(input: {
 }) {
   const item = await prisma.bulkPricingJobItem.findFirst({
     where: { id: input.itemId, organizationId: input.organizationId },
-    include: { bulkPricingJob: { select: { targetMarginPercent: true, bufferPercent: true } } },
+    include: { bulkPricingJob: { select: { targetMarginPercent: true, bufferPercent: true, pricingFormula: true } } },
   });
   if (!item) throw new BulkPricingError("Bulk pricing item not found", 404);
 
@@ -775,13 +798,17 @@ export async function updateBulkPricingItemSellingPrice(input: {
   if (input.sellingPrice === null) {
     const targetMargin = item.bulkPricingJob.targetMarginPercent === null ? 20 : Number(item.bulkPricingJob.targetMarginPercent.toString());
     const buffer = item.bulkPricingJob.bufferPercent === null ? 0 : Number(item.bulkPricingJob.bufferPercent.toString());
-    const simple = calculateSimpleBulkSellingPrice({ costPrice: cost, targetMarginPercent: targetMargin, bufferPercent: buffer });
+    const simple = item.bulkPricingJob.pricingFormula === null
+      ? calculateSimpleBulkSellingPrice({ costPrice: cost, targetMarginPercent: targetMargin, bufferPercent: buffer })
+      : evaluateBulkPricingFormula(cost, item.bulkPricingJob.pricingFormula);
     newSellingPrice = simple.sellingPrice;
     newMarginPercent = simple.actualProfitPercent;
   } else {
     const rawPrice = money(Math.max(0, input.sellingPrice));
     newSellingPrice = rawPrice;
-    newMarginPercent = calculateBulkMarginPercent(cost, rawPrice);
+    newMarginPercent = item.bulkPricingJob.pricingFormula === null
+      ? calculateBulkMarginPercent(cost, rawPrice)
+      : calculateFormulaMarginForSellingPrice(cost, rawPrice, item.bulkPricingJob.pricingFormula);
   }
 
   const updated = await prisma.bulkPricingJobItem.update({
@@ -794,4 +821,3 @@ export async function updateBulkPricingItemSellingPrice(input: {
 
   return serializeItem(updated);
 }
-
