@@ -104,6 +104,7 @@ type BulkPricingJob = {
 };
 
 const formulaOperatorLabels: Record<PricingFormulaOperator, string> = { ADD: "+ Add", SUBTRACT: "− Subtract", MULTIPLY: "× Multiply", DIVIDE: "÷ Divide" };
+const formulaOperatorSymbols: Record<PricingFormulaOperator, string> = { ADD: "+", SUBTRACT: "−", MULTIPLY: "×", DIVIDE: "÷" };
 
 function PricingFormulaBuilder({ formula, onChange, currency }: { formula: BulkPricingFormula; onChange: (formula: BulkPricingFormula) => void; currency: string }) {
   const [sampleCost, setSampleCost] = useState("45");
@@ -141,8 +142,7 @@ function PricingFormulaBuilder({ formula, onChange, currency }: { formula: BulkP
     return Object.keys(formulaOperatorLabels) as PricingFormulaOperator[];
   }
   function expressionSymbol(component: BulkPricingFormula["components"][number]) {
-    if (component.calculationType === "PERCENTAGE_DEDUCTION" && component.calculationBase !== "PREVIOUS_TOTAL") return component.operator === "SUBTRACT" ? "+" : "−";
-    return formulaOperatorLabels[component.operator].split(" ")[0];
+    return formulaOperatorSymbols[component.operator];
   }
 
   return <section className={styles.formulaBuilder}>
@@ -164,7 +164,7 @@ function PricingFormulaBuilder({ formula, onChange, currency }: { formula: BulkP
       </div>)}
     </div>
     <div className={styles.formulaBuilderActions}><button type="button" className={styles.ghostBtn} onClick={addComponent}>+ Add formula component</button><label>Preview cost<input type="number" min="0" step="0.01" value={sampleCost} onChange={(event) => setSampleCost(event.currentTarget.value)}/></label><div><span>Calculated selling price</span><b>{evaluated.error ? "—" : money(evaluated.sellingPrice, currency)}</b></div></div>
-    {evaluated.error ? <div className={styles.formulaValidation}>{evaluated.error}</div> : <div className={styles.formulaPreviewBreakdown}>{evaluated.breakdown.map((step) => <span key={step.id}><i>{step.label}</i><b>{step.role === "PERCENTAGE_FEE" || step.role === "FIXED_COST" ? "−" : "+"}{money(Math.abs(step.amount), currency)}</b><small>{step.value}{componentUnit(step.kind) === "%" ? "%" : ` ${currency}`}</small></span>)}<strong><i>Net profit</i><b>{money(evaluated.netProfit, currency)}</b><small>{evaluated.netMargin?.toFixed(1) ?? "0.0"}% margin</small></strong></div>}
+    {evaluated.error ? <div className={styles.formulaValidation}>{evaluated.error}</div> : <div className={styles.formulaPreviewBreakdown}>{evaluated.breakdown.map((step) => <span key={step.id}><i>{step.label}</i><b>{formulaOperatorSymbols[step.operator]}{money(Math.abs(step.amount), currency)}</b><small>{step.value}{componentUnit(step.kind) === "%" ? "%" : ` ${currency}`}</small></span>)}<strong><i>Net profit</i><b>{money(evaluated.netProfit, currency)}</b><small>{evaluated.netMargin?.toFixed(1) ?? "0.0"}% margin</small></strong></div>}
   </section>;
 }
 
@@ -499,7 +499,7 @@ function BulkSellingCalculator({
         </div>
         {formulaEvaluation && !formulaEvaluation.error ? formulaEvaluation.breakdown.map((step) => <div className={styles.breakdownRow} key={step.id}>
           <span>{step.label} <small>({step.value}{componentUnit(step.kind) === "%" ? `% of ${formulaCalculationBaseDefinitions.find((base) => base.value === step.calculationBase)?.label ?? "base"}` : ` ${item.currency}`})</small></span>
-          <b>{(step.role === "PERCENTAGE_FEE" || step.role === "FIXED_COST") && step.amount >= 0 ? "−" : "+"}{money(Math.abs(step.amount), item.currency)}</b>
+          <b>{formulaOperatorSymbols[step.operator]}{money(Math.abs(step.amount), item.currency)}</b>
         </div>) : <>
           <div className={styles.breakdownRow}><span>Target profit ({totalMargin.toFixed(1).replace(/\.0$/, "")}% of selling price)</span><b>{money(breakdown.targetProfit, item.currency)}</b></div>
           <div className={styles.breakdownRow}><span>eBay FVF fee</span><b>{money(breakdown.ebayFeeTotal, item.currency)}</b></div>

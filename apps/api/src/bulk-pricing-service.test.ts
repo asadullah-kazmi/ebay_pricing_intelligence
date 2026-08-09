@@ -120,6 +120,20 @@ describe("bulk pricing formula", () => {
     expect(result.netMargin).toBe(20);
   });
 
+  it("applies Add and Subtract literally for a VAT percentage based on item price", () => {
+    const vatAdded = fee("vat", "CUSTOM_PERCENT", 5, "VAT");
+    vatAdded.calculationBase = "ITEM_PRICE";
+    const vatSubtracted = { ...vatAdded, operator: "SUBTRACT" as const };
+
+    const added = evaluateBulkPricingFormula(100, formula([vatAdded]));
+    const subtracted = evaluateBulkPricingFormula(100, formula([vatSubtracted]));
+
+    expect(added.sellingPrice).toBe(105.26);
+    expect(added.breakdown[0]?.amount).toBe(5.26);
+    expect(subtracted.sellingPrice).toBe(95.24);
+    expect(subtracted.breakdown[0]?.amount).toBe(-4.76);
+  });
+
   it("rejects formulas whose fees and target margin consume 100% or more", () => {
     expect(() => evaluateBulkPricingFormula(100, formula([
       fee("fees", "CUSTOM_PERCENT", 80),
