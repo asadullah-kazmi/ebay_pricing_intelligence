@@ -1235,15 +1235,7 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
           <button type="button" role="tab" aria-selected={mode === "bulk"} className={mode === "bulk" ? styles.modeActive : undefined} onClick={() => setMode("bulk")}>
             Bulk pricing
           </button>
-          <button
-            type="button"
-            className={styles.calcTriggerBtn}
-            style={{ height: 36, marginLeft: 4, padding: "0 10px", fontSize: 12 }}
-            onClick={() => setShowCalculatorModal(true)}
-            title="Open formula & fee calculator"
-          >
-            🧮 Calculator
-          </button>
+
         </div>
       </header>
 
@@ -1519,9 +1511,7 @@ function createDemoJobWithItems(jobId: string, histJob?: BulkPricingJob): BulkPr
               )}
 
               <div className={styles.bulkActionsRow}>
-                <button hidden type="button" className={styles.calcTriggerBtn} onClick={() => setShowCalculatorModal(true)}>
-                  🧮 Fee Calculator
-                </button>
+
                 <button type="submit" className={styles.primary} disabled={bulkBusy || !bulkFile}>
                   {bulkBusy ? "Uploading…" : bulkPricingStrategy === "MARKET_MEAN" ? "Run automatic pricing" : "Run custom pricing"}
                 </button>
