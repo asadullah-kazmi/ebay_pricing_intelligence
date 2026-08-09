@@ -647,6 +647,7 @@ model ImportBatch {
   listingTeamId        String?
   defaultCondition     PartCondition?
   marketplace          String             @default("EBAY_US")
+  assignImages         Boolean            @default(false)
   processedRows        Int                @default(0)
   failedRows           Int                @default(0)
   startedAt            DateTime?

@@ -1,0 +1,2 @@
+ALTER TABLE "ImportBatch"
+ADD COLUMN "assignImages" BOOLEAN NOT NULL DEFAULT false;

@@ -8,6 +8,7 @@ import {
   enhanceQuickSkuWithAi,
   fetchQuickSkuFitment,
   identifyQuickSkuPart,
+  attachAftermarketBrowseImages,
 } from "./quick-sku-service.js";
 import type { Marketplace } from "./types.js";
 
@@ -48,6 +49,7 @@ const batchSummarySelect = {
   failedRows: true,
   defaultCondition: true,
   marketplace: true,
+  assignImages: true,
   startedAt: true,
   completedAt: true,
   createdAt: true,
@@ -107,6 +109,7 @@ export async function configurePipelineJob(input: {
   listingTeamId: string;
   condition: PartCondition;
   marketplace: Marketplace;
+  assignImages: boolean;
 }) {
   const [batch, team] = await Promise.all([
     prisma.importBatch.findFirst({ where: { id: input.importBatchId, organizationId: input.organizationId } }),
@@ -123,6 +126,7 @@ export async function configurePipelineJob(input: {
       listingTeamId: team.id,
       defaultCondition: input.condition,
       marketplace: input.marketplace,
+      assignImages: input.assignImages,
       status: "COMMITTING",
       startedAt: batch.startedAt ?? new Date(),
       completedAt: null,
@@ -143,6 +147,7 @@ async function processPipelineRow(input: {
   teamId: string;
   condition: PartCondition;
   marketplace: Marketplace;
+  assignImages: boolean;
 }) {
   const row = await prisma.importRow.findFirst({
     where: { id: input.rowId, importBatchId: input.batchId, organizationId: input.organizationId },
@@ -352,8 +357,45 @@ async function processPipelineRow(input: {
       summary: `Pipeline added ${data.sku} to the catalog`,
       metadata: { importBatchId: input.batchId, partId: part.id, listingDraftId: draft.id, teamId: input.teamId, fitmentCount: prepared.fitmentCount },
     });
-    return { partId: part.id };
+    return { partId: part.id, listingDraftId: draft.id };
   }, { maxWait: 10_000, timeout: 60_000 });
+
+  if (input.assignImages) {
+    const images = await attachAftermarketBrowseImages({
+      organizationId: input.organizationId,
+      partId: result.partId,
+      partNumber: data.primaryPartNumber,
+      brand: prepared.identifiedBrand || brand,
+      marketplace: input.marketplace,
+      condition: input.condition,
+      requestedCount: 2,
+    });
+    if (images.attachedCount >= 2) {
+      await prisma.$transaction([
+        prisma.part.update({ where: { id: result.partId }, data: { status: "READY_FOR_ENRICHMENT" } }),
+        prisma.listingDraft.update({
+          where: { id: result.listingDraftId },
+          data: {
+            validationIssues: asJson([
+              ...(data.sellingPrice === undefined
+                ? [{ code: "PRICE_REQUIRED", severity: "BLOCKER", field: "price", message: "Set a selling price" }]
+                : []),
+              { code: "POLICIES_REQUIRED", severity: "BLOCKER", field: "policies", message: "Assign eBay business policies" },
+            ]),
+          },
+        }),
+        prisma.importRow.update({
+          where: { id: row.id },
+          data: { enrichmentData: asJson({ ...enrichmentData, images }) },
+        }),
+      ]);
+    } else {
+      await prisma.importRow.update({
+        where: { id: row.id },
+        data: { enrichmentData: asJson({ ...enrichmentData, images }) },
+      });
+    }
+  }
   return result.partId;
 }
 
@@ -363,7 +405,7 @@ export async function runPipelineJob(input: { organizationId: string; importBatc
   try {
     const batch = await prisma.importBatch.findFirst({
       where: { id: input.importBatchId, organizationId: input.organizationId },
-      select: { id: true, createdById: true, listingTeamId: true, defaultCondition: true, marketplace: true, status: true },
+      select: { id: true, createdById: true, listingTeamId: true, defaultCondition: true, marketplace: true, assignImages: true, status: true },
     });
     if (!batch) throw new PipelineError("Pipeline job not found", 404);
     if (!batch.listingTeamId || !batch.defaultCondition) throw new PipelineError("Pipeline team and condition are not configured", 409);
@@ -384,6 +426,7 @@ export async function runPipelineJob(input: { organizationId: string; importBatc
           teamId: batch.listingTeamId,
           condition: batch.defaultCondition,
           marketplace: batch.marketplace as Marketplace,
+          assignImages: batch.assignImages,
         });
         await prisma.importBatch.update({ where: { id: batch.id }, data: { processedRows: { increment: 1 } } });
       } catch (error) {
@@ -413,6 +456,7 @@ export async function startPipelineJob(input: {
   listingTeamId: string;
   condition: PartCondition;
   marketplace: Marketplace;
+  assignImages: boolean;
 }) {
   const job = await configurePipelineJob(input);
   void runPipelineJob({ organizationId: input.organizationId, importBatchId: input.importBatchId }).catch((error) => {

@@ -54,6 +54,7 @@ export default function PipelineWorkspace() {
   const [team, setTeam] = useState("");
   const [teamsLoading, setTeamsLoading] = useState(true);
   const [condition, setCondition] = useState("USED");
+  const [assignImages, setAssignImages] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
@@ -184,7 +185,7 @@ export default function PipelineWorkspace() {
       if (payload.invalidRows) throw new Error(`${payload.invalidRows} invalid row(s) found. Correct the spreadsheet and upload it again.`);
       await apiFetch(`/api/imports/${payload.id}/start`, {
         method: "POST",
-        body: JSON.stringify({ listingTeamId: team, condition, marketplace: "EBAY_US" }),
+        body: JSON.stringify({ listingTeamId: team, condition, marketplace: "EBAY_US", assignImages }),
       });
       setNotice(`${filename} is processing. Items will appear in Catalog as each row completes.`);
       setFile(null);
@@ -295,6 +296,17 @@ export default function PipelineWorkspace() {
               </select>
             </label>
           </div>
+          <label className={styles.imageOption}>
+            <input
+              type="checkbox"
+              checked={assignImages}
+              onChange={(event) => setAssignImages(event.target.checked)}
+            />
+            <span>
+              <strong>Assign images automatically</strong>
+              <small>Find and attach up to 2 matching images from eBay Browse data. Listings remain catalog drafts and are not published.</small>
+            </span>
+          </label>
           <label className={styles.dropzone}>
             <input
               type="file"

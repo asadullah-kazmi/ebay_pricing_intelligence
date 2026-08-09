@@ -112,6 +112,7 @@ const pipelineStartSchema = z.object({
   listingTeamId: z.string().min(1),
   condition: z.enum(["NEW", "USED"]),
   marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]).default("EBAY_US"),
+  assignImages: z.boolean().default(false),
 });
 const pipelineListQuerySchema = z.object({ limit: z.coerce.number().int().min(1).max(100).default(30) });
 const imageMatchCorrectionSchema = z.object({

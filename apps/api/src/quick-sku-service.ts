@@ -223,7 +223,7 @@ function scoreImageListing(listing: RawListing, input: { normalizedPartNumber: s
   return score;
 }
 
-async function attachAftermarketBrowseImages(input: {
+export async function attachAftermarketBrowseImages(input: {
   organizationId: string;
   partId: string;
   partNumber: string;
