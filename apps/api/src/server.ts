@@ -24,13 +24,21 @@ async function runBulkPricingRetentionCleanup() {
 }
 
 let recoveryInProgress = false;
+let databaseUnavailableLogged = false;
 async function runInlineRecoveries() {
-  if (recoveryInProgress) return;
+  if (recoveryInProgress) return false;
   recoveryInProgress = true;
   try {
     if (!(await databaseIsReachable())) {
-      console.warn(JSON.stringify({ type: "background_recovery_deferred", reason: "database_unavailable" }));
-      return;
+      if (!databaseUnavailableLogged) {
+        console.warn(JSON.stringify({ type: "background_recovery_deferred", reason: "database_unavailable" }));
+        databaseUnavailableLogged = true;
+      }
+      return false;
+    }
+    if (databaseUnavailableLogged) {
+      console.info(JSON.stringify({ type: "database_connection_recovered" }));
+      databaseUnavailableLogged = false;
     }
     const recoveries = [
       ["pricing_jobs_resumed", resumeInterruptedPricingJobs],
@@ -42,18 +50,22 @@ async function runInlineRecoveries() {
       const count = await recovery();
       if (count) console.info(JSON.stringify({ type, count }));
     }
+    return true;
   } catch (error) {
     console.error(JSON.stringify({
       type: "background_recovery_failed",
       error: error instanceof Error ? { name: error.name, message: error.message } : { name: "UnknownError" },
     }));
+    return false;
   } finally {
     recoveryInProgress = false;
   }
 }
 
 if (jobs.executionMode === "inline") {
-  void runInlineRecoveries().then(() => runBulkPricingRetentionCleanup());
+  void runInlineRecoveries().then((databaseAvailable) => {
+    if (databaseAvailable) return runBulkPricingRetentionCleanup();
+  });
 }
 const inlineRecoveryTimer = jobs.executionMode === "inline"
   ? setInterval(() => void runInlineRecoveries(), 60_000)
