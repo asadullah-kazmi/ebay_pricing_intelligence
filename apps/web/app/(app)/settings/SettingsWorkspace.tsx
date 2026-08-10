@@ -6,6 +6,7 @@ import { useAuth } from "../../components/AuthProvider";
 import styles from "./settings.module.css";
 import UserManagement from "./UserManagement";
 import ListingTeamsManagement from "./ListingTeamsManagement";
+import SkuPolicyManagement from "./SkuPolicyManagement";
 
 interface Security {
   email: string;
@@ -39,7 +40,7 @@ export default function SettingsWorkspace() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [tab, setTab] = useState<"security" | "workspace" | "users" | "teams">("security");
+  const [tab, setTab] = useState<"security" | "workspace" | "users" | "teams" | "sku">("security");
   const canManageUsers = session?.role === "OWNER" || session?.role === "ADMIN" || session?.permissions?.includes("team.manage");
   const canManageTeams = session?.role === "OWNER" || session?.role === "ADMIN" || session?.permissions?.includes("admin.manage");
 
@@ -260,6 +261,15 @@ export default function SettingsWorkspace() {
         >
           Teams
         </button>}
+        {canManageTeams && <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "sku"}
+          className={tab === "sku" ? styles.tabActive : undefined}
+          onClick={() => setTab("sku")}
+        >
+          SKU
+        </button>}
       </div>
 
       {tab === "security" && (
@@ -418,6 +428,10 @@ export default function SettingsWorkspace() {
                 <b>Listing teams</b>
                 <span>Create and manage classification tags used to group listings</span>
               </button>}
+              {canManageTeams && <button type="button" onClick={() => setTab("sku")}>
+                <b>SKU generation</b>
+                <span>Configure sequential SKUs or use uploaded part numbers as SKUs</span>
+              </button>}
               <Link href="/reports">
                 <b>Operations reports</b>
                 <span>Publishing health, failed jobs, retention, and audit trail</span>
@@ -453,6 +467,7 @@ export default function SettingsWorkspace() {
 
       {tab === "users" && canManageUsers && <UserManagement />}
       {tab === "teams" && canManageTeams && <ListingTeamsManagement />}
+      {tab === "sku" && canManageTeams && <SkuPolicyManagement />}
     </div>
   );
 }

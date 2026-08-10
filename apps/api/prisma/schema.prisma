@@ -322,6 +322,11 @@ enum OrganizationInvitationStatus {
   EXPIRED
 }
 
+enum OrganizationSkuMode {
+  SEQUENTIAL
+  PART_NUMBER
+}
+
 enum UserAuthTokenType {
   EMAIL_VERIFICATION
   PASSWORD_RESET
@@ -332,6 +337,9 @@ model Organization {
   id                          String                       @id @default(cuid())
   name                        String
   slug                        String                       @unique
+  skuMode                     OrganizationSkuMode          @default(SEQUENTIAL)
+  skuPrefix                   String                       @default("SKU")
+  skuNextNumber               Int                          @default(1000)
   memberships                 OrganizationMembership[]
   refreshSessions             RefreshSession[]
   importBatches               ImportBatch[]

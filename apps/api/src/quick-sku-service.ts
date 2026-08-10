@@ -10,6 +10,7 @@ import { discoverEbayFitment, getEbayProductCompatibilities, isBrowseDerivedEpid
 import { searchEbay } from "./providers/ebay.js";
 import { identifyPartWithGemini, type AiPartIdentificationResult } from "./providers/gemini-part-identification.js";
 import { queuePartMarketPricing } from "./pricing-service.js";
+import { allocateOrganizationSku } from "./sku-policy-service.js";
 import type { Marketplace, RawListing } from "./types.js";
 
 export type QuickSkuIdentificationSource = "EBAY" | "AI" | "GENERIC";
@@ -111,12 +112,6 @@ function parseQuickSkuBase(input: QuickSkuInput) {
   return { partNumber, brand, marketplace, condition, productSource, currency, normalized };
 }
 
-function buildSku(brand: string, partNumber: string) {
-  const brandCode = brand.toUpperCase().replace(/[^A-Z0-9]+/g, "").slice(0, 8) || "OEM";
-  const number = normalizePartNumber(partNumber);
-  return `${brandCode}-${number}`.slice(0, 100);
-}
-
 function partNameFromAspects(aspects: Record<string, string[]>): string | null {
   const preferredKeys = [
     "Type",
@@ -176,20 +171,6 @@ function rankCandidates(discovery: EbayFitmentDiscovery, partNumber: string, bra
       if (leftBrowse !== rightBrowse) return leftBrowse - rightBrowse;
       return right.score - left.score;
     });
-}
-
-async function allocateUniqueSku(organizationId: string, preferred: string) {
-  const base = preferred.slice(0, 90);
-  for (let attempt = 0; attempt < 25; attempt += 1) {
-    const sku = attempt === 0 ? base : `${base}-${attempt + 1}`;
-    const normalizedSku = sku.toUpperCase();
-    const existing = await prisma.part.findFirst({
-      where: { organizationId, normalizedSku },
-      select: { id: true },
-    });
-    if (!existing) return { sku, normalizedSku };
-  }
-  throw new QuickSkuError("Unable to allocate a unique SKU for this part number", 409);
 }
 
 function exactPartNumberMatch(listing: RawListing, normalized: string) {
@@ -566,10 +547,8 @@ async function persistQuickSkuPart(
   requestId?: string,
 ) {
   const { partNumber, brand, marketplace, condition, productSource, currency, normalized } = parseQuickSkuBase(input);
-  const preferredSku = buildSku(prepared.identifiedBrand, partNumber);
-  const { sku, normalizedSku } = await allocateUniqueSku(organizationId, preferredSku);
-
   return prisma.$transaction(async (tx) => {
+    const { sku, normalizedSku } = await allocateOrganizationSku(tx, organizationId, partNumber);
     const part = await tx.part.create({
       data: {
         organizationId,

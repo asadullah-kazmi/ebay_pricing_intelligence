@@ -96,7 +96,7 @@ export async function generateQuickUpdateExcel(): Promise<Blob> {
   const schemaData = [
     ["Part no", "REQUIRED", "Text", "OEM Part Number, MPN, or interchange number.", "8K0615301M"],
     ["Brand", "REQUIRED", "Text", "Brand assigned directly to the catalog item.", "Audi"],
-    ["Selling Price", "REQUIRED", "Decimal", "Target listing price without currency symbols (USD). Must be >= 0.", "149.99"],
+    ["Selling Price", "REQUIRED", "USD amount", "Plain values default to USD. Both 149.99 and $149.99 are accepted.", "149.99"],
     ["Quantity", "REQUIRED", "Integer", "Available inventory stock quantity. Whole non-negative number.", "12"],
   ];
 

@@ -75,8 +75,19 @@ describe("catalog staging parser", () => {
         quantity: 4,
         cost: 0,
         imageUrls: [],
+        skuProvided: false,
       },
     });
+  });
+
+  it("treats plain and dollar-formatted pipeline prices as USD", async () => {
+    const basic = Buffer.from("Part no,Brand,Selling Price,Quantity\nPLAIN-1,Febest,27.31,2\nDOLLAR-2,Febest,\"$1,249.95\",3\n", "utf8");
+    const result = await parseAndValidateImport("basic.csv", basic);
+    expect(result.errors).toEqual([]);
+    expect(result.rows.map((row) => row.normalizedData)).toEqual([
+      expect.objectContaining({ sellingPrice: 27.31, currency: "USD" }),
+      expect.objectContaining({ sellingPrice: 1249.95, currency: "USD" }),
+    ]);
   });
 
   it("accepts the Standard pipeline template with listing metadata and images", async () => {
@@ -85,6 +96,7 @@ describe("catalog staging parser", () => {
     expect(result.errors).toEqual([]);
     expect(result.rows[0]?.normalizedData).toMatchObject({
       sku: "AUDI-ROTOR-1",
+      skuProvided: true,
       brand: "Audi",
       description: "Brake rotor",
       sellingPrice: 149.99,

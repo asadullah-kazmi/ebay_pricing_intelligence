@@ -71,6 +71,7 @@ import { assembleQuickSkuPrepared, createQuickSku, enhanceQuickSkuWithAi, fetchQ
 import { createRetentionRun, getRetentionPolicy, listRetentionRuns, RetentionError, startRetentionJob, updateRetentionPolicy } from "./retention-service.js";
 import { archiveListingTeam, createListingTeam, ListingTeamError, listListingTeams, restoreListingTeam, updateListingTeam } from "./listing-team-service.js";
 import { getPipelineJob, listPipelineJobs, PipelineError, retryPipelineJob, startPipelineJob } from "./pipeline-service.js";
+import { getOrganizationSkuPolicy, SkuPolicyError, updateOrganizationSkuPolicy } from "./sku-policy-service.js";
 
 const searchSchema = z.object({
   oem: z.string().trim().min(2).max(80),
@@ -86,6 +87,10 @@ const updateListingTeamSchema = z.object({
   name: z.string().trim().min(1).max(60).optional(),
   color: listingTeamColorSchema.optional(),
 }).refine((value) => value.name !== undefined || value.color !== undefined, "At least one field is required");
+const skuPolicySchema = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("SEQUENTIAL"), prefix: z.string().trim().min(2).max(20), nextNumber: z.number().int().min(0).max(999_999_999) }),
+  z.object({ mode: z.literal("PART_NUMBER") }),
+]);
 const confirmMediaUploadSchema = z.object({ storageKey: z.string().min(1).max(1024) });
 const mediaDownloadUrlsSchema = z.object({
   ids: z.array(z.string().min(1)).min(1).max(50),
@@ -892,7 +897,7 @@ app.post("/api/imports/validate", importRateLimit, requireTenantContext, require
     if (existing) return res.json(existing);
 
     const parsed = await parseAndValidateImport(filename, req.body);
-    const candidateSkus = parsed.rows.flatMap(({ normalizedData }) => normalizedData ? [normalizedData.normalizedSku] : []);
+    const candidateSkus = parsed.rows.flatMap(({ normalizedData }) => normalizedData?.skuProvided ? [normalizedData.normalizedSku] : []);
     applyExistingSkuConflicts(parsed, await findExistingNormalizedSkus(tenant.organization.id, candidateSkus));
     const sourceFileKey = await storage.storeImportFile({
       organizationId: tenant.organization.id,
@@ -1917,6 +1922,25 @@ app.post("/api/listing-teams/:id/restore", writeRateLimit, requireTenantContext,
   } catch (error) { next(error); }
 });
 
+app.get("/api/settings/sku-policy", requireTenantContext, requireOrganizationPermission("admin.manage"), async (_req, res, next) => {
+  try {
+    res.json(await getOrganizationSkuPolicy(getTenantContext(res).organization.id));
+  } catch (error) { next(error); }
+});
+
+app.patch("/api/settings/sku-policy", writeRateLimit, requireTenantContext, requireOrganizationPermission("admin.manage"), async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    const input = skuPolicySchema.parse(req.body);
+    res.json(await updateOrganizationSkuPolicy({
+      organizationId: tenant.organization.id,
+      actorUserId: tenant.user.id,
+      ...input,
+      requestId: res.locals.requestId,
+    }));
+  } catch (error) { next(error); }
+});
+
 app.post("/api/team/invitations", writeRateLimit, requireTenantContext, requireOrganizationPermission("team.manage"), async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
@@ -2255,6 +2279,7 @@ app.use((error: unknown, req: express.Request, res: express.Response, _next: exp
   if (error instanceof AdminOperationsError) return response(error.statusCode, { error: error.message });
   if (error instanceof OrganizationTeamError) return response(error.statusCode, { error: error.message });
   if (error instanceof ListingTeamError) return response(error.statusCode, { error: error.message });
+  if (error instanceof SkuPolicyError) return response(error.statusCode, { error: error.message });
   if (error instanceof PipelineError) return response(error.statusCode, { error: error.message });
   if (error instanceof AccountAuthError) return response(error.statusCode, { error: error.message, ...(error.details ? { details: error.details } : {}) });
   if (error instanceof EmailDeliveryError) return response(503, { error: error.message });

@@ -1154,3 +1154,156 @@
   .teamEditFields { grid-template-columns: 1fr; }
   .teamListHead { align-items: flex-start; padding: 18px; }
 }
+
+.skuWorkspace {
+  display: grid;
+  gap: 16px;
+}
+
+.skuForm {
+  display: grid;
+  gap: 22px;
+  padding: 24px 26px 28px;
+}
+
+.skuModeFieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.skuModeFieldset legend,
+.skuForm label > span {
+  margin-bottom: 8px;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: .45px;
+  text-transform: uppercase;
+}
+
+.skuModeGrid,
+.skuFields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.skuModeCard {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  min-height: 92px;
+  padding: 17px;
+  border: 1px solid #dbe4f0;
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.skuModeCardActive {
+  border-color: #2563eb;
+  background: #f4f8ff;
+  box-shadow: 0 0 0 2px rgb(37 99 235 / 10%);
+}
+
+.skuModeCard input {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  accent-color: #155eef;
+}
+
+.skuModeCard span,
+.skuModeCard b,
+.skuModeCard small,
+.skuFields label,
+.skuFields small {
+  display: block;
+}
+
+.skuModeCard b {
+  color: #0c274d;
+  font-size: 13px;
+}
+
+.skuModeCard small,
+.skuFields small,
+.skuPreview small,
+.skuScope small {
+  margin-top: 5px;
+  color: #64748b;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.skuFields input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 13px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  color: #0c274d;
+  font: inherit;
+}
+
+.skuPreview {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 18px;
+  align-items: center;
+  padding: 16px 18px;
+  border: 1px solid #bfdbfe;
+  border-radius: 11px;
+  background: #eff6ff;
+}
+
+.skuPreview span {
+  color: #475569;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.skuPreview strong {
+  grid-row: 1 / 3;
+  grid-column: 2;
+  color: #155eef;
+  font-size: 20px;
+  letter-spacing: .4px;
+}
+
+.skuScope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  color: #475569;
+  font-size: 12px;
+}
+
+.skuScope b,
+.skuScope small {
+  flex-basis: 100%;
+}
+
+.skuScope span {
+  padding: 5px 9px;
+  border: 1px solid #dbe4f0;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #334155;
+  font-weight: 650;
+}
+
+.skuLoading {
+  padding: 32px 26px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+@media (max-width: 720px) {
+  .skuModeGrid,
+  .skuFields { grid-template-columns: 1fr; }
+  .skuPreview { grid-template-columns: 1fr; }
+  .skuPreview strong { grid-row: auto; grid-column: auto; }
+}

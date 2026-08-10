@@ -31,6 +31,13 @@ type PipelineJob = {
   createdBy: { name: string | null; email: string };
 };
 
+type ImportPreview = {
+  rows: Array<{
+    rowNumber: number;
+    errors: Array<{ message?: string }>;
+  }>;
+};
+
 const demoQueue: QueueItem[] = [
   { id: "imp-7842", fileName: "catalog-intake-week-12.xlsx", status: "UPLOADED", condition: "USED", uploadedBy: "BA", createdAt: new Date().toISOString() },
   { id: "imp-7841", fileName: "yard-photos-march.zip", status: "PROCESSING", condition: "USED", uploadedBy: "BA", createdAt: new Date(Date.now() - 3600000).toISOString() },
@@ -182,7 +189,20 @@ export default function PipelineWorkspace() {
       }
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || "Upload failed");
-      if (payload.invalidRows) throw new Error(`${payload.invalidRows} invalid row(s) found. Correct the spreadsheet and upload it again.`);
+      if (payload.invalidRows) {
+        let details = "";
+        try {
+          const preview = await apiFetch(`/api/imports/${payload.id}/preview?page=1&pageSize=100`) as ImportPreview;
+          const reasons = preview.rows
+            .filter((row) => row.errors.length)
+            .slice(0, 3)
+            .map((row) => `Row ${row.rowNumber}: ${row.errors[0]?.message || "Invalid data"}`);
+          if (reasons.length) details = ` ${reasons.join(" · ")}`;
+        } catch {
+          // The invalid-row count still gives the user a safe fallback if preview retrieval fails.
+        }
+        throw new Error(`${payload.invalidRows} invalid row(s) found.${details}`);
+      }
       await apiFetch(`/api/imports/${payload.id}/start`, {
         method: "POST",
         body: JSON.stringify({ listingTeamId: team, condition, marketplace: "EBAY_US", assignImages }),

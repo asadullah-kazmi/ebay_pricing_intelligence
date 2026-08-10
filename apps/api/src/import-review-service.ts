@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "./db.js";
 import { normalizePartNumber } from "./domain/matching.js";
+import { allocateOrganizationSku } from "./sku-policy-service.js";
 
 export class ImportReviewError extends Error {
   constructor(message: string, readonly statusCode: 400 | 404 | 409 = 400, readonly details?: unknown) {
@@ -15,6 +16,7 @@ const normalizedImportRowSchema = z.object({
   vin: z.string().regex(/^[A-HJ-NPR-Z0-9]{17}$/).nullable(),
   sku: z.string().min(1).max(100),
   normalizedSku: z.string().min(1).max(100),
+  skuProvided: z.boolean().optional(),
   primaryPartNumber: z.string().min(1).max(100),
   normalizedPartNumber: z.string().min(1).max(100),
   condition: z.enum(["NEW", "USED"]),
@@ -246,7 +248,9 @@ export async function confirmImportBatch(input: { organizationId: string; import
 
       const rows = batch.rows.map((row) => ({ ...row, data: parseConfirmableImportRow(row.normalizedData) }));
       if (rows.length !== batch.totalRows) throw new ImportReviewError("Not every import row is ready to commit", 409);
-      const normalizedSkus = rows.map(({ data }) => data.normalizedSku);
+      const normalizedSkus = rows
+        .filter(({ data }) => data.skuProvided !== false)
+        .map(({ data }) => data.normalizedSku);
       if (new Set(normalizedSkus).size !== normalizedSkus.length) throw new ImportReviewError("The import contains duplicate normalized SKUs", 409);
       const existing = await tx.part.findMany({
         where: { organizationId: input.organizationId, normalizedSku: { in: normalizedSkus } },
@@ -258,6 +262,9 @@ export async function confirmImportBatch(input: { organizationId: string; import
       let committedParts = 0;
       for (const row of rows) {
         const data = row.data;
+        const allocatedSku = data.skuProvided !== false
+          ? { sku: data.sku, normalizedSku: data.normalizedSku }
+          : await allocateOrganizationSku(tx, input.organizationId, data.primaryPartNumber);
         const vehicle = data.vin
           ? await tx.vehicle.upsert({
               where: { organizationId_vin: { organizationId: input.organizationId, vin: data.vin } },
@@ -288,8 +295,8 @@ export async function confirmImportBatch(input: { organizationId: string; import
         const part = await tx.part.create({
           data: {
             organizationId: input.organizationId,
-            sku: data.sku,
-            normalizedSku: data.normalizedSku,
+            sku: allocatedSku.sku,
+            normalizedSku: allocatedSku.normalizedSku,
             primaryPartNumber: data.primaryPartNumber,
             normalizedPartNumber: data.normalizedPartNumber,
             brand: data.brand,
@@ -332,7 +339,7 @@ export async function confirmImportBatch(input: { organizationId: string; import
                 mediaAssetId: match.mediaAssetId,
                 displayOrder,
                 approved: true,
-                altText: data.partName ? `${data.partName} - ${data.sku}` : `Automotive part ${data.sku}`,
+                altText: data.partName ? `${data.partName} - ${allocatedSku.sku}` : `Automotive part ${allocatedSku.sku}`,
               })),
             },
           },

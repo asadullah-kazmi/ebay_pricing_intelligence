@@ -11,6 +11,7 @@ import {
   attachAftermarketBrowseImages,
 } from "./quick-sku-service.js";
 import type { Marketplace } from "./types.js";
+import { allocateOrganizationSku } from "./sku-policy-service.js";
 
 export class PipelineError extends Error {
   constructor(message: string, readonly statusCode: 400 | 404 | 409 = 400) {
@@ -201,8 +202,14 @@ async function processPipelineRow(input: {
   await updateRowStage(row.id, "CATALOG");
   const stagedMediaIds = [...new Set(row.mediaMatches.map(({ mediaAssetId }) => mediaAssetId))];
   const result = await prisma.$transaction(async (tx) => {
-    const existing = await tx.part.findFirst({ where: { organizationId: input.organizationId, normalizedSku: data.normalizedSku }, select: { id: true } });
-    if (existing) throw new PipelineError(`SKU ${data.sku} already exists in the catalog`, 409);
+    const hasUploadedSku = data.skuProvided !== false;
+    const allocatedSku = hasUploadedSku
+      ? { sku: data.sku, normalizedSku: data.normalizedSku }
+      : await allocateOrganizationSku(tx, input.organizationId, data.primaryPartNumber);
+    if (hasUploadedSku) {
+      const existing = await tx.part.findFirst({ where: { organizationId: input.organizationId, normalizedSku: allocatedSku.normalizedSku }, select: { id: true } });
+      if (existing) throw new PipelineError(`SKU ${allocatedSku.sku} already exists in the catalog`, 409);
+    }
     const vehicle = data.vin ? await tx.vehicle.upsert({
       where: { organizationId_vin: { organizationId: input.organizationId, vin: data.vin } },
       create: { organizationId: input.organizationId, vin: data.vin }, update: {}, select: { id: true },
@@ -227,7 +234,7 @@ async function processPipelineRow(input: {
           externalUrl: imageUrl,
           sourceType: "PIPELINE_URL",
           sourceMetadata: asJson({ importBatchId: input.batchId, importRowId: row.id, imageUrl }),
-          originalFilename: `${data.sku}-image-${index + 1}.jpg`.slice(0, 255),
+          originalFilename: `${allocatedSku.sku}-image-${index + 1}.jpg`.slice(0, 255),
           mimeType: "image/jpeg",
           byteSize: 0,
           checksum,
@@ -243,8 +250,8 @@ async function processPipelineRow(input: {
     const part = await tx.part.create({
       data: {
         organizationId: input.organizationId,
-        sku: data.sku,
-        normalizedSku: data.normalizedSku,
+        sku: allocatedSku.sku,
+        normalizedSku: allocatedSku.normalizedSku,
         primaryPartNumber: data.primaryPartNumber,
         normalizedPartNumber: data.normalizedPartNumber,
         brand: data.brand?.trim() || prepared.identifiedBrand || brand,
@@ -279,7 +286,7 @@ async function processPipelineRow(input: {
         } },
         media: { create: uniqueMediaIds.map((mediaAssetId, displayOrder) => ({
           organizationId: input.organizationId, mediaAssetId, displayOrder, approved: true,
-          altText: `${prepared.partName} - ${data.sku}`,
+          altText: `${prepared.partName} - ${allocatedSku.sku}`,
         })) },
       },
     });
@@ -354,7 +361,7 @@ async function processPipelineRow(input: {
       action: "pipeline.row.completed",
       resourceType: "ImportRow",
       resourceId: row.id,
-      summary: `Pipeline added ${data.sku} to the catalog`,
+      summary: `Pipeline added ${allocatedSku.sku} to the catalog`,
       metadata: { importBatchId: input.batchId, partId: part.id, listingDraftId: draft.id, teamId: input.teamId, fitmentCount: prepared.fitmentCount },
     });
     return { partId: part.id, listingDraftId: draft.id };

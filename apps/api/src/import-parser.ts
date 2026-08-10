@@ -20,6 +20,7 @@ export interface NormalizedImportRow {
   vin: string | null;
   sku: string;
   normalizedSku: string;
+  skuProvided: boolean;
   primaryPartNumber: string;
   normalizedPartNumber: string;
   condition: "NEW" | "USED";
@@ -89,6 +90,13 @@ function nonnegativeDecimal(value: Cell | undefined): number | null {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
+function nonnegativeUsdDecimal(value: Cell | undefined): number | null {
+  const raw = text(value).replace(/^\$\s*/, "").replace(/,/g, "");
+  if (!/^(?:\d+|\d+\.\d+|\.\d+)$/.test(raw)) return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
 function containsFormula(value: Cell | undefined): boolean {
   return typeof value === "string" && value.trimStart().startsWith("=");
 }
@@ -141,6 +149,7 @@ function parseRow(rowNumber: number, headers: string[], cells: Cell[]): Validate
     errors.push(issue("INVALID_VIN", "error", "VIN must contain 17 valid VIN characters or UNAVAILABLE", "VIN"));
   }
 
+  const skuProvided = Boolean(optionalText(values.SKU));
   const sku = required("SKU");
   const primaryPartNumber = required("PartNumber");
   if (sku.length > 100) errors.push(issue("SKU_TOO_LONG", "error", "SKU cannot exceed 100 characters", "SKU"));
@@ -158,9 +167,9 @@ function parseRow(rowNumber: number, headers: string[], cells: Cell[]): Validate
   const quantity = nonnegativeInteger(values.Quantity);
   if (quantity === null) errors.push(issue("INVALID_QUANTITY", "error", "Quantity must be a non-negative whole number", "Quantity"));
   const hasSellingPriceColumn = Object.prototype.hasOwnProperty.call(values, "SellingPrice");
-  const sellingPrice = hasSellingPriceColumn ? nonnegativeDecimal(values.SellingPrice) : undefined;
+  const sellingPrice = hasSellingPriceColumn ? nonnegativeUsdDecimal(values.SellingPrice) : undefined;
   if (hasSellingPriceColumn && sellingPrice === null) {
-    errors.push(issue("INVALID_SELLING_PRICE", "error", "Selling Price must be a non-negative decimal without a currency symbol", "SellingPrice"));
+    errors.push(issue("INVALID_SELLING_PRICE", "error", "Selling Price must be a non-negative USD amount such as 27.31 or $27.31", "SellingPrice"));
   }
   const cost = values.Cost === undefined && sellingPrice !== undefined && sellingPrice !== null
     ? 0
@@ -232,6 +241,7 @@ function parseRow(rowNumber: number, headers: string[], cells: Cell[]): Validate
     vin,
     sku,
     normalizedSku: sku.toUpperCase(),
+    skuProvided,
     primaryPartNumber,
     normalizedPartNumber: normalizePartNumber(primaryPartNumber),
     condition: conditionValue as "NEW" | "USED",
@@ -424,6 +434,7 @@ export async function parseAndValidateImport(filename: string, bytes: Buffer): P
 
   const skuRows = new Map<string, ValidatedImportRow[]>();
   for (const row of rows) {
+    if (!text(row.rawData.SKU)) continue;
     const normalizedSku = row.normalizedData?.normalizedSku ?? text(row.rawData.SKU).toUpperCase();
     if (!normalizedSku) continue;
     const matches = skuRows.get(normalizedSku) ?? [];
@@ -443,9 +454,11 @@ export async function parseAndValidateImport(filename: string, bytes: Buffer): P
 
 export function applyExistingSkuConflicts(parsed: ParsedImport, existingNormalizedSkus: ReadonlySet<string>): ParsedImport {
   for (const row of parsed.rows) {
+    if (!row.normalizedData?.skuProvided && !text(row.rawData.SKU)) continue;
     const normalizedSku = row.normalizedData?.normalizedSku ?? text(row.rawData.SKU).toUpperCase();
     if (!normalizedSku || !existingNormalizedSkus.has(normalizedSku)) continue;
-    row.errors.push(issue("SKU_ALREADY_EXISTS", "error", `SKU ${text(row.rawData.SKU)} already exists in the catalog`, "SKU"));
+    const displayedSku = row.normalizedData?.sku || text(row.rawData.SKU) || normalizedSku;
+    row.errors.push(issue("SKU_ALREADY_EXISTS", "error", `SKU ${displayedSku} already exists in the catalog`, "SKU"));
     row.normalizedData = null;
     row.status = "INVALID";
   }
