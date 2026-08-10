@@ -10,6 +10,7 @@ type QuickSkuResult = {
   identification: {
     title: string;
     source?: "EBAY" | "AI" | "GENERIC";
+    discoverySource?: "catalog" | "browse" | "demo" | null;
     aiModel?: string | null;
   };
   images?: {
@@ -72,7 +73,7 @@ type ProgressStep = {
 };
 
 const STEP_DEFS = [
-  { id: "identify", label: "Identifying part in eBay catalog" },
+  { id: "identify", label: "Identifying part with eBay" },
   { id: "ai", label: "Enhancing with AI fallback" },
   { id: "fitment", label: "Applying vehicle fitment" },
   { id: "title", label: "Building listing title" },
@@ -160,6 +161,7 @@ export default function QuickSkuWorkspace() {
           identification: {
             title: `2012-2018 ${demoBrand} A6 C7 Front Left Rear Brake Caliper ${demoPartNumber} OEM Used`,
             source: "EBAY",
+            discoverySource: "demo",
           },
           images: payload.productSource !== "OEM"
             ? { status: "ATTACHED", attachedCount: 2, requestedCount: 2, source: "EBAY_BROWSE_API", message: null }
@@ -223,6 +225,7 @@ export default function QuickSkuWorkspace() {
         identification: {
           title: string;
           source?: "EBAY" | "AI" | "GENERIC";
+          discoverySource?: "catalog" | "browse" | "demo" | null;
           aiModel?: string | null;
         };
         images?: QuickSkuResult["images"];
@@ -240,6 +243,7 @@ export default function QuickSkuWorkspace() {
         identification: {
           title: created.identification.title,
           source: created.identification.source ?? identify.identificationSource,
+          discoverySource: created.identification.discoverySource ?? identify.discovery.source as "catalog" | "browse" | "demo" | null,
           aiModel: created.identification.aiModel ?? identify.ai?.model ?? null,
         },
         images: created.images,
@@ -278,7 +282,7 @@ export default function QuickSkuWorkspace() {
         <form className={styles.formCard} onSubmit={upload}>
           <span className={styles.eyebrow}>Upload part</span>
           <h2>Create from OEM / MPN</h2>
-          <p className={styles.formLead}>We match against eBay catalog data, generate a listing-ready title, and attach fitment when available.</p>
+          <p className={styles.formLead}>We search eBay Catalog first, use verified Browse matches when needed, generate a listing-ready title, and attach fitment when available.</p>
 
           <div className={styles.detailsHeader}>
             <span>Part details</span>
@@ -472,11 +476,21 @@ export default function QuickSkuWorkspace() {
                     )}
                     {result.identification.source === "EBAY" && result.identification.aiModel && (
                       <span className={styles.listingSourceChip} title={result.identification.aiModel}>
-                        eBay match · AI part name
+                        {result.identification.discoverySource === "catalog"
+                          ? "eBay catalog"
+                          : result.identification.discoverySource === "browse"
+                            ? "eBay Browse listing"
+                            : "eBay"} match · AI part name
                       </span>
                     )}
                     {result.identification.source === "EBAY" && !result.identification.aiModel && (
-                      <span className={styles.listingSourceChipMuted}>eBay catalog match</span>
+                      <span className={styles.listingSourceChipMuted}>
+                        {result.identification.discoverySource === "catalog"
+                          ? "eBay catalog match"
+                          : result.identification.discoverySource === "browse"
+                            ? "eBay Browse listing match"
+                            : "eBay match"}
+                      </span>
                     )}
                   </div>
                 </article>

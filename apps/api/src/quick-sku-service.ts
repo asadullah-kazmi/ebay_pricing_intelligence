@@ -635,6 +635,7 @@ async function persistQuickSkuPart(
         marketplace,
         identified: prepared.matched,
         identificationSource: prepared.identificationSource,
+        discoverySource: prepared.discoverySource,
         candidateEpid: prepared.candidateEpid,
         aiModel: prepared.aiModel,
         fitmentCount: prepared.fitmentCount,
@@ -668,6 +669,7 @@ function toQuickSkuResponse(
     identification: {
       matched: prepared.matched,
       source: prepared.identificationSource,
+      discoverySource: prepared.discoverySource,
       title: prepared.listingTitle,
       brand: prepared.identifiedBrand,
       partName: prepared.partName,
