@@ -454,10 +454,14 @@ export async function parseAndValidateImport(filename: string, bytes: Buffer): P
 
 export function applyExistingSkuConflicts(parsed: ParsedImport, existingNormalizedSkus: ReadonlySet<string>): ParsedImport {
   for (const row of parsed.rows) {
-    if (!row.normalizedData?.skuProvided && !text(row.rawData.SKU)) continue;
-    const normalizedSku = row.normalizedData?.normalizedSku ?? text(row.rawData.SKU).toUpperCase();
+    const data = row.normalizedData;
+    // Only user-supplied SKUs can conflict during validation. Blank-SKU rows are
+    // assigned atomically from the organization's active SKU policy when the
+    // pipeline creates the catalog item.
+    if (!data?.skuProvided) continue;
+    const normalizedSku = data.normalizedSku;
     if (!normalizedSku || !existingNormalizedSkus.has(normalizedSku)) continue;
-    const displayedSku = row.normalizedData?.sku || text(row.rawData.SKU) || normalizedSku;
+    const displayedSku = data.sku;
     row.errors.push(issue("SKU_ALREADY_EXISTS", "error", `SKU ${displayedSku} already exists in the catalog`, "SKU"));
     row.normalizedData = null;
     row.status = "INVALID";

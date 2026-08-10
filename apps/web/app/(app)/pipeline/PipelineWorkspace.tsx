@@ -14,6 +14,13 @@ type QueueItem = {
   condition: string;
   uploadedBy: string;
   createdAt: string;
+  totalRows: number;
+  succeededRows: number;
+  failedRows: number;
+  skippedRows: number;
+  finishedRows: number;
+  remainingRows: number;
+  percent: number;
 };
 
 type ListingTeam = {
@@ -28,6 +35,11 @@ type PipelineJob = {
   status: string;
   defaultCondition: string | null;
   createdAt: string;
+  totalRows: number;
+  processedRows: number;
+  failedRows: number;
+  invalidRows: number;
+  progress: { finishedRows: number; percent: number };
   createdBy: { name: string | null; email: string };
 };
 
@@ -38,11 +50,47 @@ type ImportPreview = {
   }>;
 };
 
+type ImportValidationResult = {
+  id: string;
+  status: string;
+  invalidRows: number;
+  reused: boolean;
+  error?: string;
+};
+
 const demoQueue: QueueItem[] = [
-  { id: "imp-7842", fileName: "catalog-intake-week-12.xlsx", status: "UPLOADED", condition: "USED", uploadedBy: "BA", createdAt: new Date().toISOString() },
-  { id: "imp-7841", fileName: "yard-photos-march.zip", status: "PROCESSING", condition: "USED", uploadedBy: "BA", createdAt: new Date(Date.now() - 3600000).toISOString() },
-  { id: "imp-7840", fileName: "interchange-batch.xlsx", status: "READY", condition: "NEW", uploadedBy: "OP", createdAt: new Date(Date.now() - 86400000).toISOString() },
+  { id: "imp-7842", fileName: "catalog-intake-week-12.xlsx", status: "UPLOADED", condition: "USED", uploadedBy: "BA", createdAt: new Date().toISOString(), totalRows: 120, succeededRows: 0, failedRows: 0, skippedRows: 0, finishedRows: 0, remainingRows: 120, percent: 0 },
+  { id: "imp-7841", fileName: "yard-photos-march.xlsx", status: "PROCESSING", condition: "USED", uploadedBy: "BA", createdAt: new Date(Date.now() - 3600000).toISOString(), totalRows: 80, succeededRows: 46, failedRows: 2, skippedRows: 0, finishedRows: 48, remainingRows: 32, percent: 60 },
+  { id: "imp-7840", fileName: "interchange-batch.xlsx", status: "READY", condition: "NEW", uploadedBy: "OP", createdAt: new Date(Date.now() - 86400000).toISOString(), totalRows: 35, succeededRows: 34, failedRows: 1, skippedRows: 0, finishedRows: 35, remainingRows: 0, percent: 100 },
 ];
+
+function toQueueItem(job: PipelineJob): QueueItem {
+  const skippedRows = job.invalidRows;
+  const finishedRows = Math.min(job.totalRows, job.processedRows + job.failedRows + skippedRows);
+  return {
+    id: job.id,
+    fileName: job.originalFilename,
+    status: job.status === "COMMITTING"
+      ? "PROCESSING"
+      : job.status === "COMPLETED"
+        ? "READY"
+        : job.status === "FAILED"
+          ? "FAILED"
+          : "UPLOADED",
+    condition: job.defaultCondition || "—",
+    uploadedBy: job.createdBy.name
+      ? job.createdBy.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()
+      : job.createdBy.email.slice(0, 2).toUpperCase(),
+    createdAt: job.createdAt,
+    totalRows: job.totalRows,
+    succeededRows: job.processedRows,
+    failedRows: job.failedRows,
+    skippedRows,
+    finishedRows,
+    remainingRows: Math.max(0, job.totalRows - finishedRows),
+    percent: job.totalRows ? Math.round((finishedRows / job.totalRows) * 100) : job.progress.percent,
+  };
+}
 
 function triggerBlobDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -68,26 +116,16 @@ export default function PipelineWorkspace() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
 
   const loadQueue = useCallback(async () => {
     if (status !== "ready" || demo) return;
     const result = await apiFetch("/api/imports?limit=30") as { jobs: PipelineJob[] };
-    setQueue(result.jobs.map((job) => ({
-      id: job.id,
-      fileName: job.originalFilename,
-      status: job.status === "COMMITTING"
-        ? "PROCESSING"
-        : job.status === "COMMITTED"
-          ? "READY"
-          : job.status.includes("FAILED")
-            ? "FAILED"
-            : "UPLOADED",
-      condition: job.defaultCondition || "—",
-      uploadedBy: job.createdBy.name
-        ? job.createdBy.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()
-        : job.createdBy.email.slice(0, 2).toUpperCase(),
-      createdAt: job.createdAt,
-    })));
+    const items = result.jobs.map(toQueueItem);
+    setQueue(items);
+    setActiveJobId((current) => current && items.some((item) => item.id === current)
+      ? current
+      : items.find((item) => item.status === "PROCESSING")?.id ?? null);
   }, [apiFetch, demo, status]);
 
   useEffect(() => {
@@ -112,22 +150,9 @@ export default function PipelineWorkspace() {
       setTeam((current) => teamResult.teams.some((item) => item.id === current)
         ? current
         : teamResult.teams[0]?.id || "");
-      setQueue(jobResult.jobs.map((job) => ({
-        id: job.id,
-        fileName: job.originalFilename,
-        status: job.status === "COMMITTING"
-          ? "PROCESSING"
-          : job.status === "COMMITTED"
-            ? "READY"
-            : job.status.includes("FAILED")
-              ? "FAILED"
-              : "UPLOADED",
-        condition: job.defaultCondition || "—",
-        uploadedBy: job.createdBy.name
-          ? job.createdBy.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()
-          : job.createdBy.email.slice(0, 2).toUpperCase(),
-        createdAt: job.createdAt,
-      })));
+      const items = jobResult.jobs.map(toQueueItem);
+      setQueue(items);
+      setActiveJobId(items.find((item) => item.status === "PROCESSING")?.id ?? null);
     }).catch((caught) => {
       if (!cancelled) setError(caught instanceof Error ? caught.message : "Unable to load teams and pipeline jobs");
     }).finally(() => {
@@ -136,6 +161,14 @@ export default function PipelineWorkspace() {
 
     return () => { cancelled = true; };
   }, [apiFetch, demo, status]);
+
+  useEffect(() => {
+    if (status !== "ready" || demo || !queue.some((item) => item.status === "PROCESSING")) return;
+    const timer = window.setInterval(() => {
+      void loadQueue().catch((caught) => setError(caught instanceof Error ? caught.message : "Unable to refresh pipeline progress"));
+    }, 2500);
+    return () => window.clearInterval(timer);
+  }, [demo, loadQueue, queue, status]);
 
   async function handleDownloadQuickExcel() {
     setDownloading("quick");
@@ -187,8 +220,9 @@ export default function PipelineWorkspace() {
         access = await refreshAccessSession({ force: true });
         response = await send(access.accessToken);
       }
-      const payload = await response.json().catch(() => ({}));
+      const payload = await response.json().catch(() => ({})) as Partial<ImportValidationResult>;
       if (!response.ok) throw new Error(payload.error || "Upload failed");
+      if (!payload.id || !payload.status) throw new Error("The pipeline returned an incomplete upload response");
       if (payload.invalidRows) {
         let details = "";
         try {
@@ -203,10 +237,23 @@ export default function PipelineWorkspace() {
         }
         throw new Error(`${payload.invalidRows} invalid row(s) found.${details}`);
       }
+      if (payload.reused && (payload.status === "COMMITTING" || payload.status === "COMPLETED")) {
+        setActiveJobId(payload.id);
+        setFile(null);
+        await loadQueue();
+        setNotice(payload.status === "COMPLETED"
+          ? `${filename} was already processed. The completed job is shown below.`
+          : `${filename} is already processing. Its current progress is shown below.`);
+        return;
+      }
+      if (payload.reused && payload.status === "FAILED") {
+        throw new Error("A previous job for this exact spreadsheet failed. Open it from the pipeline queue to review the failed rows before retrying.");
+      }
       await apiFetch(`/api/imports/${payload.id}/start`, {
         method: "POST",
         body: JSON.stringify({ listingTeamId: team, condition, marketplace: "EBAY_US", assignImages }),
       });
+      setActiveJobId(payload.id);
       setNotice(`${filename} is processing. Items will appear in Catalog as each row completes.`);
       setFile(null);
       await loadQueue();
@@ -216,6 +263,10 @@ export default function PipelineWorkspace() {
       setBusy(false);
     }
   }
+
+  const activeJob = queue.find((item) => item.id === activeJobId)
+    ?? queue.find((item) => item.status === "PROCESSING")
+    ?? null;
 
   if (status !== "ready") return null;
 
@@ -259,6 +310,80 @@ export default function PipelineWorkspace() {
           </svg>
           {error}
         </div>
+      )}
+
+      {activeJob && (
+        <section className={styles.progressPanel} aria-live="polite">
+          <div className={styles.progressHeader}>
+            <div className={styles.progressTitle}>
+              <span className={`${styles.progressIcon} ${styles[activeJob.status.toLowerCase() + "Icon"]} ${activeJob.status === "PROCESSING" ? styles.progressIconActive : ""}`}>
+                {activeJob.status === "READY" ? (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                ) : activeJob.status === "FAILED" ? (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                ) : (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+                  </svg>
+                )}
+              </span>
+              <div>
+                <span className={styles.eyebrow}>CURRENT PIPELINE JOB</span>
+                <h2>{activeJob.fileName}</h2>
+                <p>
+                  {activeJob.status === "PROCESSING"
+                    ? "Enriching listings and adding completed items to Catalog."
+                    : activeJob.status === "READY"
+                      ? "Processing finished. Catalog items are ready for review."
+                      : activeJob.status === "FAILED"
+                        ? "The job stopped before all rows could be processed."
+                        : "The job is staged and waiting to begin."}
+                </p>
+              </div>
+            </div>
+            <span className={`${styles.status} ${styles[activeJob.status.toLowerCase()]}`}>
+              <span className={styles.statusDot} />
+              {activeJob.status}
+            </span>
+          </div>
+
+          <div className={styles.progressTrack}>
+            <span style={{ width: `${activeJob.percent}%` }} />
+          </div>
+          <div className={styles.progressMeta}>
+            <span>{activeJob.percent}% complete</span>
+            <span>{activeJob.remainingRows} remaining</span>
+          </div>
+
+          <div className={styles.progressStats}>
+            <article>
+              <span>Total listings</span>
+              <strong>{activeJob.totalRows}</strong>
+            </article>
+            <article>
+              <span>Completed</span>
+              <strong>{activeJob.finishedRows}</strong>
+            </article>
+            <article className={styles.successMetric}>
+              <span>Succeeded</span>
+              <strong>{activeJob.succeededRows}</strong>
+            </article>
+            <article className={styles.failedMetric}>
+              <span>Failed</span>
+              <strong>{activeJob.failedRows}</strong>
+            </article>
+            <article className={styles.skippedMetric}>
+              <span>Skipped</span>
+              <strong>{activeJob.skippedRows}</strong>
+            </article>
+          </div>
+        </section>
       )}
 
       {/* Template Download Buttons Row */}
@@ -364,9 +489,11 @@ export default function PipelineWorkspace() {
               <tr>
                 <th>File</th>
                 <th>Condition</th>
+                <th>Progress</th>
                 <th>Status</th>
                 <th>Uploaded by</th>
                 <th>Date</th>
+                <th aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
@@ -382,12 +509,23 @@ export default function PipelineWorkspace() {
                     <span className={styles.pill}>{item.condition}</span>
                   </td>
                   <td>
+                    <div className={styles.tableProgress}>
+                      <span><i style={{ width: `${item.percent}%` }} /></span>
+                      <small>{item.finishedRows}/{item.totalRows}</small>
+                    </div>
+                  </td>
+                  <td>
                     <span className={`${styles.status} ${styles[item.status.toLowerCase()]}`}>{item.status}</span>
                   </td>
                   <td>
                     <span className={styles.avatar}>{item.uploadedBy}</span>
                   </td>
                   <td className={styles.dateCell}>{new Date(item.createdAt).toLocaleString()}</td>
+                  <td>
+                    <button type="button" className={styles.viewProgress} onClick={() => setActiveJobId(item.id)}>
+                      View
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

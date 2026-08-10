@@ -45,6 +45,35 @@ export async function findImportByChecksum(organizationId: string, checksum: str
   return batch ? toSummary(batch, true) : null;
 }
 
+function hasStaleBlankSkuConflict(errors: unknown, rawData: unknown): boolean {
+  if (!Array.isArray(errors) || !rawData || typeof rawData !== "object" || Array.isArray(rawData)) return false;
+  const rawSku = (rawData as Record<string, unknown>).SKU;
+  if (typeof rawSku === "string" ? rawSku.trim() : rawSku !== null && rawSku !== undefined) return false;
+  return errors.some((error) => {
+    if (!error || typeof error !== "object" || Array.isArray(error)) return false;
+    const issue = error as Record<string, unknown>;
+    return issue.code === "SKU_ALREADY_EXISTS" && issue.field === "SKU";
+  });
+}
+
+/** Removes validation batches produced by the former blank-SKU conflict bug. */
+export async function discardStaleBlankSkuConflictImport(organizationId: string, checksum: string): Promise<boolean> {
+  const batch = await prisma.importBatch.findUnique({
+    where: { organizationId_checksum: { organizationId, checksum } },
+    select: {
+      id: true,
+      status: true,
+      startedAt: true,
+      rows: { select: { rawData: true, errors: true, committedPartId: true } },
+    },
+  });
+  if (!batch || batch.status !== "REVIEW_REQUIRED" || batch.startedAt || !batch.rows.length) return false;
+  if (batch.rows.some((row) => row.committedPartId)) return false;
+  if (!batch.rows.some((row) => hasStaleBlankSkuConflict(row.errors, row.rawData))) return false;
+  await prisma.importBatch.delete({ where: { id: batch.id } });
+  return true;
+}
+
 export async function findExistingNormalizedSkus(organizationId: string, normalizedSkus: string[]): Promise<Set<string>> {
   if (!normalizedSkus.length) return new Set();
   const parts = await prisma.part.findMany({

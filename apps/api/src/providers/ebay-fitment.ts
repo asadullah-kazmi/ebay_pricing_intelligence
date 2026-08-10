@@ -86,8 +86,11 @@ async function ebayRequest<T>(
       ...(init?.headers ?? {}),
     },
   });
+  if (response.status === 204) return {} as T;
   if (!response.ok) throw await ebayError(response, operation);
-  return response.json() as Promise<T>;
+  const text = await response.text();
+  if (!text || !text.trim()) return {} as T;
+  return JSON.parse(text) as T;
 }
 
 function aspectsFromProduct(product: Record<string, unknown>): Record<string, string[]> {

@@ -159,6 +159,14 @@ describe("catalog staging parser", () => {
     expect(result.rows[0]?.errors).toContainEqual(expect.objectContaining({ code: "SKU_ALREADY_EXISTS" }));
   });
 
+  it("does not apply catalog SKU conflicts to rows that require policy-generated SKUs", async () => {
+    const quick = Buffer.from("Part Number,Selling Price,Quantity,Brand\n8K0615301M,149.99,2,Audi\n", "utf8");
+    const result = await parseAndValidateImport("quick.csv", quick);
+    applyExistingSkuConflicts(result, new Set(["", "SKU-8K0615301M"]));
+    expect(result.rows[0]?.normalizedData).toMatchObject({ skuProvided: false });
+    expect(result.rows[0]?.errors).not.toContainEqual(expect.objectContaining({ code: "SKU_ALREADY_EXISTS" }));
+  });
+
   it("rejects modified template headers", async () => {
     const invalid = Buffer.from(`WrongHeader,${headers.slice(1).join(",")}\n`, "utf8");
     const result = await parseAndValidateImport("parts.csv", invalid);

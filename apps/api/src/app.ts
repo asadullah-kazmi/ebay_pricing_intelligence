@@ -14,7 +14,7 @@ import { EbayApiError, searchEbay } from "./providers/ebay.js";
 import { deleteListingsForClosedEbayAccount, findLatestAnalytics, findListing, findSearchHistory, saveSearchResult } from "./repository.js";
 import { findMediaStorageKey, findMediaStorageKeys, saveConfirmedMediaAsset } from "./media-repository.js";
 import { catalogImportTemplate, catalogImportTemplateFilename, catalogImportTemplateVersion, createCatalogImportCsv } from "./import-template.js";
-import { findExistingNormalizedSkus, findImportByChecksum, stageParsedImport } from "./import-repository.js";
+import { discardStaleBlankSkuConflictImport, findExistingNormalizedSkus, findImportByChecksum, stageParsedImport } from "./import-repository.js";
 import { applyExistingSkuConflicts, parseAndValidateImport } from "./import-parser.js";
 import { ImageImportError, importImageArchive } from "./image-import-service.js";
 import { confirmImportBatch, correctImportMediaMatch, discardImportMediaMatch, getImportPreview, ImportReviewError } from "./import-review-service.js";
@@ -894,7 +894,7 @@ app.post("/api/imports/validate", importRateLimit, requireTenantContext, require
     const tenant = getTenantContext(res);
     const checksum = createHash("sha256").update(req.body).digest("hex");
     const existing = await findImportByChecksum(tenant.organization.id, checksum);
-    if (existing) return res.json(existing);
+    if (existing && !await discardStaleBlankSkuConflictImport(tenant.organization.id, checksum)) return res.json(existing);
 
     const parsed = await parseAndValidateImport(filename, req.body);
     const candidateSkus = parsed.rows.flatMap(({ normalizedData }) => normalizedData?.skuProvided ? [normalizedData.normalizedSku] : []);
