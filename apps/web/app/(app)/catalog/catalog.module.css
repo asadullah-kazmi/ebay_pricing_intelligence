@@ -2266,6 +2266,192 @@
   background: #f8fafc;
 }
 
+.draftReviewModal {
+  width: min(860px, calc(100vw - 32px));
+  max-height: 90vh;
+}
+
+.draftVersion {
+  display: block;
+  margin-top: 2px;
+  color: #8190a6;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.45px;
+  text-transform: uppercase;
+}
+
+.draftReviewBody {
+  gap: 14px;
+}
+
+.draftReviewTitleLine {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.draftReviewTitleLine h3 {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.draftIssueSection {
+  border-color: #f2d1d1;
+  background: #fffafa;
+}
+
+.issueHelp {
+  color: #8a5b5b;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.draftIssueList {
+  display: grid;
+  gap: 7px;
+}
+
+.draftIssueBlocker,
+.draftIssueWarning {
+  display: grid;
+  grid-template-columns: 68px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.draftIssueBlocker {
+  border: 1px solid #f7cccc;
+  background: #fff1f1;
+  color: #9f2424;
+}
+
+.draftIssueWarning {
+  border: 1px solid #f1dfaa;
+  background: #fff9e9;
+  color: #875b00;
+}
+
+.draftIssueBlocker b,
+.draftIssueWarning b {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.draftReviewActions {
+  position: sticky;
+  bottom: -22px;
+  z-index: 2;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 2px -20px -22px;
+  padding: 13px 20px;
+  border-top: 1px solid #e2e8f0;
+  background: rgba(255, 255, 255, 0.97);
+  backdrop-filter: blur(8px);
+}
+
+.draftReviewActions button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid #d3deea;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #17304f;
+  font: 650 11.5px/1 "Plus Jakarta Sans", sans-serif;
+  cursor: pointer;
+}
+
+.draftReviewActions .primary {
+  border-color: #0b5cff;
+  background: #0b5cff;
+  color: #ffffff;
+}
+
+.draftEditBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 18px 20px 0 !important;
+  overflow-y: auto;
+}
+
+.draftEditBody .listingDetailsCard,
+.draftEditBody .listingPublishCard,
+.draftEditSection {
+  margin: 0;
+  padding: 0 0 18px;
+  border: 0;
+  border-bottom: 1px solid #e5ebf2;
+  border-radius: 0;
+  background: transparent;
+}
+
+.draftEditBody .listingSectionLabel,
+.draftEditSection h4 {
+  margin-bottom: 12px;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.45px;
+}
+
+.draftEditBody .listingDetailsGrid {
+  gap: 13px 20px;
+}
+
+.draftEditBody .listingField,
+.draftEditBody .listingFieldWide {
+  gap: 5px;
+}
+
+.draftEditBody .listingField > span,
+.draftEditBody .listingFieldWide > span {
+  color: #64748b;
+  font-size: 10.5px;
+  font-weight: 650;
+}
+
+.draftEditBody input,
+.draftEditBody select,
+.draftEditBody textarea {
+  border-color: #d7e0eb;
+  border-radius: 9px;
+  background: #ffffff;
+  font-size: 12px;
+}
+
+.draftEditBody input,
+.draftEditBody select {
+  min-height: 40px;
+}
+
+.draftEditBody .listingFormActions {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  margin: 0 -20px;
+  padding: 12px 20px;
+  border-top: 1px solid #e2e8f0;
+  background: rgba(255, 255, 255, 0.97);
+  backdrop-filter: blur(8px);
+}
+
+@media (max-width: 620px) {
+  .draftReviewTitleLine { display: block; }
+  .draftReviewTitleLine .readinessStatus { margin-top: 7px; }
+  .draftIssueBlocker, .draftIssueWarning { grid-template-columns: 1fr; gap: 3px; }
+  .draftReviewActions { flex-wrap: wrap; }
+}
+
 .listingDrawerHeader {
   background: #fffffff5 !important;
 }

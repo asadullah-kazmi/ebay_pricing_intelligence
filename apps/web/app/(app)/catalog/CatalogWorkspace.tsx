@@ -344,6 +344,8 @@ export default function CatalogWorkspace() {
   const [ebayConnection, setEbayConnection] = useState<EbayConnection>({ connected: false, status: "NOT_CONNECTED" });
   const [drafts, setDrafts] = useState<ListingDraft[]>([]);
   const [draftDetail, setDraftDetail] = useState<ListingDraft | null>(null);
+  const [draftPartDetail, setDraftPartDetail] = useState<CatalogPartDetail | null>(null);
+  const [draftMode, setDraftMode] = useState<"view" | "edit">("view");
   const [draftBusy, setDraftBusy] = useState(false);
   const [sellerResources, setSellerResources] = useState<EbaySellerResources | null>(null);
   const [categoryAspects, setCategoryAspects] = useState<EbayAspectRequirement[]>([]);
@@ -969,9 +971,14 @@ export default function CatalogWorkspace() {
     setEbayOffer(null);
     setEbayOfferJob(null);
     setListingOperationJob(null);
+    setDraftMode("view");
+    setDraftPartDetail(null);
     try {
       const draft = await request(`/api/listing-drafts/${id}`) as ListingDraft;
       setDraftDetail(draft);
+      request(`/api/parts/${draft.partId}`)
+        .then((value) => setDraftPartDetail(value as CatalogPartDetail))
+        .catch(() => undefined);
       setSellerResources(await request(`/api/ebay/resources?marketplace=${encodeURIComponent(draft.marketplace)}`) as EbaySellerResources);
       request(`/api/listing-drafts/${id}/inventory-preparation`)
         .then((value) => setInventoryPreparation(value as InventoryPreparation))
@@ -1032,6 +1039,10 @@ export default function CatalogWorkspace() {
       setEbayOfferJob(null);
       setListingOperationJob(null);
       setDrafts((current) => current.map((draft) => draft.id === updated.id ? updated : draft));
+      setDraftMode("view");
+      request(`/api/parts/${updated.partId}`)
+        .then((value) => setDraftPartDetail(value as CatalogPartDetail))
+        .catch(() => undefined);
       setNotice(updated.status === "READY" ? "Draft is ready for the future publish step." : "Draft saved. Review the remaining blockers.");
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to save listing draft"); }
     finally { setDraftBusy(false); }
@@ -1726,18 +1737,52 @@ export default function CatalogWorkspace() {
         </section>
       </div>;
     })()}
-    {draftDetail && <div className={styles.modalBackdrop} role="presentation">
-      <section className={`${styles.drawer} ${styles.listingDrawer}`} role="dialog" aria-modal="true" aria-labelledby="edit-draft-title">
-        <header className={styles.listingDrawerHeader}>
-          <div>
-            <span className={styles.listingDrawerEyebrow}>Listing draft · v{draftDetail.version}</span>
-            <h2 id="edit-draft-title">{draftDetail.part.sku}</h2>
-            <p className={styles.listingDrawerSub}>{draftDetail.part.primaryPartNumber}{draftDetail.part.brand ? ` · ${draftDetail.part.brand}` : ""} · {draftDetail.marketplace.replace("EBAY_", "eBay ")}</p>
+    {draftDetail && <div className={styles.modalBackdrop} role="presentation" onClick={(event) => { if (event.target === event.currentTarget) setDraftDetail(null); }}>
+      <section className={`${styles.drawer} ${styles.inventoryModal} ${styles.draftReviewModal}`} role="dialog" aria-modal="true" aria-labelledby="edit-draft-title">
+        <header className={styles.inventoryHeader}>
+          <div><h2 id="edit-draft-title">Inventory details</h2><span className={styles.draftVersion}>Listing draft · v{draftDetail.version}</span></div>
+          <div className={styles.inventoryHeaderActions}>
+            {draftMode === "view" ? <button type="button" className={styles.editDetailsBtn} onClick={() => setDraftMode("edit")}><span>✎</span> Edit details</button> : <span className={styles.editingPill}>✎ Editing</span>}
+            <button type="button" className={styles.iconClose} aria-label="Close draft editor" onClick={() => setDraftDetail(null)}>×</button>
           </div>
-          <button type="button" aria-label="Close draft editor" onClick={() => setDraftDetail(null)}>×</button>
         </header>
 
-        <form onSubmit={saveDraft} className={styles.listingDrawerBody}>
+        {draftMode === "view" ? <div className={`${styles.inventoryBody} ${styles.draftReviewBody}`}>
+          <div className={styles.inventoryHero}>
+            <div className={styles.inventoryHeroMedia}><CatalogImage mediaId={draftPartDetail?.media[0]?.mediaAsset.id} token={token} demo={demo}/>{draftPartDetail && draftPartDetail.media.length > 1 && <span className={styles.mediaCount}>{draftPartDetail.media.length}</span>}</div>
+            <div className={styles.inventoryHeroCopy}>
+              <div className={styles.draftReviewTitleLine}><h3>{draftDetail.title}</h3><span className={`${styles.readinessStatus} ${draftDetail.status === "READY" ? styles.readinessStatusReady : styles.readinessStatusBlocked}`}>{humanStatus(draftDetail.status)}</span></div>
+              <button type="button" className={styles.skuCopy} onClick={() => void copySku(draftDetail.part.sku)}><span>SKU</span><code>{draftDetail.part.sku}</code><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+            </div>
+          </div>
+
+          {(draftDetail.validationIssues ?? []).length > 0 && <section className={`${styles.detailSection} ${styles.draftIssueSection}`}>
+            <div className={styles.sectionHeading}><h4>Publication issues <span>({draftDetail.validationIssues?.length})</span></h4><span className={styles.issueHelp}>Resolve these fields before publishing</span></div>
+            <div className={styles.draftIssueList}>{(draftDetail.validationIssues ?? []).map((issue) => <div key={`${issue.code}-${issue.field}`} className={issue.severity === "BLOCKER" ? styles.draftIssueBlocker : styles.draftIssueWarning}><b>{issue.severity === "BLOCKER" ? "Blocked" : "Warning"}</b><span>{issue.message}</span></div>)}</div>
+          </section>}
+
+          <div className={styles.detailMatrix}>
+            <div className={styles.detailDatum}><DetailIcon name="brand"/><div><span>Brand</span><b>{draftDetail.aspects.Brand?.[0] || draftDetail.part.brand || "Not assigned"}</b></div></div>
+            <div className={styles.detailDatum}><DetailIcon name="condition"/><div><span>Condition</span><b>{humanStatus(draftDetail.condition)}</b></div></div>
+            <div className={styles.detailDatum}><DetailIcon name="part"/><div><span>Part type</span><b>{draftDetail.aspects.Type?.[0] || draftDetail.aspects["Part Type"]?.[0] || draftDetail.part.partName || "Not assigned"}</b></div></div>
+            <div className={styles.detailDatum}><DetailIcon name="price"/><div><span>Price</span><b>{draftDetail.price == null ? "Not assigned" : money(draftDetail.price, draftDetail.currency)}</b></div></div>
+            <div className={styles.detailDatum}><DetailIcon name="quantity"/><div><span>Quantity</span><b>{draftDetail.quantity}</b></div></div>
+            <div className={styles.detailDatum}><DetailIcon name="stock"/><div><span>Stock status</span><b><span className={styles.signalValue}><i className={styles[`signal_${draftDetail.quantity <= 0 ? "bad" : draftDetail.quantity <= 2 ? "warn" : "good"}`]}/>{draftDetail.quantity <= 0 ? "Out of stock" : draftDetail.quantity <= 2 ? "Low stock" : "In stock"}</span></b></div></div>
+            <div className={styles.detailDatum}><DetailIcon name="ebay"/><div><span>eBay status</span><b>{draftDetail.status === "READY" ? "Ready" : "Draft needs fixes"}</b></div></div>
+            <div className={styles.detailDatum}><DetailIcon name="location"/><div><span>Marketplace</span><b>{draftDetail.marketplace.replace("EBAY_", "eBay ")}</b></div></div>
+          </div>
+
+          <section className={styles.detailSection}><h4>eBay store &amp; policies</h4><div className={styles.policyGrid}>
+            <div><span>Shipping</span><b>{sellerResources?.fulfillmentPolicies.find(({ remoteId }) => remoteId === draftDetail.shippingPolicyId)?.name || "Not assigned"}</b></div>
+            <div><span>Returns</span><b>{sellerResources?.returnPolicies.find(({ remoteId }) => remoteId === draftDetail.returnPolicyId)?.name || "Not assigned"}</b></div>
+            <div><span>Payment</span><b>{sellerResources?.paymentPolicies.find(({ remoteId }) => remoteId === draftDetail.paymentPolicyId)?.name || "Not assigned"}</b></div>
+          </div></section>
+          <section className={styles.detailSection}><h4>Category</h4><p>{draftDetail.categoryId ? `eBay category ${draftDetail.categoryId}` : "Not assigned"}</p></section>
+          <section className={styles.detailSection}><div className={styles.sectionHeading}><h4>Product images <span>({draftPartDetail?.media.length ?? 0}/24)</span></h4><Link href="/media-drive" className={styles.sectionAction}>Manage images</Link></div>{draftPartDetail?.media.length ? <div className={styles.compactImageGrid}>{draftPartDetail.media.map((item, index) => <div key={item.id} className={styles.compactImage}><CatalogImage mediaId={item.mediaAsset.id} token={token} demo={demo}/>{index === 0 && <span>Primary</span>}</div>)}</div> : <div className={styles.noImagesBox}><b>No images yet</b><span>Add images from Media Drive.</span></div>}</section>
+          <section className={styles.detailSection}><div className={styles.sectionHeading}><h4>Fitments / compatibility</h4><button type="button" className={styles.sectionAction} onClick={() => { const partId = draftDetail.partId; setDraftDetail(null); void openManualFitment(partId); }}>Manage</button></div>{draftPartDetail?.fitmentApplications?.length ? <div className={styles.fitmentChips}>{draftPartDetail.fitmentApplications.map((application) => <span key={application.id} className={styles.fitmentChip}>{fitmentLabel(application.properties)}</span>)}</div> : <p className={styles.emptyFitment}>No vehicle compatibility assigned.</p>}</section>
+          <section className={styles.detailSection}><h4>HTML description</h4>{draftDetail.description ? <div className={styles.compactDescription} dangerouslySetInnerHTML={{ __html: draftDetail.description }}/> : <p className={styles.emptyFitment}>No description added.</p>}</section>
+          <div className={styles.draftReviewActions}><button type="button" onClick={() => setDraftMode("edit")}>Edit details</button><button type="button" className={styles.primary} disabled={draftBusy || !draftDetail.categoryId} onClick={() => void validateDraftLive()}>{draftBusy ? "Contacting eBay..." : "Validate with eBay"}</button></div>
+        </div> : <form onSubmit={saveDraft} className={`${styles.listingDrawerBody} ${styles.draftEditBody}`}>
           <section className={styles.listingDetailsCard}>
             <span className={styles.listingSectionLabel}>Listing details</span>
 
@@ -1876,6 +1921,33 @@ export default function CatalogWorkspace() {
             </section>
           )}
 
+          <section className={`${styles.detailSection} ${styles.draftEditSection}`}>
+            <div className={styles.sectionHeading}>
+              <h4>Product images <span>({draftPartDetail?.media.length ?? 0}/24)</span></h4>
+              <Link href="/media-drive" className={styles.sectionAction}>Manage images</Link>
+            </div>
+            {draftPartDetail?.media.length ? (
+              <div className={styles.compactImageGrid}>
+                {draftPartDetail.media.map((item, index) => (
+                  <div key={item.id} className={styles.compactImage}>
+                    <CatalogImage mediaId={item.mediaAsset.id} token={token} demo={demo} />
+                    {index === 0 && <span>Primary</span>}
+                  </div>
+                ))}
+              </div>
+            ) : <div className={styles.noImagesBox}><b>No images yet</b><span>Add images from Media Drive.</span></div>}
+          </section>
+
+          <section className={`${styles.detailSection} ${styles.draftEditSection}`}>
+            <div className={styles.sectionHeading}>
+              <h4>Fitments / compatibility</h4>
+              <button type="button" className={styles.sectionAction} onClick={() => { const partId = draftDetail.partId; setDraftDetail(null); void openManualFitment(partId); }}>Manage</button>
+            </div>
+            {draftPartDetail?.fitmentApplications?.length ? (
+              <div className={styles.fitmentChips}>{draftPartDetail.fitmentApplications.map((application) => <span key={application.id} className={styles.fitmentChip}>{fitmentLabel(application.properties)}</span>)}</div>
+            ) : <p className={styles.emptyFitment}>No vehicle compatibility assigned.</p>}
+          </section>
+
           <section className={styles.listingDetailsCard}>
             <span className={styles.listingSectionLabel}>Description</span>
             {draftDetail.description && /<\/?[a-z][\s\S]*>/i.test(draftDetail.description) ? (
@@ -1952,10 +2024,10 @@ export default function CatalogWorkspace() {
           </section>
 
           <div className={styles.listingFormActions}>
-            <button type="button" onClick={() => setDraftDetail(null)}>Close</button>
-            <button className={styles.primary} disabled={draftBusy}>{draftBusy ? "Saving..." : "Save & validate"}</button>
+            <button type="button" onClick={() => setDraftMode("view")}>Cancel</button>
+            <button className={styles.primary} disabled={draftBusy}>{draftBusy ? "Saving..." : "Save changes"}</button>
           </div>
-        </form>
+        </form>}
       </section>
     </div>}
   </>;
