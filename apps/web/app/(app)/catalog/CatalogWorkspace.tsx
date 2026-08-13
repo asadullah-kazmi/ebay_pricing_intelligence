@@ -358,6 +358,7 @@ export default function CatalogWorkspace() {
   const [activeSavedViewId, setActiveSavedViewId] = useState("");
   const [bulkEditorOpen, setBulkEditorOpen] = useState(false);
   const [bulkPoliciesOpen, setBulkPoliciesOpen] = useState(false);
+  const [readinessOpen, setReadinessOpen] = useState(false);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [detailMode, setDetailMode] = useState<"view" | "edit">("view");
 
@@ -378,7 +379,7 @@ export default function CatalogWorkspace() {
 
   useEffect(() => {
     if (authStatus !== "ready" || demo) return;
-    request("/api/listing-drafts?limit=25")
+    request("/api/listing-drafts?limit=100")
       .then((value) => setDrafts(value as ListingDraft[]))
       .catch(() => undefined);
   }, [authStatus, demo, request]);
@@ -951,7 +952,7 @@ export default function CatalogWorkspace() {
         headers: { "Idempotency-Key": crypto.randomUUID() },
         body: JSON.stringify({ partIds: ids, marketplace: pricingMarketplace }),
       }) as ListingDraft[];
-      setDrafts((current) => [...created, ...current.filter((draft) => !created.some(({ id }) => id === draft.id))].slice(0, 25));
+      setDrafts((current) => [...created, ...current.filter((draft) => !created.some(({ id }) => id === draft.id))].slice(0, 100));
       if (!partIds) setSelected(new Set());
       setNotice(`${created.length} listing draft${created.length === 1 ? "" : "s"} prepared with the HTML description template. Open a draft to review, then resolve readiness blockers before publishing.`);
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to create listing drafts"); }
@@ -1286,6 +1287,8 @@ export default function CatalogWorkspace() {
   if (authStatus !== "ready") return null;
 
   const allPageSelected = catalog.parts.length > 0 && catalog.parts.every(({ id }) => selected.has(id));
+  const readyDraftCount = drafts.filter(({ status: draftStatus }) => draftStatus === "READY").length;
+  const blockedDraftCount = drafts.filter(({ status: draftStatus }) => draftStatus === "BLOCKED").length;
 
   return <>
     <section className={styles.workspace}>
@@ -1295,6 +1298,12 @@ export default function CatalogWorkspace() {
           <p>Search, review, and manage parts across marketplaces.</p>
         </div>
         <div className={styles.topActions}>
+          {drafts.length > 0 && <button type="button" className={styles.readinessTag} onClick={() => setReadinessOpen(true)} aria-haspopup="dialog" aria-expanded={readinessOpen}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>
+            <span>Publication readiness</span>
+            <b>{readyDraftCount} ready</b>
+            {blockedDraftCount > 0 && <i>{blockedDraftCount} blocked</i>}
+          </button>}
           <button type="button" className={styles.iconBtn} onClick={() => void loadCatalog()} aria-label="Refresh catalog" title="Refresh">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
           </button>
@@ -1339,49 +1348,6 @@ export default function CatalogWorkspace() {
 
       </section>}
 
-      {drafts.length > 0 && (
-        <section id="listing-drafts" className={styles.draftMiniBanner}>
-          <div className={styles.draftMiniLeft}>
-            <div className={styles.draftMiniBadge}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.2">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-                <line x1="16" y1="13" x2="8" y2="13" />
-                <line x1="16" y1="17" x2="8" y2="17" />
-              </svg>
-              <span>PUBLICATION READINESS</span>
-            </div>
-            <span className={styles.draftSummaryCount}>
-              {drafts.filter(({ status: s }) => s === "READY").length} ready · {drafts.filter(({ status: s }) => s === "BLOCKED").length} blocked
-            </span>
-          </div>
-
-          <div className={styles.draftMiniList}>
-            {drafts.slice(0, 3).map((draft) => {
-              const blockers = (draft.validationIssues ?? []).filter(({ severity }) => severity === "BLOCKER");
-              return (
-                <div key={draft.id} className={styles.draftMiniChip}>
-                  <span className={`${styles.jobStatus} ${draft.status === "READY" ? styles.job_completed : styles.job_failed}`}>
-                    {humanStatus(draft.status)}
-                  </span>
-                  <span className={styles.draftMiniTitle} title={draft.title}>
-                    {draft.title}
-                  </span>
-                  {blockers.length > 0 && (
-                    <span className={styles.draftMiniBlocker}>
-                      {blockers.length} blocker{blockers.length === 1 ? "" : "s"}
-                    </span>
-                  )}
-                  {draft.price != null && <strong className={styles.draftMiniPrice}>{money(draft.price, draft.currency)}</strong>}
-                  <button type="button" className={styles.draftMiniBtn} onClick={() => void openDraft(draft.id)}>
-                    Edit &amp; review
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
       <section className={styles.catalogPanel}>
         <div className={styles.toolbar}>
           <label className={styles.searchBox}>
@@ -1608,6 +1574,37 @@ export default function CatalogWorkspace() {
       </section>
     </section>
 
+    {readinessOpen && <div className={styles.modalBackdrop} role="presentation" onClick={(event) => { if (event.target === event.currentTarget) setReadinessOpen(false); }}>
+      <section className={`${styles.drawer} ${styles.readinessModal}`} role="dialog" aria-modal="true" aria-labelledby="readiness-title">
+        <header className={styles.readinessHeader}>
+          <div><span className={styles.eyebrow}>PUBLICATION READINESS</span><h2 id="readiness-title">Listing drafts</h2><p>Review readiness issues before publishing listings to eBay.</p></div>
+          <button type="button" className={styles.iconClose} aria-label="Close publication readiness" onClick={() => setReadinessOpen(false)}>×</button>
+        </header>
+        <div className={styles.readinessStats}>
+          <div><span>Total drafts</span><b>{drafts.length}</b></div>
+          <div className={styles.readinessReadyStat}><span>Ready</span><b>{readyDraftCount}</b></div>
+          <div className={styles.readinessBlockedStat}><span>Blocked</span><b>{blockedDraftCount}</b></div>
+        </div>
+        <div className={styles.readinessList}>
+          {drafts.map((draft) => {
+            const blockerCount = draft.validationIssues?.filter(({ severity }) => severity === "BLOCKER").length ?? 0;
+            const warningCount = draft.validationIssues?.filter(({ severity }) => severity === "WARNING").length ?? 0;
+            return <article key={draft.id} className={styles.readinessRow}>
+              <div className={styles.readinessRowMain}>
+                <span className={`${styles.readinessStatus} ${draft.status === "READY" ? styles.readinessStatusReady : draft.status === "BLOCKED" ? styles.readinessStatusBlocked : styles.readinessStatusDraft}`}>{humanStatus(draft.status)}</span>
+                <div><h3>{draft.title || draft.part.partName || draft.part.primaryPartNumber}</h3><p>{draft.part.sku} · {draft.marketplace.replace("EBAY_", "eBay ")} · Updated {new Date(draft.updatedAt).toLocaleDateString()}</p></div>
+              </div>
+              <div className={styles.readinessRowMeta}>
+                {blockerCount > 0 && <span className={styles.readinessBlockers}>{blockerCount} blocker{blockerCount === 1 ? "" : "s"}</span>}
+                {warningCount > 0 && <span className={styles.readinessWarnings}>{warningCount} warning{warningCount === 1 ? "" : "s"}</span>}
+                <b>{draft.price == null ? "Price not set" : money(draft.price, draft.currency)}</b>
+                <button type="button" onClick={() => { setReadinessOpen(false); void openDraft(draft.id); }}>Edit &amp; review</button>
+              </div>
+            </article>;
+          })}
+        </div>
+      </section>
+    </div>}
     {bulkEditorOpen && <div className={styles.modalBackdrop} role="presentation"><section className={styles.drawer} role="dialog" aria-modal="true" aria-labelledby="bulk-edit-title"><header><div><span className={styles.eyebrow}>ATOMIC BULK EDIT</span><h2 id="bulk-edit-title">Edit {selected.size} catalog parts</h2></div><button aria-label="Close bulk editor" onClick={() => setBulkEditorOpen(false)}>×</button></header><form onSubmit={bulkEditSelected}><div className={styles.formGrid}>
       <label><span>Status</span><select name="status"><option value="">No change</option>{statuses.map((value) => <option key={value} value={value}>{humanStatus(value)}</option>)}</select></label>
       <label><span>Condition</span><select name="condition"><option value="">No change</option><option value="NEW">New</option><option value="USED">Used</option></select></label>
