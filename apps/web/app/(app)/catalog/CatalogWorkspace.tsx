@@ -116,10 +116,10 @@ function stockStatus(quantity: number) {
 
 function ebayStatusLabel(part: CatalogPartDetail) {
   const draft = part.listingDrafts?.[0];
-  if (draft?.status === "READY") return { label: "Ready to Publish", tone: "good" as const };
-  if (draft?.status === "BLOCKED") return { label: "Needs Fixes", tone: "warn" as const };
+  if (draft?.status === "READY") return { label: "Draft ready", tone: "good" as const };
+  if (draft?.status === "BLOCKED") return { label: "Draft needs fixes", tone: "warn" as const };
   if (part.status === "NEEDS_IMAGES") return { label: "Need Images", tone: "warn" as const };
-  if (part.status === "READY_FOR_ENRICHMENT") return { label: "Ready to Publish", tone: "good" as const };
+  if (part.status === "READY_FOR_ENRICHMENT") return { label: "Ready for review", tone: "good" as const };
   if (part.status === "ARCHIVED") return { label: "Archived", tone: "muted" as const };
   return { label: humanStatus(part.status), tone: "muted" as const };
 }
@@ -1503,7 +1503,7 @@ export default function CatalogWorkspace() {
                   const stockLabel = qty === 0 ? "Out of stock" : qty <= 5 ? "Low stock" : "In stock";
                   const stockTone = qty === 0 ? styles.stockOut : qty <= 5 ? styles.stockLow : styles.stockIn;
                   const needsImages = part.status === "NEEDS_IMAGES" || part._count.media === 0;
-                  const published = part.status === "IMPORTED";
+                  const catalogDraft = Boolean(part.listingDrafts?.length);
                   const isHighlighted = highlightedPartId === part.id;
                   return (
                     <tr key={part.id} data-part-id={part.id} className={isHighlighted ? styles.highlightedRow : undefined}>
@@ -1545,11 +1545,11 @@ export default function CatalogWorkspace() {
                       <td>
                         {needsImages ? (
                           <span className={`${styles.statusChip} ${styles.needs_images}`}>Need images</span>
-                        ) : published ? (
-                          <span className={`${styles.statusChip} ${styles.imported}`}>Published</span>
+                        ) : catalogDraft ? (
+                          <span className={`${styles.statusChip} ${styles.imported}`}>Catalog draft</span>
                         ) : canPublishCatalog ? (
                           <button type="button" className={styles.publishBtn} disabled={draftBusy} onClick={() => void createDrafts([part.id])}>
-                            Publish
+                            Create draft
                           </button>
                         ) : <span className={styles.emptyValue}>Ready</span>}
                       </td>

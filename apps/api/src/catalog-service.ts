@@ -129,6 +129,11 @@ const catalogCardSelect = {
     take: 1,
     select: { mediaAsset: { select: { id: true } } },
   },
+  listingDrafts: {
+    orderBy: { updatedAt: "desc" as const },
+    take: 1,
+    select: { id: true, status: true },
+  },
   _count: { select: { media: true } },
 } satisfies Prisma.PartSelect;
 

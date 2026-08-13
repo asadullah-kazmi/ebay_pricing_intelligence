@@ -24,6 +24,7 @@
     "db:validate": "prisma validate --schema apps/api/prisma/schema.prisma",
     "ebay:check": "npm run ebay:check -w @price-intel/api",
     "ebay:catalog:check": "tsx apps/api/src/scripts/check-ebay-catalog.ts",
+    "ebay:epid:check": "tsx apps/api/src/scripts/check-ebay-epid.ts",
     "smoke:production": "npm run smoke:production -w @price-intel/api",
     "db:migrate": "npm run db:migrate -w @price-intel/api"
   },

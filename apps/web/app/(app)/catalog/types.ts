@@ -61,6 +61,7 @@ export interface CatalogPartCard {
     completedAt: string | null;
     fitmentJob: { marketplace: string };
   }>;
+  listingDrafts?: Array<{ id: string; status: string }>;
   _count: { media: number };
 }
 
@@ -80,7 +81,7 @@ export interface CatalogSavedView {
   updatedAt: string;
 }
 
-export interface CatalogPartDetail extends Omit<CatalogPartCard, "media" | "inventoryItem"> {
+export interface CatalogPartDetail extends Omit<CatalogPartCard, "media" | "inventoryItem" | "listingDrafts"> {
   description: string | null;
   donorMileage: number | null;
   donorColor: string | null;

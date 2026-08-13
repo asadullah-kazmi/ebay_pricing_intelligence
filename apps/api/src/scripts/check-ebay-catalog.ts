@@ -6,10 +6,14 @@ import { getEbaySellerAccessToken } from "../ebay-seller-oauth.js";
 const SELL_INVENTORY_SCOPE = "https://api.ebay.com/oauth/api_scope/sell.inventory";
 
 interface CliOptions {
-  mpn: string;
+  mpn?: string;
+  brand?: string;
+  query?: string;
+  categoryId?: string;
   epid?: string;
   marketplace: string;
   organization?: string;
+  limit: number;
 }
 
 interface EbayErrorBody {
@@ -28,20 +32,75 @@ interface CatalogSearchBody extends EbayErrorBody {
     epid?: string;
     title?: string;
     brand?: string;
-    mpns?: string[];
+    mpn?: string[];
   }>;
+}
+
+interface CatalogProductSummary {
+  epid?: string;
+  title?: string;
+  brand?: string;
+  mpn?: string[];
+}
+
+interface CatalogSearchResult {
+  label: string;
+  status: number;
+  products: CatalogProductSummary[];
+}
+
+function normalizeIdentifier(value: string): string {
+  return value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+function normalizeBrand(value: string): string {
+  return value.trim().toLocaleLowerCase().replace(/\s+/g, " ");
+}
+
+function buildMpnVariants(mpn: string): string[] {
+  const original = mpn.trim().toUpperCase().replace(/\s+/g, " ");
+  const compact = normalizeIdentifier(original);
+  const existingParts = original.split(/[^A-Z0-9]+/).filter(Boolean);
+  const variants = new Set<string>([original, compact]);
+
+  if (existingParts.length > 1) {
+    variants.add(existingParts.join(" "));
+    variants.add(existingParts.join("-"));
+  }
+
+  // Common OE formats (including VAG/Audi) use 3-3-rest or 3-3-3-suffix
+  // grouping. These are lookup alternatives only; no identifier characters are dropped.
+  if (compact.length > 6) {
+    const groups = [compact.slice(0, 3), compact.slice(3, 6), compact.slice(6)];
+    variants.add(groups.join(" "));
+    variants.add(groups.join("-"));
+  }
+  if (compact.length > 9) {
+    const groups = [compact.slice(0, 3), compact.slice(3, 6), compact.slice(6, 9), compact.slice(9)];
+    variants.add(groups.join(" "));
+    variants.add(groups.join("-"));
+  }
+
+  return [...variants].filter(Boolean);
 }
 
 function usage(): never {
   console.log(`Usage:
   npm run ebay:catalog:check -- <part-number> [options]
-  npm run ebay:catalog:check -- --mpn=<part-number> [options]
+  npm run ebay:catalog:check -- <part-number> --brand <brand> [options]
+  npm run ebay:catalog:check -- mpn:<part-number> [options]
+  npm run ebay:catalog:check -- epid:<eBay-product-id> [options]
+  npm run ebay:catalog:check -- query:<keywords> [category:<category-id>]
 
 Options:
-  --mpn <value>            Manufacturer part number to search (required)
-  --epid <value>           Also test getProduct with a known ePID
+  --mpn <value>            Manufacturer part number to search
+  --brand <value>          Expected product brand; enables brand-aware searches and validation
+  --epid <value>           Test getProduct with a known ePID
+  query:<value>            Search Catalog by keywords to discover products
+  category:<value>         Restrict a keyword/MPN search to an eBay category
   --marketplace <value>    Marketplace ID (default: EBAY_US)
   --organization <value>   Organization ID or exact organization name
+  --limit <value>          Search result limit from 1 to 200 (default: 5)
   --help                    Show this help
 
 This diagnostic deliberately uses only the connected seller's authorization-code
@@ -56,15 +115,32 @@ function readValue(args: string[], index: number, flag: string): string {
 }
 
 function parseArgs(args: string[]): CliOptions {
-  const options: CliOptions = { mpn: "", marketplace: "EBAY_US" };
+  const options: CliOptions = { marketplace: "EBAY_US", limit: 5 };
 
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (argument === "--help" || argument === "-h") usage();
-    if (argument?.startsWith("--mpn=")) {
+    if (argument?.toLowerCase().startsWith("mpn:")) {
+      options.mpn = argument.slice("mpn:".length).trim();
+    } else if (argument?.toLowerCase().startsWith("epid:")) {
+      options.epid = argument.slice("epid:".length).trim();
+    } else if (argument?.toLowerCase().startsWith("query:")) {
+      options.query = argument.slice("query:".length).trim();
+    } else if (argument?.toLowerCase().startsWith("category:")) {
+      options.categoryId = argument.slice("category:".length).trim();
+    } else if (argument?.startsWith("--mpn=")) {
       options.mpn = argument.slice("--mpn=".length).trim();
+    } else if (argument?.toLowerCase().startsWith("brand:")) {
+      options.brand = argument.slice("brand:".length).trim();
+    } else if (argument?.startsWith("--brand=")) {
+      options.brand = argument.slice("--brand=".length).trim();
+    } else if (argument?.startsWith("--epid=")) {
+      options.epid = argument.slice("--epid=".length).trim();
     } else if (argument === "--mpn") {
       options.mpn = readValue(args, index, argument);
+      index += 1;
+    } else if (argument === "--brand") {
+      options.brand = readValue(args, index, argument);
       index += 1;
     } else if (argument === "--epid") {
       options.epid = readValue(args, index, argument);
@@ -75,6 +151,9 @@ function parseArgs(args: string[]): CliOptions {
     } else if (argument === "--organization") {
       options.organization = readValue(args, index, argument);
       index += 1;
+    } else if (argument === "--limit") {
+      options.limit = Number(readValue(args, index, argument));
+      index += 1;
     } else if (argument?.startsWith("--")) {
       throw new Error(`Unknown option: ${argument}`);
     } else if (argument && !options.mpn) {
@@ -84,17 +163,36 @@ function parseArgs(args: string[]): CliOptions {
     }
   }
 
-  if (!options.mpn) throw new Error("Missing required option: --mpn <part-number>");
+  if (!options.mpn && !options.query && !options.epid) {
+    throw new Error("Provide an MPN directly, mpn:<part-number>, query:<keywords>, or epid:<eBay-product-id>");
+  }
+  if (options.mpn && options.query) {
+    throw new Error("Use either an MPN or a keyword query, not both");
+  }
+  if (options.brand && !options.mpn) {
+    throw new Error("--brand can only be used with an MPN search");
+  }
+  if (options.categoryId && !/^\d+$/.test(options.categoryId)) {
+    throw new Error("category:<category-id> must contain digits only");
+  }
   if (!/^EBAY_[A-Z]{2,5}$/.test(options.marketplace)) {
     throw new Error("--marketplace must be an eBay marketplace ID such as EBAY_US");
+  }
+  if (!Number.isInteger(options.limit) || options.limit < 1 || options.limit > 200) {
+    throw new Error("--limit must be an integer from 1 to 200");
   }
   return options;
 }
 
 function responseIdentifiers(response: Response) {
   return {
-    requestId: response.headers.get("x-ebay-c-request-id") ?? undefined,
+    rlogId: response.headers.get("rlogid") ?? undefined,
+    requestId:
+      response.headers.get("x-ebay-request-id")
+      ?? response.headers.get("x-ebay-c-request-id")
+      ?? undefined,
     correlationId: response.headers.get("x-ebay-c-correlation-id") ?? undefined,
+    responseDateUtc: response.headers.get("date") ?? undefined,
   };
 }
 
@@ -134,14 +232,27 @@ function printErrors(body: EbayErrorBody | undefined) {
 async function searchCatalog(input: {
   apiBase: string;
   token: string;
-  mpn: string;
+  label?: string;
+  mpn?: string;
+  query?: string;
+  categoryId?: string;
+  brandAspect?: string;
+  expectedBrand?: string;
+  expectedMpn?: string;
   marketplace: string;
-}) {
+  limit?: number;
+}): Promise<CatalogSearchResult> {
   const url = new URL(`${input.apiBase}/commerce/catalog/v1_beta/product_summary/search`);
-  url.searchParams.set("mpn", input.mpn);
-  url.searchParams.set("limit", "5");
+  if (input.mpn) url.searchParams.set("mpn", input.mpn);
+  if (input.query) url.searchParams.set("q", input.query);
+  if (input.categoryId) url.searchParams.set("category_ids", input.categoryId);
+  if (input.categoryId && input.brandAspect) {
+    url.searchParams.set("aspect_filter", `categoryId:${input.categoryId},Brand:{${input.brandAspect}}`);
+  }
+  url.searchParams.set("limit", String(input.limit ?? 5));
 
-  console.log("\nCatalog Product Summary Search");
+  const label = input.label ?? "Catalog Product Summary Search";
+  console.log(`\n${label}`);
   console.log({ endpoint: url.toString(), marketplace: input.marketplace, tokenType: "USER" });
 
   const response = await fetch(url, {
@@ -162,17 +273,30 @@ async function searchCatalog(input: {
     const products = body?.productSummaries ?? [];
     console.log({ reportedTotal: body?.total, returnedProducts: products.length });
     products.forEach((product, index) => {
+      const exactMpn = input.expectedMpn
+        ? product.mpn?.some((value) => normalizeIdentifier(value) === normalizeIdentifier(input.expectedMpn!)) ?? false
+        : undefined;
+      const exactBrand = input.expectedBrand
+        ? normalizeBrand(product.brand ?? "") === normalizeBrand(input.expectedBrand)
+        : undefined;
       console.log({
         result: index + 1,
         epid: product.epid,
         title: product.title,
         brand: product.brand,
-        mpns: product.mpns,
+        mpn: product.mpn,
+        exactMpn,
+        exactBrand,
+        exactBrandAndMpn: exactMpn === undefined || exactBrand === undefined ? undefined : exactMpn && exactBrand,
       });
     });
   }
 
-  return response.status;
+  return {
+    label,
+    status: response.status,
+    products: body?.productSummaries ?? [],
+  };
 }
 
 async function getProduct(input: {
@@ -194,13 +318,27 @@ async function getProduct(input: {
       "X-EBAY-C-MARKETPLACE-ID": input.marketplace,
     },
   });
-  const body = await readBody<EbayErrorBody & { epid?: string; title?: string; brand?: string; mpns?: string[] }>(response);
+  const body = await readBody<EbayErrorBody & {
+    epid?: string;
+    title?: string;
+    brand?: string;
+    mpn?: string[];
+    primaryCategoryId?: string;
+    otherApplicableCategoryIds?: string[];
+  }>(response);
 
   console.log({ httpStatus: response.status, ...responseIdentifiers(response) });
   console.log(explainStatus(response.status));
   printErrors(body);
   if (response.ok && body) {
-    console.log({ epid: body.epid, title: body.title, brand: body.brand, mpns: body.mpns });
+    console.log({
+      epid: body.epid,
+      title: body.title,
+      brand: body.brand,
+      mpn: body.mpn,
+      primaryCategoryId: body.primaryCategoryId,
+      otherApplicableCategoryIds: body.otherApplicableCategoryIds,
+    });
   }
   return response.status;
 }
@@ -262,12 +400,89 @@ async function main() {
   }
 
   const token = await getEbaySellerAccessToken(connection.organizationId);
-  const statuses = [await searchCatalog({
-    apiBase,
-    token,
-    mpn: options.mpn,
-    marketplace: options.marketplace,
-  })];
+  const statuses: number[] = [];
+  const searchResults: CatalogSearchResult[] = [];
+  if (options.mpn) {
+    const variants = buildMpnVariants(options.mpn);
+    console.log("\nMPN diagnostic plan");
+    console.log({
+      suppliedMpn: options.mpn,
+      expectedBrand: options.brand,
+      normalizedIdentity: normalizeIdentifier(options.mpn),
+      variants,
+      note: options.brand
+        ? "Catalog has no standalone brand+mpn request parameter. Exact MPN searches are followed by brand+MPN keyword searches, and every response is validated by exact Brand/MPN."
+        : "Add --brand <brand> to enable brand-aware keyword searches and exact Brand/MPN validation.",
+    });
+
+    for (const variant of variants) {
+      const result = await searchCatalog({
+        apiBase,
+        token,
+        label: `Exact MPN search: ${variant}`,
+        mpn: variant,
+        categoryId: options.categoryId,
+        expectedBrand: options.brand,
+        expectedMpn: options.mpn,
+        marketplace: options.marketplace,
+        limit: options.limit,
+      });
+      searchResults.push(result);
+      statuses.push(result.status);
+    }
+
+    if (options.brand) {
+      if (options.categoryId) {
+        const result = await searchCatalog({
+          apiBase,
+          token,
+          label: `Category + Brand aspect scan: ${options.categoryId} / ${options.brand}`,
+          categoryId: options.categoryId,
+          brandAspect: options.brand,
+          expectedBrand: options.brand,
+          expectedMpn: options.mpn,
+          marketplace: options.marketplace,
+          limit: options.limit,
+        });
+        searchResults.push(result);
+        statuses.push(result.status);
+      }
+      for (const variant of variants) {
+        const brandQueries = [
+          { label: "comma keywords", value: `${options.brand},${variant}` },
+          { label: "brand-first phrase", value: `${options.brand} ${variant}` },
+          { label: "mpn-first phrase", value: `${variant} ${options.brand}` },
+        ];
+        for (const brandQuery of brandQueries) {
+          const result = await searchCatalog({
+            apiBase,
+            token,
+            label: `Brand + MPN ${brandQuery.label}: ${options.brand} / ${variant}`,
+            query: brandQuery.value,
+            categoryId: options.categoryId,
+            brandAspect: options.categoryId ? options.brand : undefined,
+            expectedBrand: options.brand,
+            expectedMpn: options.mpn,
+            marketplace: options.marketplace,
+            limit: options.limit,
+          });
+          searchResults.push(result);
+          statuses.push(result.status);
+        }
+      }
+    }
+  } else if (options.query) {
+    const result = await searchCatalog({
+      apiBase,
+      token,
+      query: options.query,
+      categoryId: options.categoryId,
+      marketplace: options.marketplace,
+      limit: options.limit,
+    });
+    searchResults.push(result);
+    statuses.push(result.status);
+  }
 
   if (options.epid) {
     statuses.push(await getProduct({
@@ -279,9 +494,37 @@ async function main() {
   }
 
   console.log("\nDiagnostic conclusion");
+  if (options.mpn && options.brand) {
+    const exactCandidates = new Map<string, CatalogProductSummary>();
+    for (const result of searchResults) {
+      for (const product of result.products) {
+        const exactMpn = product.mpn?.some(
+          (value) => normalizeIdentifier(value) === normalizeIdentifier(options.mpn!),
+        ) ?? false;
+        const exactBrand = normalizeBrand(product.brand ?? "") === normalizeBrand(options.brand);
+        if (exactMpn && exactBrand) {
+          exactCandidates.set(product.epid ?? `${product.brand}:${product.mpn?.join("|")}`, product);
+        }
+      }
+    }
+    console.log({
+      exactBrandAndMpnCandidates: exactCandidates.size,
+      candidates: [...exactCandidates.values()].map((product) => ({
+        epid: product.epid,
+        title: product.title,
+        brand: product.brand,
+        mpn: product.mpn,
+      })),
+    });
+    console.log(exactCandidates.size > 0
+      ? "EXACT PRODUCT MATCH: at least one Catalog candidate matches both the normalized MPN and expected brand."
+      : "NO EXACT PRODUCT MATCH: 200 keyword responses, if any, are not a match unless both normalized MPN and brand agree.");
+  }
   if (statuses.some((status) => status === 401 || status === 403)) {
     console.log("FAILED AUTHORIZATION: retain the status, error body, request ID, and correlation ID for eBay Technical Support.");
     process.exitCode = 2;
+  } else if (statuses.every((status) => status === 200)) {
+    console.log("Catalog authorization is working and every requested Catalog lookup returned product data.");
   } else if (statuses.every((status) => status === 200 || status === 204)) {
     console.log("Catalog authorization is working. A 204 result means no Catalog match, not a permissions failure.");
   } else {
