@@ -316,11 +316,22 @@ export async function getCatalogPart(organizationId: string, partId: string) {
           id: true,
           marketplace: true,
           status: true,
+          version: true,
           title: true,
+          description: true,
           categoryId: true,
+          paymentPolicyId: true,
+          returnPolicyId: true,
           shippingPolicyId: true,
           price: true,
           currency: true,
+          quantity: true,
+          aspects: true,
+          teams: {
+            select: {
+              listingTeam: { select: { id: true, name: true, color: true } },
+            },
+          },
           updatedAt: true,
         },
       },
@@ -363,9 +374,36 @@ export async function getCatalogPart(organizationId: string, partId: string) {
     await prisma.part.update({ where: { id: part.id }, data: { description } });
   }
 
+  const draft = part.listingDrafts[0];
+  const policyIds = draft
+    ? [draft.paymentPolicyId, draft.returnPolicyId, draft.shippingPolicyId].filter((value): value is string => Boolean(value))
+    : [];
+  const [policyResources, latestCategory] = await Promise.all([
+    policyIds.length && draft
+      ? prisma.ebaySellerResource.findMany({
+          where: { organizationId, marketplace: draft.marketplace, remoteId: { in: policyIds } },
+          select: { remoteId: true, name: true },
+        })
+      : Promise.resolve([]),
+    prisma.fitmentJobItem.findFirst({
+      where: { organizationId, partId: part.id, categoryId: { not: null } },
+      orderBy: { completedAt: "desc" },
+      select: { categoryId: true, categoryName: true },
+    }),
+  ]);
+  const policyNames = Object.fromEntries(policyResources.map((resource) => [resource.remoteId, resource.name]));
+
   return {
     ...part,
     description,
+    categoryName: latestCategory?.categoryName ?? null,
+    listingDrafts: part.listingDrafts.map((listingDraft) => ({
+      ...listingDraft,
+      teams: listingDraft.teams.map(({ listingTeam }) => listingTeam),
+      paymentPolicyName: listingDraft.paymentPolicyId ? policyNames[listingDraft.paymentPolicyId] ?? null : null,
+      returnPolicyName: listingDraft.returnPolicyId ? policyNames[listingDraft.returnPolicyId] ?? null : null,
+      shippingPolicyName: listingDraft.shippingPolicyId ? policyNames[listingDraft.shippingPolicyId] ?? null : null,
+    })),
     pricingJobItems: [],
     fitmentJobItems: [],
   };

@@ -1817,8 +1817,10 @@
 }
 
 .inventoryModal {
-  width: min(640px, 96vw);
-  max-height: 88vh;
+  width: min(860px, calc(100vw - 32px));
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 20px;
@@ -1831,7 +1833,7 @@
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  padding: 20px 24px 16px;
+  padding: 16px 20px;
   border-bottom: 1px solid #f1f5f9;
   position: sticky;
   top: 0;
@@ -1859,7 +1861,7 @@
 
 .inventoryHeader h2 {
   margin: 0 !important;
-  font: 750 20px/1.2 "Plus Jakarta Sans", sans-serif !important;
+  font: 750 18px/1.2 "Plus Jakarta Sans", sans-serif !important;
   letter-spacing: -0.3px !important;
   color: #0c274d;
 }
@@ -1919,15 +1921,16 @@
 }
 
 .inventoryBody {
-  padding: 20px 24px 28px;
+  padding: 18px 20px 22px;
   display: grid;
-  gap: 16px;
+  gap: 14px;
+  overflow-y: auto;
 }
 
 .inventoryHero {
   display: grid;
-  grid-template-columns: 88px minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: 80px minmax(0, 1fr);
+  gap: 14px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -1936,9 +1939,9 @@
 
 .inventoryHeroMedia {
   position: relative;
-  width: 88px;
-  height: 88px;
-  border-radius: 14px;
+  width: 80px;
+  height: 80px;
+  border-radius: 12px;
   overflow: hidden;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
@@ -2016,7 +2019,7 @@
 
 .inventoryHeroCopy h3 {
   margin: 2px 0 0;
-  font: 750 17px/1.25 "Plus Jakarta Sans", sans-serif;
+  font: 750 16px/1.3 "Plus Jakarta Sans", sans-serif;
   letter-spacing: -0.3px;
   color: #0c274d;
   text-transform: none;
@@ -2076,9 +2079,9 @@
 
 .statStrip {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  padding: 14px 18px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px 16px;
   background: #f8fafc;
   border: 1px solid #f1f5f9;
   border-radius: 14px;
@@ -2086,10 +2089,18 @@
 }
 
 .statStrip article {
-  padding: 0;
+  padding: 0 14px;
   border-radius: 0;
   background: transparent;
   border: 0;
+}
+
+.statStrip article:first-child {
+  padding-left: 0;
+}
+
+.statStrip article + article {
+  border-left: 1px solid #e2e8f0;
 }
 
 .statStrip span {
@@ -2105,7 +2116,7 @@
   display: block;
   margin-top: 4px;
   color: #0c274d;
-  font-size: 15.5px;
+  font-size: 14px;
   font-weight: 750;
   letter-spacing: -0.3px;
   overflow: hidden;
@@ -2120,9 +2131,9 @@
 }
 
 .inventoryPanel {
-  padding: 16px 18px;
-  border: 1px solid #f1f5f9;
-  border-radius: 14px;
+  padding: 14px 16px;
+  border: 1px solid #e8edf4;
+  border-radius: 12px;
   background: #ffffff;
 }
 
@@ -2137,16 +2148,16 @@
 
 .inventoryPanel > header h4 {
   margin: 0;
-  font: 750 12px/1.2 "Plus Jakarta Sans", sans-serif;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
+  font: 750 13px/1.2 "Plus Jakarta Sans", sans-serif;
+  letter-spacing: -0.1px;
+  text-transform: none;
   color: #0c274d;
 }
 
 .inventoryPanel > header p {
   margin: 3px 0 0;
   color: #64748b;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 500;
   text-transform: none;
   letter-spacing: 0;
@@ -2654,11 +2665,11 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 10px;
+  padding: 5px 9px;
   border-radius: 8px;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 500;
   color: #0f172a;
 }
@@ -2703,6 +2714,77 @@
   box-shadow: none;
   border-radius: 0;
   font-weight: 400;
+}
+
+.compactEditForm {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  padding: 18px 20px 0 !important;
+}
+
+.editIntro {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #edf1f6;
+}
+
+.editIntro h3 {
+  margin: 0;
+  color: #0c274d;
+  font: 750 15px/1.35 "Plus Jakarta Sans", sans-serif;
+}
+
+.editIntro > span {
+  flex: none;
+  padding: 5px 8px;
+  border: 1px solid #dbe3ee;
+  border-radius: 7px;
+  background: #f8fafc;
+  color: #475569;
+  font: 700 10.5px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.compactEditForm .formGrid {
+  gap: 12px 14px;
+}
+
+.compactEditForm label {
+  display: grid;
+  gap: 6px;
+}
+
+.compactEditForm label > span {
+  color: #526680;
+  font-size: 10.5px;
+  font-weight: 750;
+  letter-spacing: 0.35px;
+  text-transform: uppercase;
+}
+
+.compactEditForm input,
+.compactEditForm select,
+.compactEditForm textarea {
+  min-height: 40px;
+  border: 1px solid #d8e1ec;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #102544;
+  font: 500 12.5px/1.4 "Plus Jakarta Sans", sans-serif;
+}
+
+.compactEditForm textarea {
+  min-height: 76px;
+}
+
+.compactEditForm .formActions {
+  margin: 0 -20px;
+  padding: 12px 20px;
 }
 
 .formGrid {
@@ -2889,7 +2971,7 @@
   }
 
   .statStrip {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .metaList > div {
@@ -2934,18 +3016,41 @@
     height: 100vh;
     border-radius: 0;
   }
+
+  .inventoryHeader,
+  .inventoryBody {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .statStrip {
+    gap: 4px;
+    padding: 11px 12px;
+  }
+
+  .statStrip article {
+    padding: 0 8px;
+  }
+
+  .statStrip b {
+    font-size: 12.5px;
+  }
+
+  .photoGridModal {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 /* Photo Cards 4-Column Grid inside Catalog Modals */
 .photoGridModal {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .modalPhotoCard {
   border: 1px solid #e2e8f0;
-  border-radius: 12px;
+  border-radius: 10px;
   overflow: hidden;
   background: #ffffff;
   box-shadow: 0 4px 12px rgba(15, 23, 42, 0.03);
@@ -2959,7 +3064,8 @@
 
 .modalImgWrap {
   width: 100%;
-  height: 125px;
+  aspect-ratio: 4 / 3;
+  height: auto;
   background: #f1f5f9;
   overflow: hidden;
 }
@@ -3002,7 +3108,7 @@
 }
 
 .noImagesBox {
-  padding: 30px 20px;
+  padding: 22px 16px;
   text-align: center;
   background: #f8fafc;
   border: 1px dashed #cbd5e1;
@@ -3023,6 +3129,380 @@
 .noImagesBox span {
   color: #64748b;
   font-size: 12.5px;
+}
+
+/* Catalog inventory detail — compact operational layout */
+.editingPill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 13px;
+  border-radius: 9px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.detailIcon {
+  width: 17px;
+  height: 17px;
+  color: #8fa4c0;
+  flex: none;
+}
+
+.detailMatrix {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 40px;
+  padding: 4px 0 12px;
+  border-bottom: 1px solid #e8edf4;
+}
+
+.detailDatum {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 11px;
+  align-items: start;
+  min-height: 64px;
+  padding: 12px 0;
+}
+
+.detailDatum > div {
+  min-width: 0;
+}
+
+.detailDatum span,
+.policyGrid span,
+.readonlyDatum > span {
+  display: block;
+  margin-bottom: 4px;
+  color: #6a7c96;
+  font-size: 11px;
+  font-weight: 550;
+}
+
+.detailDatum b,
+.policyGrid b,
+.readonlyDatum b {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: #17243a;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signalValue {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 7px;
+  margin: 0 !important;
+  color: #17243a !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+}
+
+.signalValue i,
+.readonlyDatum b i {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 7px;
+  border-radius: 50%;
+  vertical-align: 1px;
+}
+
+.signal_good { background: #10b981; }
+.signal_warn { background: #f59e0b; }
+.signal_bad { background: #ef4444; }
+.signal_muted { background: #94a3b8; }
+
+.teamTag {
+  display: inline-flex !important;
+  align-items: center;
+  width: fit-content;
+  gap: 6px;
+  margin: 0 !important;
+  padding: 3px 8px;
+  border: 1px solid #dbe3ee;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #35445d !important;
+  font-size: 10.5px !important;
+  font-weight: 650 !important;
+}
+
+.teamTag i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.detailSection {
+  padding: 2px 0 16px;
+  border-bottom: 1px solid #e8edf4;
+}
+
+.detailSection:last-child {
+  border-bottom: 0;
+}
+
+.detailSection > h4,
+.sectionHeading h4 {
+  margin: 0 0 10px;
+  color: #5e718c;
+  font-size: 10.5px;
+  font-weight: 750;
+  letter-spacing: .45px;
+  text-transform: uppercase;
+}
+
+.detailSection > h4 span,
+.sectionHeading h4 span {
+  color: #8da0b9;
+}
+
+.detailSection > p {
+  margin: 0;
+  color: #33445d;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.sectionHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.sectionHeading h4 {
+  margin: 0;
+}
+
+.sectionAction {
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  background: #fff;
+  color: #31527d;
+  padding: 6px 9px;
+  font: 650 10.5px/1 "Plus Jakarta Sans", sans-serif;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.sectionAction:hover {
+  border-color: #93b4e8;
+  color: #1557c0;
+}
+
+.policyGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.policyGrid > div {
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid #dfe6ef;
+  border-radius: 9px;
+  background: #fbfcfe;
+}
+
+.policyGrid span {
+  margin-bottom: 5px;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+}
+
+.policyGrid b {
+  font-size: 11px;
+}
+
+.compactImageGrid {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 3px;
+}
+
+.compactImage {
+  position: relative;
+  width: 82px;
+  height: 72px;
+  flex: 0 0 82px;
+  overflow: hidden;
+  border: 1px solid #dbe3ee;
+  border-radius: 9px;
+  background: #f4f7fb;
+}
+
+.compactImage > span {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding: 3px 5px;
+  background: rgba(37, 99, 235, .9);
+  color: #fff;
+  font-size: 8.5px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.compactImage > .thumb,
+.compactImage :global(img) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.compactDescription {
+  max-height: 230px;
+  overflow: auto;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+  background: #fbfcfe;
+  color: #33445d;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.compactDescription :global(*) {
+  max-width: 100% !important;
+  font-size: inherit !important;
+}
+
+.inventoryEditForm {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 22px 0 !important;
+}
+
+.editHero {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e8edf4;
+}
+
+.editHero .inventoryHeroMedia {
+  width: 72px;
+  height: 72px;
+}
+
+.editHero > div:last-child {
+  display: grid;
+  gap: 9px;
+}
+
+.inventoryEditForm label {
+  display: grid;
+  gap: 5px;
+}
+
+.inventoryEditForm label > span,
+.readonlyDatum > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #647892;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.inventoryEditForm input,
+.inventoryEditForm select,
+.inventoryEditForm textarea {
+  min-height: 38px;
+  border: 1px solid #d8e1ec;
+  border-radius: 8px;
+  background: #fff;
+  color: #18263c;
+  padding: 8px 11px;
+  font: 500 12px/1.4 "Plus Jakarta Sans", sans-serif;
+}
+
+.inventoryEditForm input:focus,
+.inventoryEditForm select:focus,
+.inventoryEditForm textarea:focus {
+  border-color: #5b8def;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, .1);
+  outline: none;
+}
+
+.inlineSku {
+  grid-template-columns: 34px minmax(0, 320px);
+  align-items: center;
+}
+
+.inlineSku span {
+  display: block !important;
+}
+
+.editDetailGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 36px;
+  padding: 18px 0;
+  border-bottom: 1px solid #e8edf4;
+}
+
+.readonlyDatum {
+  min-height: 56px;
+  padding: 2px 0;
+}
+
+.readonlyDatum b {
+  padding-top: 7px;
+}
+
+.htmlField textarea {
+  min-height: 180px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10.5px;
+}
+
+.inventoryEditForm .formActions {
+  margin: 0 -22px;
+  padding: 12px 22px;
+  background: rgba(255,255,255,.96);
+}
+
+@media (max-width: 680px) {
+  .detailMatrix,
+  .editDetailGrid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .policyGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .detailDatum {
+    min-height: 56px;
+  }
+
+  .editHero {
+    grid-template-columns: 58px minmax(0, 1fr);
+  }
+
+  .editHero .inventoryHeroMedia {
+    width: 58px;
+    height: 58px;
+  }
 }
 
 /* Minimal Executive Listing Draft Modal */

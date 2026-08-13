@@ -88,6 +88,7 @@ export interface CatalogPartDetail extends Omit<CatalogPartCard, "media" | "inve
   donorColor: string | null;
   placement: string | null;
   notes: string | null;
+  categoryName?: string | null;
   partNumbers: Array<{ id: string; type: string; value: string }>;
   inventoryItem: {
     quantity: number;
@@ -114,11 +115,21 @@ export interface CatalogPartDetail extends Omit<CatalogPartCard, "media" | "inve
     id: string;
     marketplace: string;
     status: string;
+    version: number;
     title: string;
+    description: string | null;
     categoryId: string | null;
+    paymentPolicyId: string | null;
+    paymentPolicyName: string | null;
+    returnPolicyId: string | null;
+    returnPolicyName: string | null;
     shippingPolicyId: string | null;
+    shippingPolicyName: string | null;
     price: string | number | null;
     currency: string;
+    quantity: number;
+    aspects: Record<string, string[]>;
+    teams: Array<{ id: string; name: string; color: string }>;
     updatedAt: string;
   }>;
 }
