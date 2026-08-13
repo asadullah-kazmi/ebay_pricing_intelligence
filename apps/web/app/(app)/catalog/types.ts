@@ -15,6 +15,12 @@ export interface EbayConnection {
   refreshTokenExpiresAt?: string | null;
   lastRefreshedAt?: string | null;
   lastError?: string | null;
+  isDefault?: boolean;
+  defaultMarketplace?: string;
+  defaultPaymentPolicyId?: string | null;
+  defaultReturnPolicyId?: string | null;
+  defaultShippingPolicyId?: string | null;
+  defaultMerchantLocationKey?: string | null;
   setup?: {
     configured: boolean;
     missing?: string[];
@@ -114,6 +120,8 @@ export interface CatalogPartDetail extends Omit<CatalogPartCard, "media" | "inve
   listingDrafts?: Array<{
     id: string;
     marketplace: string;
+    ebaySellerConnectionId?: string | null;
+    ebaySellerConnection?: { id: string; username: string | null; isDefault: boolean; status: string } | null;
     status: string;
     version: number;
     title: string;
@@ -303,6 +311,8 @@ export interface ListingDraft {
   id: string;
   partId: string;
   marketplace: string;
+  ebaySellerConnectionId?: string | null;
+  ebaySellerConnection?: { id: string; username: string | null; isDefault: boolean; status: string } | null;
   status: ListingDraftStatus;
   title: string;
   description: string | null;

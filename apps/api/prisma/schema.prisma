@@ -365,7 +365,7 @@ model Organization {
   fitmentCandidates           FitmentCandidate[]
   fitmentApplications         FitmentApplication[]
   fitmentApplicationRevisions FitmentApplicationRevision[]
-  ebaySellerConnection        EbaySellerConnection?
+  ebaySellerConnections       EbaySellerConnection[]
   ebayOAuthStates             EbayOAuthState[]
   idempotencyRecords          IdempotencyRecord[]
   outboxEvents                OutboxEvent[]
@@ -545,10 +545,16 @@ model MfaRecoveryCode {
 
 model EbaySellerConnection {
   id                      String               @id @default(cuid())
-  organizationId          String               @unique
+  organizationId          String
   connectedById           String
   environment             String
   status                  EbayConnectionStatus @default(ACTIVE)
+  isDefault               Boolean              @default(false)
+  defaultMarketplace      String               @default("EBAY_US")
+  defaultPaymentPolicyId  String?
+  defaultReturnPolicyId   String?
+  defaultShippingPolicyId String?
+  defaultMerchantLocationKey String?
   ebayUserId              String?
   username                String?
   accountType             String?
@@ -567,9 +573,13 @@ model EbaySellerConnection {
   disconnectedAt          DateTime?
   organization            Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   connectedBy             User                 @relation("EbayConnectionCreator", fields: [connectedById], references: [id], onDelete: Restrict)
+  sellerResources         EbaySellerResource[]
+  listingDrafts           ListingDraft[]
   createdAt               DateTime             @default(now())
   updatedAt               DateTime             @updatedAt
 
+  @@unique([organizationId, environment, ebayUserId])
+  @@index([organizationId, isDefault, status])
   @@index([status])
   @@index([ebayUserId])
 }
@@ -592,6 +602,7 @@ model EbayOAuthState {
 model EbaySellerResource {
   id             String                 @id @default(cuid())
   organizationId String
+  ebaySellerConnectionId String
   marketplace    String
   type           EbaySellerResourceType
   remoteId       String
@@ -600,11 +611,12 @@ model EbaySellerResource {
   payload        Json
   fetchedAt      DateTime               @default(now())
   organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ebaySellerConnection EbaySellerConnection @relation(fields: [ebaySellerConnectionId], references: [id], onDelete: Cascade)
   createdAt      DateTime               @default(now())
   updatedAt      DateTime               @updatedAt
 
-  @@unique([organizationId, marketplace, type, remoteId])
-  @@index([organizationId, marketplace, type])
+  @@unique([ebaySellerConnectionId, marketplace, type, remoteId])
+  @@index([organizationId, ebaySellerConnectionId, marketplace, type])
 }
 
 model EbayCategoryMetadata {
@@ -1289,6 +1301,7 @@ model ListingDraft {
   organizationId           String
   partId                   String
   marketplace              String
+  ebaySellerConnectionId   String?
   status                   ListingDraftStatus         @default(DRAFT)
   title                    String
   description              String?
@@ -1310,6 +1323,7 @@ model ListingDraft {
   createdById              String
   updatedById              String
   organization             Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ebaySellerConnection     EbaySellerConnection?       @relation(fields: [ebaySellerConnectionId], references: [id], onDelete: SetNull)
   part                     Part                       @relation(fields: [partId], references: [id], onDelete: Cascade)
   createdBy                User                       @relation("ListingDraftCreator", fields: [createdById], references: [id], onDelete: Restrict)
   updatedBy                User                       @relation("ListingDraftUpdater", fields: [updatedById], references: [id], onDelete: Restrict)
@@ -1327,6 +1341,7 @@ model ListingDraft {
   @@unique([partId, marketplace])
   @@index([organizationId, status, updatedAt])
   @@index([organizationId, marketplace])
+  @@index([ebaySellerConnectionId])
 }
 
 model ListingTeam {

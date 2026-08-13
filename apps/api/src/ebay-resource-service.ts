@@ -26,24 +26,37 @@ function groupedResources(marketplace: string, resources: PublicSellerResource[]
   };
 }
 
-export async function listCachedSellerResources(organizationId: string, marketplace: Marketplace) {
+async function resolveConnectionId(organizationId: string, connectionId?: string): Promise<string> {
+  const connection = await prisma.ebaySellerConnection.findFirst({
+    where: { organizationId, ...(connectionId ? { id: connectionId } : {}) },
+    orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+    select: { id: true },
+  });
+  if (!connection) throw new Error("An eBay seller account is required");
+  return connection.id;
+}
+
+export async function listCachedSellerResources(organizationId: string, marketplace: Marketplace, connectionId?: string) {
+  const selectedConnectionId = await resolveConnectionId(organizationId, connectionId);
   const resources = await prisma.ebaySellerResource.findMany({
-    where: { organizationId, marketplace },
+    where: { organizationId, ebaySellerConnectionId: selectedConnectionId, marketplace },
     orderBy: [{ type: "asc" }, { name: "asc" }, { remoteId: "asc" }],
     select: { type: true, remoteId: true, name: true, enabled: true, fetchedAt: true },
   });
-  return groupedResources(marketplace, resources);
+  return { ...groupedResources(marketplace, resources), connectionId: selectedConnectionId };
 }
 
-export async function syncSellerResources(organizationId: string, marketplace: Marketplace) {
-  const { resources, warnings } = await fetchSellerResources(organizationId, marketplace);
+export async function syncSellerResources(organizationId: string, marketplace: Marketplace, connectionId?: string) {
+  const selectedConnectionId = await resolveConnectionId(organizationId, connectionId);
+  const { resources, warnings } = await fetchSellerResources(organizationId, selectedConnectionId, marketplace);
   const fetchedAt = new Date();
   await prisma.$transaction(async (tx) => {
-    await tx.ebaySellerResource.deleteMany({ where: { organizationId, marketplace } });
+    await tx.ebaySellerResource.deleteMany({ where: { organizationId, ebaySellerConnectionId: selectedConnectionId, marketplace } });
     if (resources.length) {
       await tx.ebaySellerResource.createMany({
         data: resources.map((resource) => ({
           organizationId,
+          ebaySellerConnectionId: selectedConnectionId,
           marketplace,
           type: resource.type,
           remoteId: resource.remoteId,
@@ -55,7 +68,7 @@ export async function syncSellerResources(organizationId: string, marketplace: M
       });
     }
   });
-  return { ...await listCachedSellerResources(organizationId, marketplace), warnings };
+  return { ...await listCachedSellerResources(organizationId, marketplace, selectedConnectionId), warnings };
 }
 
 export async function refreshCategoryMetadata(marketplace: Marketplace, categoryId: string) {
@@ -97,10 +110,11 @@ export function aspectRequirements(value: Prisma.JsonValue | null | undefined): 
   });
 }
 
-export async function getCachedReadinessMetadata(organizationId: string, marketplace: Marketplace, categoryId: string | null) {
+export async function getCachedReadinessMetadata(organizationId: string, marketplace: Marketplace, categoryId: string | null, connectionId?: string | null) {
+  const selectedConnectionId = connectionId ?? await resolveConnectionId(organizationId);
   const [resources, metadata] = await Promise.all([
     prisma.ebaySellerResource.findMany({
-      where: { organizationId, marketplace, enabled: true },
+      where: { organizationId, ebaySellerConnectionId: selectedConnectionId, marketplace, enabled: true },
       select: { type: true, remoteId: true },
     }),
     categoryId

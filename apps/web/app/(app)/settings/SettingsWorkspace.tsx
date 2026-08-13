@@ -7,6 +7,7 @@ import styles from "./settings.module.css";
 import UserManagement from "./UserManagement";
 import ListingTeamsManagement from "./ListingTeamsManagement";
 import SkuPolicyManagement from "./SkuPolicyManagement";
+import EbayAccountManagement from "./EbayAccountManagement";
 
 interface Security {
   email: string;
@@ -40,7 +41,7 @@ export default function SettingsWorkspace() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [tab, setTab] = useState<"security" | "workspace" | "users" | "teams" | "sku">("security");
+  const [tab, setTab] = useState<"security" | "workspace" | "users" | "teams" | "sku" | "ebay">("security");
   const canManageUsers = session?.role === "OWNER" || session?.role === "ADMIN" || session?.permissions?.includes("team.manage");
   const canManageTeams = session?.role === "OWNER" || session?.role === "ADMIN" || session?.permissions?.includes("admin.manage");
 
@@ -270,6 +271,15 @@ export default function SettingsWorkspace() {
         >
           SKU
         </button>}
+        {canManageTeams && <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "ebay"}
+          className={tab === "ebay" ? styles.tabActive : undefined}
+          onClick={() => setTab("ebay")}
+        >
+          eBay accounts
+        </button>}
       </div>
 
       {tab === "security" && (
@@ -432,6 +442,10 @@ export default function SettingsWorkspace() {
                 <b>SKU generation</b>
                 <span>Configure sequential SKUs or use uploaded part numbers as SKUs</span>
               </button>}
+              {canManageTeams && <button type="button" onClick={() => setTab("ebay")}>
+                <b>eBay accounts &amp; defaults</b>
+                <span>Connect seller accounts and choose the default policies and item location</span>
+              </button>}
               <Link href="/reports">
                 <b>Operations reports</b>
                 <span>Publishing health, failed jobs, retention, and audit trail</span>
@@ -468,6 +482,7 @@ export default function SettingsWorkspace() {
       {tab === "users" && canManageUsers && <UserManagement />}
       {tab === "teams" && canManageTeams && <ListingTeamsManagement />}
       {tab === "sku" && canManageTeams && <SkuPolicyManagement />}
+      {tab === "ebay" && canManageTeams && <EbayAccountManagement />}
     </div>
   );
 }

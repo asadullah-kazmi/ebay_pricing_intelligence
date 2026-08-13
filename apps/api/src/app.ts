@@ -45,7 +45,7 @@ import {
 } from "./bulk-pricing-service.js";
 import { parseBulkPricingFormulaJson } from "./bulk-pricing-formula.js";
 import { approveFitmentCandidate, createFitmentJob, FitmentJobError, getFitmentJob, listFitmentJobs, startFitmentJob } from "./fitment-service.js";
-import { completeEbayAuthorization, createEbayAuthorization, disconnectEbayConnection, EbaySellerOAuthError, ebayOAuthRedirectMessage, ebayOAuthRedirectReason, getEbayConnection } from "./ebay-seller-oauth.js";
+import { completeEbayAuthorization, createEbayAuthorization, disconnectEbayConnection, EbaySellerOAuthError, ebayOAuthRedirectMessage, ebayOAuthRedirectReason, getEbayConnection, listEbayConnections, updateEbayConnectionDefaults } from "./ebay-seller-oauth.js";
 import { getTenantContext, requireAnyOrganizationPermission, requireOrganizationPermission, requireOrganizationRoles, requireTenantContext } from "./tenant-context.js";
 import { organizationPermissionRoles } from "./authorization-policy.js";
 import { organizationPermissions } from "./organization-access.js";
@@ -488,8 +488,16 @@ const listingDraftListSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 const ebayMarketplaceSchema = z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]);
-const sellerResourceQuerySchema = z.object({ marketplace: ebayMarketplaceSchema.default("EBAY_US") });
-const sellerResourceSyncSchema = z.object({ marketplace: ebayMarketplaceSchema.default("EBAY_US") }).strict();
+const sellerResourceQuerySchema = z.object({ marketplace: ebayMarketplaceSchema.default("EBAY_US"), connectionId: z.string().trim().min(1).optional() });
+const sellerResourceSyncSchema = z.object({ marketplace: ebayMarketplaceSchema.default("EBAY_US"), connectionId: z.string().trim().min(1).optional() }).strict();
+const ebayConnectionDefaultsSchema = z.object({
+  isDefault: z.boolean().optional(),
+  defaultMarketplace: ebayMarketplaceSchema,
+  defaultPaymentPolicyId: z.string().trim().min(1).max(200),
+  defaultReturnPolicyId: z.string().trim().min(1).max(200),
+  defaultShippingPolicyId: z.string().trim().min(1).max(200),
+  defaultMerchantLocationKey: z.string().trim().min(1).max(200),
+}).strict();
 const listingDraftPatchSchema = z.object({
   expectedVersion: z.number().int().positive(),
   reason: z.string().trim().max(200).optional(),
@@ -506,6 +514,7 @@ const listingDraftPatchSchema = z.object({
   returnPolicyId: z.string().trim().max(100).nullable().optional(),
   shippingPolicyId: z.string().trim().max(100).nullable().optional(),
   merchantLocationKey: z.string().trim().max(100).nullable().optional(),
+  ebaySellerConnectionId: z.string().trim().max(100).nullable().optional(),
 }).strict();
 const ebayConnectionRoles = requireOrganizationRoles("OWNER", "ADMIN");
 const ebayOAuthCallbackSchema = z.object({
@@ -781,6 +790,24 @@ app.get("/api/ebay/connection", requireTenantContext, async (_req, res, next) =>
   catch (error) { next(error); }
 });
 
+app.get("/api/ebay/connections", requireTenantContext, async (_req, res, next) => {
+  try { res.json(await listEbayConnections(getTenantContext(res).organization.id)); }
+  catch (error) { next(error); }
+});
+
+app.patch("/api/ebay/connections/:id/defaults", writeRateLimit, requireTenantContext, ebayConnectionRoles, async (req, res, next) => {
+  try {
+    assertTrustedAuthOrigin(req);
+    const connectionId = req.params.id;
+    if (typeof connectionId !== "string") return res.status(400).json({ error: "Invalid eBay account ID" });
+    res.json(await updateEbayConnectionDefaults({
+      organizationId: getTenantContext(res).organization.id,
+      connectionId,
+      ...ebayConnectionDefaultsSchema.parse(req.body),
+    }));
+  } catch (error) { next(error); }
+});
+
 app.post("/api/ebay/connection/authorize", authRateLimit, requireTenantContext, ebayConnectionRoles, async (req, res, next) => {
   try {
     assertTrustedAuthOrigin(req);
@@ -792,21 +819,22 @@ app.post("/api/ebay/connection/authorize", authRateLimit, requireTenantContext, 
 app.delete("/api/ebay/connection", writeRateLimit, requireTenantContext, ebayConnectionRoles, async (req, res, next) => {
   try {
     assertTrustedAuthOrigin(req);
-    res.json(await disconnectEbayConnection(getTenantContext(res).organization.id));
+    const connectionId = typeof req.query.connectionId === "string" ? req.query.connectionId : undefined;
+    res.json(await disconnectEbayConnection(getTenantContext(res).organization.id, connectionId));
   } catch (error) { next(error); }
 });
 
 app.get("/api/ebay/resources", requireTenantContext, async (req, res, next) => {
   try {
-    const { marketplace } = sellerResourceQuerySchema.parse(req.query);
-    res.json(await listCachedSellerResources(getTenantContext(res).organization.id, marketplace));
+    const { marketplace, connectionId } = sellerResourceQuerySchema.parse(req.query);
+    res.json(await listCachedSellerResources(getTenantContext(res).organization.id, marketplace, connectionId));
   } catch (error) { next(error); }
 });
 
 app.post("/api/ebay/resources/sync", writeRateLimit, requireTenantContext, requireOrganizationPermission("catalog.publish"), async (req, res, next) => {
   try {
-    const { marketplace } = sellerResourceSyncSchema.parse(req.body);
-    res.json(await syncSellerResources(getTenantContext(res).organization.id, marketplace));
+    const { marketplace, connectionId } = sellerResourceSyncSchema.parse(req.body);
+    res.json(await syncSellerResources(getTenantContext(res).organization.id, marketplace, connectionId));
   } catch (error) { next(error); }
 });
 

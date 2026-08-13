@@ -239,10 +239,11 @@ async function runRevision(job: Prisma.EbayListingOperationJobGetPayload<{ inclu
     throw new EbayListingOperationError("Revision inventory sync is stale or incomplete", 409);
   }
   const marketplace = job.ebayOffer.marketplace as Marketplace;
-  const before = await runWithRetry(() => getOfferSnapshot(job.organizationId, marketplace, job.ebayOffer.ebayOfferId!), options);
+  const connectionId = job.listingDraft.ebaySellerConnectionId;
+  const before = await runWithRetry(() => getOfferSnapshot(job.organizationId, marketplace, job.ebayOffer.ebayOfferId!, connectionId), options);
   if (!["ACTIVE", "OUT_OF_STOCK"].includes(before.listingStatus ?? "")) throw new EbayListingOperationError("Remote listing is not active; reconcile it before revision", 409);
-  await runWithRetry(() => updateOffer(job.organizationId, marketplace, job.ebayOffer.ebayOfferId!, job.requestedPayload), options);
-  const after = await runWithRetry(() => getOfferSnapshot(job.organizationId, marketplace, job.ebayOffer.ebayOfferId!), options);
+  await runWithRetry(() => updateOffer(job.organizationId, marketplace, job.ebayOffer.ebayOfferId!, job.requestedPayload, connectionId), options);
+  const after = await runWithRetry(() => getOfferSnapshot(job.organizationId, marketplace, job.ebayOffer.ebayOfferId!, connectionId), options);
   const driftIssues = evaluateOfferDrift(job.requestedPayload, after.payload);
   const now = new Date();
   await prisma.$transaction(async (tx) => {
@@ -291,15 +292,16 @@ async function runRevision(job: Prisma.EbayListingOperationJobGetPayload<{ inclu
 async function runWithdrawal(job: Prisma.EbayListingOperationJobGetPayload<{ include: typeof jobInclude }>, options: JobRunOptions) {
   if (!job.ebayOffer.ebayOfferId) throw new EbayListingOperationError("Remote offer ID is missing", 409);
   const marketplace = job.ebayOffer.marketplace as Marketplace;
-  let snapshot = await runWithRetry(() => getOfferSnapshot(job.organizationId, marketplace, job.ebayOffer.ebayOfferId!), options);
+  const connectionId = job.listingDraft.ebaySellerConnectionId;
+  let snapshot = await runWithRetry(() => getOfferSnapshot(job.organizationId, marketplace, job.ebayOffer.ebayOfferId!, connectionId), options);
   if (["ACTIVE", "OUT_OF_STOCK"].includes(snapshot.listingStatus ?? "")) {
     try {
-      await withdrawOffer(job.organizationId, marketplace, job.ebayOffer.ebayOfferId);
+      await withdrawOffer(job.organizationId, marketplace, job.ebayOffer.ebayOfferId, connectionId);
     } catch (error) {
-      snapshot = await getOfferSnapshot(job.organizationId, marketplace, job.ebayOffer.ebayOfferId).catch(() => snapshot);
+      snapshot = await getOfferSnapshot(job.organizationId, marketplace, job.ebayOffer.ebayOfferId, connectionId).catch(() => snapshot);
       if (["ACTIVE", "OUT_OF_STOCK"].includes(snapshot.listingStatus ?? "")) throw error;
     }
-    snapshot = await runWithRetry(() => getOfferSnapshot(job.organizationId, marketplace, job.ebayOffer.ebayOfferId!), options);
+    snapshot = await runWithRetry(() => getOfferSnapshot(job.organizationId, marketplace, job.ebayOffer.ebayOfferId!, connectionId), options);
   }
   const now = new Date();
   await prisma.$transaction(async (tx) => {

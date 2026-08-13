@@ -215,10 +215,18 @@ export async function completeEbayAuthorization(input: { state: string; code?: s
   const access = encryptSellerToken(token.access_token, config.encryptionKey);
   const refresh = encryptSellerToken(token.refresh_token, config.encryptionKey);
   const now = new Date();
+  const existingCount = await prisma.ebaySellerConnection.count({ where: { organizationId: state.organizationId } });
   await prisma.ebaySellerConnection.upsert({
-    where: { organizationId: state.organizationId },
+    where: {
+      organizationId_environment_ebayUserId: {
+        organizationId: state.organizationId,
+        environment: config.environment,
+        ebayUserId: identity.userId,
+      },
+    },
     create: {
       organizationId: state.organizationId, connectedById: state.userId, environment: config.environment,
+      isDefault: existingCount === 0,
       status: "ACTIVE", ebayUserId: identity.userId, username: identity.username, accountType: identity.accountType,
       registrationMarketplace: identity.registrationMarketplaceId, scopes: config.scopes,
       accessTokenCiphertext: access.ciphertext, accessTokenIv: access.iv, accessTokenTag: access.tag,
@@ -241,6 +249,8 @@ export async function completeEbayAuthorization(input: { state: string; code?: s
 
 function publicConnection(connection: {
   id: string; environment: string; status: string; ebayUserId: string | null; username: string | null;
+  isDefault: boolean; defaultMarketplace: string; defaultPaymentPolicyId: string | null;
+  defaultReturnPolicyId: string | null; defaultShippingPolicyId: string | null; defaultMerchantLocationKey: string | null;
   accountType: string | null; registrationMarketplace: string | null; scopes: string[];
   accessTokenExpiresAt: Date | null; refreshTokenExpiresAt: Date | null; lastRefreshedAt: Date | null;
   lastError: string | null; connectedBy: { id: string; email: string; name: string | null }; createdAt: Date; updatedAt: Date;
@@ -250,35 +260,123 @@ function publicConnection(connection: {
 
 const publicConnectionSelect = {
   id: true, environment: true, status: true, ebayUserId: true, username: true, accountType: true,
+  isDefault: true, defaultMarketplace: true, defaultPaymentPolicyId: true, defaultReturnPolicyId: true,
+  defaultShippingPolicyId: true, defaultMerchantLocationKey: true,
   registrationMarketplace: true, scopes: true, accessTokenExpiresAt: true, refreshTokenExpiresAt: true,
   lastRefreshedAt: true, lastError: true, connectedBy: { select: { id: true, email: true, name: true } },
   createdAt: true, updatedAt: true,
 };
 
 export async function getEbayConnection(organizationId: string) {
-  const connection = await prisma.ebaySellerConnection.findUnique({ where: { organizationId }, select: publicConnectionSelect });
+  const connection = await prisma.ebaySellerConnection.findFirst({
+    where: { organizationId },
+    orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+    select: publicConnectionSelect,
+  });
   const setup = getEbayOAuthSetupStatus();
   if (connection) return { ...publicConnection(connection), setup };
   return { connected: false, status: "NOT_CONNECTED" as const, setup };
 }
 
-export async function disconnectEbayConnection(organizationId: string) {
-  const connection = await prisma.ebaySellerConnection.findUnique({ where: { organizationId }, select: { id: true } });
+export async function listEbayConnections(organizationId: string) {
+  const connections = await prisma.ebaySellerConnection.findMany({
+    where: { organizationId },
+    orderBy: [{ isDefault: "desc" }, { username: "asc" }, { createdAt: "asc" }],
+    select: publicConnectionSelect,
+  });
+  return { connections: connections.map(publicConnection), setup: getEbayOAuthSetupStatus() };
+}
+
+export async function updateEbayConnectionDefaults(input: {
+  organizationId: string;
+  connectionId: string;
+  isDefault?: boolean;
+  defaultMarketplace: string;
+  defaultPaymentPolicyId: string;
+  defaultReturnPolicyId: string;
+  defaultShippingPolicyId: string;
+  defaultMerchantLocationKey: string;
+}) {
+  const connection = await prisma.ebaySellerConnection.findFirst({
+    where: { id: input.connectionId, organizationId: input.organizationId },
+    select: { id: true, status: true, isDefault: true },
+  });
+  if (!connection) throw new EbaySellerOAuthError("eBay seller account not found", 404);
+  if (connection.status !== "ACTIVE") throw new EbaySellerOAuthError("Reconnect this eBay account before assigning defaults", 409);
+  if (connection.isDefault && input.isDefault === false) {
+    throw new EbaySellerOAuthError("Choose another account as default before removing this default", 409);
+  }
+  const resources = await prisma.ebaySellerResource.findMany({
+    where: {
+      organizationId: input.organizationId,
+      ebaySellerConnectionId: input.connectionId,
+      marketplace: input.defaultMarketplace,
+      enabled: true,
+    },
+    select: { type: true, remoteId: true },
+  });
+  const owns = (type: "PAYMENT_POLICY" | "RETURN_POLICY" | "FULFILLMENT_POLICY" | "INVENTORY_LOCATION", id: string) =>
+    resources.some((resource) => resource.type === type && resource.remoteId === id);
+  if (!owns("PAYMENT_POLICY", input.defaultPaymentPolicyId)
+    || !owns("RETURN_POLICY", input.defaultReturnPolicyId)
+    || !owns("FULFILLMENT_POLICY", input.defaultShippingPolicyId)
+    || !owns("INVENTORY_LOCATION", input.defaultMerchantLocationKey)) {
+    throw new EbaySellerOAuthError("Sync this account and select policies and a location that belong to it", 409);
+  }
+  await prisma.$transaction(async (tx) => {
+    if (input.isDefault) {
+      await tx.ebaySellerConnection.updateMany({
+        where: { organizationId: input.organizationId, id: { not: input.connectionId }, isDefault: true },
+        data: { isDefault: false },
+      });
+    }
+    await tx.ebaySellerConnection.update({
+      where: { id: input.connectionId },
+      data: {
+        ...(input.isDefault === undefined ? {} : { isDefault: input.isDefault }),
+        defaultMarketplace: input.defaultMarketplace,
+        defaultPaymentPolicyId: input.defaultPaymentPolicyId,
+        defaultReturnPolicyId: input.defaultReturnPolicyId,
+        defaultShippingPolicyId: input.defaultShippingPolicyId,
+        defaultMerchantLocationKey: input.defaultMerchantLocationKey,
+      },
+    });
+  });
+  return listEbayConnections(input.organizationId);
+}
+
+export async function disconnectEbayConnection(organizationId: string, connectionId?: string) {
+  const connection = await prisma.ebaySellerConnection.findFirst({
+    where: { organizationId, ...(connectionId ? { id: connectionId } : {}) },
+    orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+    select: { id: true, isDefault: true },
+  });
   if (!connection) return { connected: false, status: "NOT_CONNECTED" as const };
-  await prisma.$transaction([
-    prisma.ebaySellerConnection.update({ where: { id: connection.id }, data: {
+  await prisma.$transaction(async (tx) => {
+    await tx.ebaySellerConnection.update({ where: { id: connection.id }, data: {
       status: "DISCONNECTED", accessTokenCiphertext: null, accessTokenIv: null, accessTokenTag: null,
       refreshTokenCiphertext: null, refreshTokenIv: null, refreshTokenTag: null, accessTokenExpiresAt: null,
       refreshTokenExpiresAt: null, disconnectedAt: new Date(), lastError: null,
-    } }),
-    prisma.ebaySellerResource.deleteMany({ where: { organizationId } }),
-  ]);
-  return getEbayConnection(organizationId);
+    } });
+    await tx.ebaySellerResource.deleteMany({ where: { ebaySellerConnectionId: connection.id } });
+    if (connection.isDefault) {
+      const replacement = await tx.ebaySellerConnection.findFirst({
+        where: { organizationId, id: { not: connection.id }, status: "ACTIVE" },
+        orderBy: { createdAt: "asc" },
+        select: { id: true },
+      });
+      if (replacement) await tx.ebaySellerConnection.update({ where: { id: replacement.id }, data: { isDefault: true } });
+    }
+  });
+  return listEbayConnections(organizationId);
 }
 
-export async function getEbaySellerAccessToken(organizationId: string): Promise<string> {
+export async function getEbaySellerAccessToken(organizationId: string, connectionId?: string): Promise<string> {
   const config = oauthConfig();
-  const connection = await prisma.ebaySellerConnection.findUnique({ where: { organizationId } });
+  const connection = await prisma.ebaySellerConnection.findFirst({
+    where: { organizationId, ...(connectionId ? { id: connectionId } : {}) },
+    orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+  });
   if (!connection || (connection.status !== "ACTIVE" && connection.status !== "ERROR")) {
     throw new EbaySellerOAuthError("An active eBay seller connection is required", 409);
   }

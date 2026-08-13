@@ -30,8 +30,9 @@ async function inventoryRequest(input: {
   method: "PUT" | "DELETE";
   payload?: unknown;
   operation: string;
+  connectionId?: string | null;
 }) {
-  const token = await getEbaySellerAccessToken(input.organizationId);
+  const token = await getEbaySellerAccessToken(input.organizationId, input.connectionId ?? undefined);
   const suffix = input.suffix ?? "";
   const response = await fetch(`${apiBase()}/sell/inventory/v1/inventory_item/${encodeURIComponent(input.sku)}${suffix}`, {
     method: input.method,
@@ -49,8 +50,8 @@ async function inventoryRequest(input: {
   }
 }
 
-export async function putInventoryItem(organizationId: string, marketplace: Marketplace, sku: string, payload: unknown) {
-  await inventoryRequest({ organizationId, marketplace, sku, method: "PUT", payload, operation: "eBay inventory item write" });
+export async function putInventoryItem(organizationId: string, marketplace: Marketplace, sku: string, payload: unknown, connectionId?: string | null) {
+  await inventoryRequest({ organizationId, marketplace, sku, method: "PUT", payload, operation: "eBay inventory item write", connectionId });
 }
 
 export async function replaceProductCompatibility(
@@ -58,6 +59,7 @@ export async function replaceProductCompatibility(
   marketplace: Marketplace,
   sku: string,
   payload: unknown | null,
+  connectionId?: string | null,
 ) {
   await inventoryRequest({
     organizationId,
@@ -67,6 +69,7 @@ export async function replaceProductCompatibility(
     method: payload ? "PUT" : "DELETE",
     ...(payload ? { payload } : {}),
     operation: payload ? "eBay product compatibility write" : "eBay product compatibility removal",
+    connectionId,
   });
 }
 
@@ -77,8 +80,9 @@ async function offerRequest<T>(input: {
   method: "GET" | "POST" | "PUT";
   payload?: unknown;
   operation: string;
+  connectionId?: string | null;
 }): Promise<T> {
-  const token = await getEbaySellerAccessToken(input.organizationId);
+  const token = await getEbaySellerAccessToken(input.organizationId, input.connectionId ?? undefined);
   const response = await fetch(`${apiBase()}/sell/inventory/v1${input.path}`, {
     method: input.method,
     signal: AbortSignal.timeout(30_000),
@@ -95,27 +99,28 @@ async function offerRequest<T>(input: {
   return response.json() as Promise<T>;
 }
 
-export async function createOffer(organizationId: string, marketplace: Marketplace, payload: unknown): Promise<string> {
+export async function createOffer(organizationId: string, marketplace: Marketplace, payload: unknown, connectionId?: string | null): Promise<string> {
   const response = await offerRequest<{ offerId?: string }>({
-    organizationId, marketplace, path: "/offer", method: "POST", payload, operation: "eBay offer creation",
+    organizationId, marketplace, path: "/offer", method: "POST", payload, operation: "eBay offer creation", connectionId,
   });
   if (!response.offerId) throw new EbayApiError("eBay offer creation returned no offer ID", 502, "eBay offer creation");
   return response.offerId;
 }
 
-export async function updateOffer(organizationId: string, marketplace: Marketplace, offerId: string, payload: unknown): Promise<void> {
+export async function updateOffer(organizationId: string, marketplace: Marketplace, offerId: string, payload: unknown, connectionId?: string | null): Promise<void> {
   await offerRequest<void>({
-    organizationId, marketplace, path: `/offer/${encodeURIComponent(offerId)}`, method: "PUT", payload, operation: "eBay offer update",
+    organizationId, marketplace, path: `/offer/${encodeURIComponent(offerId)}`, method: "PUT", payload, operation: "eBay offer update", connectionId,
   });
 }
 
-export async function findOfferIdBySku(organizationId: string, marketplace: Marketplace, sku: string): Promise<string | null> {
+export async function findOfferIdBySku(organizationId: string, marketplace: Marketplace, sku: string, connectionId?: string | null): Promise<string | null> {
   const response = await offerRequest<{ offers?: Array<{ offerId?: string; sku?: string; marketplaceId?: string; status?: string }> }>({
     organizationId,
     marketplace,
     path: `/offer?sku=${encodeURIComponent(sku)}&marketplace_id=${encodeURIComponent(marketplace)}`,
     method: "GET",
     operation: "eBay offer reconciliation",
+    connectionId,
   });
   return response.offers?.find((offer) =>
     offer.sku === sku
@@ -156,7 +161,7 @@ export function summarizeListingFees(response: Record<string, unknown>): Listing
   return { total: found ? Math.round(total * 100) / 100 : null, currency, warnings, response };
 }
 
-export async function getListingFees(organizationId: string, marketplace: Marketplace, offerId: string): Promise<ListingFeeSummary> {
+export async function getListingFees(organizationId: string, marketplace: Marketplace, offerId: string, connectionId?: string | null): Promise<ListingFeeSummary> {
   const response = await offerRequest<Record<string, unknown>>({
     organizationId,
     marketplace,
@@ -164,24 +169,26 @@ export async function getListingFees(organizationId: string, marketplace: Market
     method: "POST",
     payload: { offers: [{ offerId }] },
     operation: "eBay listing fee preview",
+    connectionId,
   });
   return summarizeListingFees(response);
 }
 
-export async function publishOffer(organizationId: string, marketplace: Marketplace, offerId: string): Promise<string> {
+export async function publishOffer(organizationId: string, marketplace: Marketplace, offerId: string, connectionId?: string | null): Promise<string> {
   const response = await offerRequest<{ listingId?: string }>({
     organizationId,
     marketplace,
     path: `/offer/${encodeURIComponent(offerId)}/publish`,
     method: "POST",
     operation: "eBay offer publication",
+    connectionId,
   });
   if (!response.listingId) throw new EbayApiError("eBay publication returned no listing ID", 502, "eBay offer publication");
   return response.listingId;
 }
 
-export async function getPublishedListingId(organizationId: string, marketplace: Marketplace, offerId: string): Promise<string | null> {
-  const snapshot = await getOfferSnapshot(organizationId, marketplace, offerId);
+export async function getPublishedListingId(organizationId: string, marketplace: Marketplace, offerId: string, connectionId?: string | null): Promise<string | null> {
+  const snapshot = await getOfferSnapshot(organizationId, marketplace, offerId, connectionId);
   return snapshot.listingId;
 }
 
@@ -208,23 +215,25 @@ export function normalizeOfferSnapshot(response: Record<string, unknown>): Remot
   };
 }
 
-export async function getOfferSnapshot(organizationId: string, marketplace: Marketplace, offerId: string): Promise<RemoteOfferSnapshot> {
+export async function getOfferSnapshot(organizationId: string, marketplace: Marketplace, offerId: string, connectionId?: string | null): Promise<RemoteOfferSnapshot> {
   const response = await offerRequest<Record<string, unknown>>({
     organizationId,
     marketplace,
     path: `/offer/${encodeURIComponent(offerId)}`,
     method: "GET",
     operation: "eBay published offer reconciliation",
+    connectionId,
   });
   return normalizeOfferSnapshot(response);
 }
 
-export async function withdrawOffer(organizationId: string, marketplace: Marketplace, offerId: string): Promise<void> {
+export async function withdrawOffer(organizationId: string, marketplace: Marketplace, offerId: string, connectionId?: string | null): Promise<void> {
   await offerRequest<void>({
     organizationId,
     marketplace,
     path: `/offer/${encodeURIComponent(offerId)}/withdraw`,
     method: "POST",
     operation: "eBay offer withdrawal",
+    connectionId,
   });
 }

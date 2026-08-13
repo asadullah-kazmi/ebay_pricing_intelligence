@@ -315,6 +315,8 @@ export async function getCatalogPart(organizationId: string, partId: string) {
         select: {
           id: true,
           marketplace: true,
+          ebaySellerConnectionId: true,
+          ebaySellerConnection: { select: { id: true, username: true, isDefault: true, status: true } },
           status: true,
           version: true,
           title: true,
@@ -381,7 +383,12 @@ export async function getCatalogPart(organizationId: string, partId: string) {
   const [policyResources, latestCategory] = await Promise.all([
     policyIds.length && draft
       ? prisma.ebaySellerResource.findMany({
-          where: { organizationId, marketplace: draft.marketplace, remoteId: { in: policyIds } },
+          where: {
+            organizationId,
+            marketplace: draft.marketplace,
+            remoteId: { in: policyIds },
+            ...(draft.ebaySellerConnectionId ? { ebaySellerConnectionId: draft.ebaySellerConnectionId } : {}),
+          },
           select: { remoteId: true, name: true },
         })
       : Promise.resolve([]),

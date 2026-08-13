@@ -16,7 +16,7 @@ export class EbayInventorySyncError extends Error {
 
 const syncInclude = {
   preparation: true,
-  listingDraft: { select: { id: true, marketplace: true, version: true, status: true, liveValidatedAt: true } },
+  listingDraft: { select: { id: true, marketplace: true, ebaySellerConnectionId: true, version: true, status: true, liveValidatedAt: true } },
 } satisfies Prisma.EbayInventorySyncJobInclude;
 
 export async function createEbayInventorySyncJob(input: {
@@ -95,10 +95,10 @@ export async function runEbayInventorySyncJob(jobId: string, options: JobRunOpti
       throw new EbayInventorySyncError("The draft changed or lost readiness after the sync was queued", 409);
     }
     const marketplace = job.listingDraft.marketplace as Marketplace;
-    await runWithRetry(() => putInventoryItem(job.organizationId, marketplace, job.sku, job.preparation.inventoryPayload), options);
+    await runWithRetry(() => putInventoryItem(job.organizationId, marketplace, job.sku, job.preparation.inventoryPayload, job.listingDraft.ebaySellerConnectionId), options);
     await prisma.ebayInventorySyncJob.update({ where: { id: job.id }, data: { inventoryWrittenAt: new Date() } });
     await runWithRetry(
-      () => replaceProductCompatibility(job.organizationId, marketplace, job.sku, job.preparation.compatibilityPayload),
+      () => replaceProductCompatibility(job.organizationId, marketplace, job.sku, job.preparation.compatibilityPayload, job.listingDraft.ebaySellerConnectionId),
       options,
     );
     const now = new Date();

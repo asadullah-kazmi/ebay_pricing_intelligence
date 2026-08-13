@@ -203,12 +203,12 @@ const contextInclude = {
       fitmentApplications: { where: { status: "APPROVED" }, select: { id: true, marketplace: true } },
     },
   },
-  organization: { select: { ebaySellerConnection: { select: { status: true } } } },
+  ebaySellerConnection: { select: { id: true, status: true, username: true } },
 } satisfies Prisma.ListingDraftInclude;
 
 function contextFromDraft(draft: Prisma.ListingDraftGetPayload<{ include: typeof contextInclude }>): DraftReadinessContext {
   return {
-    sellerConnected: draft.organization.ebaySellerConnection?.status === "ACTIVE",
+    sellerConnected: draft.ebaySellerConnection?.status === "ACTIVE",
     approvedImageCount: draft.part.media.length,
     fitmentApplicationCount: draft.part.fitmentApplications.filter(({ marketplace }) => marketplace === draft.marketplace).length,
   };
@@ -256,7 +256,14 @@ export async function createListingDrafts(input: {
         },
       },
     }),
-    prisma.ebaySellerConnection.findUnique({ where: { organizationId: input.organizationId }, select: { status: true } }),
+    prisma.ebaySellerConnection.findFirst({
+      where: { organizationId: input.organizationId, status: "ACTIVE" },
+      orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+      select: {
+        id: true, status: true, defaultMarketplace: true, defaultPaymentPolicyId: true,
+        defaultReturnPolicyId: true, defaultShippingPolicyId: true, defaultMerchantLocationKey: true,
+      },
+    }),
     prisma.pricingProposal.findMany({
       where: {
         organizationId: input.organizationId,
@@ -275,6 +282,7 @@ export async function createListingDrafts(input: {
       const activeProposal = proposals.find((proposal) => proposal.partId === part.id);
       const approvedProposal = activeProposal && ["APPROVED", "OVERRIDDEN"].includes(activeProposal.status) ? activeProposal : null;
       const title = generatedTitle(part);
+      const defaultPoliciesApply = connection?.defaultMarketplace === input.marketplace;
       const values: DraftValues = {
         title,
         description: generatedDescription(part, title),
@@ -295,10 +303,10 @@ export async function createListingDrafts(input: {
           ...(part.brand ? { Brand: [part.brand] } : {}),
           ...(part.placement ? { Placement: [part.placement] } : {}),
         },
-        paymentPolicyId: null,
-        returnPolicyId: null,
-        shippingPolicyId: null,
-        merchantLocationKey: null,
+        paymentPolicyId: defaultPoliciesApply ? connection?.defaultPaymentPolicyId ?? null : null,
+        returnPolicyId: defaultPoliciesApply ? connection?.defaultReturnPolicyId ?? null : null,
+        shippingPolicyId: defaultPoliciesApply ? connection?.defaultShippingPolicyId ?? null : null,
+        merchantLocationKey: defaultPoliciesApply ? connection?.defaultMerchantLocationKey ?? null : null,
       };
       const issues = evaluateListingReadiness(values, {
         sellerConnected: connection?.status === "ACTIVE",
@@ -322,6 +330,7 @@ export async function createListingDrafts(input: {
             organizationId: input.organizationId,
             partId: part.id,
             marketplace: input.marketplace,
+            ebaySellerConnectionId: connection?.id ?? null,
             ...values,
             aspects: asJson(values.aspects),
             status,
@@ -358,12 +367,17 @@ export async function createListingDrafts(input: {
         await tx.listingDraft.update({
           where: { id: existing.id },
           data: {
+            ebaySellerConnectionId: connection?.id ?? null,
             title: values.title,
             description: values.description,
             quantity: values.quantity,
             price: values.price,
             currency: values.currency,
             condition: values.condition,
+            paymentPolicyId: values.paymentPolicyId,
+            returnPolicyId: values.returnPolicyId,
+            shippingPolicyId: values.shippingPolicyId,
+            merchantLocationKey: values.merchantLocationKey,
             status,
             validationIssues: asJson(issues),
             validatedAt: new Date(),
@@ -411,6 +425,7 @@ export interface ListingDraftPatch {
   returnPolicyId?: string | null;
   shippingPolicyId?: string | null;
   merchantLocationKey?: string | null;
+  ebaySellerConnectionId?: string | null;
 }
 
 export async function updateListingDraft(organizationId: string, userId: string, draftId: string, input: ListingDraftPatch) {
@@ -418,9 +433,21 @@ export async function updateListingDraft(organizationId: string, userId: string,
   if (!current) throw new ListingDraftError("Listing draft not found", 404);
   if (current.version !== input.expectedVersion) throw new ListingDraftError("Listing draft changed; reload it before saving", 409);
   const { expectedVersion: _expectedVersion, reason, ...changes } = input;
+  if (changes.ebaySellerConnectionId) {
+    const selected = await prisma.ebaySellerConnection.findFirst({
+      where: { id: changes.ebaySellerConnectionId, organizationId, status: "ACTIVE" },
+      select: { id: true },
+    });
+    if (!selected) throw new ListingDraftError("Selected eBay account is unavailable", 409);
+  }
   const values = { ...valuesFromDraft(current), ...changes };
   const [cached, pricingApproval] = await Promise.all([
-    getCachedReadinessMetadata(organizationId, current.marketplace as Marketplace, values.categoryId),
+    getCachedReadinessMetadata(
+      organizationId,
+      current.marketplace as Marketplace,
+      values.categoryId,
+      changes.ebaySellerConnectionId ?? current.ebaySellerConnectionId,
+    ),
     getApprovedPricingContext(organizationId, current.partId, current.marketplace),
   ]);
   const issues = evaluateListingReadiness(values, {
@@ -485,7 +512,7 @@ export async function validateListingDraftLive(organizationId: string, userId: s
   if (!current.categoryId) throw new ListingDraftError("Set an eBay category ID before live validation");
   const marketplace = current.marketplace as Marketplace;
   const [resources, categoryMetadata, pricingApproval] = await Promise.all([
-    syncSellerResources(organizationId, marketplace),
+    syncSellerResources(organizationId, marketplace, current.ebaySellerConnectionId ?? undefined),
     refreshCategoryMetadata(marketplace, current.categoryId),
     getApprovedPricingContext(organizationId, current.partId, current.marketplace),
   ]);

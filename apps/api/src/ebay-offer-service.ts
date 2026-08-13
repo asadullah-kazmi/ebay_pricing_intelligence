@@ -213,22 +213,24 @@ const activeOfferJobs = new Set<string>();
 async function runPrepare(job: Prisma.EbayOfferJobGetPayload<{ include: typeof jobInclude }>, options: JobRunOptions) {
   const offer = job.ebayOffer;
   const marketplace = offer.marketplace as Marketplace;
+  const draft = await prisma.listingDraft.findUnique({ where: { id: offer.listingDraftId }, select: { ebaySellerConnectionId: true } });
+  const connectionId = draft?.ebaySellerConnectionId;
   let remoteOfferId = offer.ebayOfferId;
   if (remoteOfferId) {
-    await runWithRetry(() => updateOffer(offer.organizationId, marketplace, remoteOfferId!, offer.offerPayload), options);
+    await runWithRetry(() => updateOffer(offer.organizationId, marketplace, remoteOfferId!, offer.offerPayload, connectionId), options);
   } else {
-    remoteOfferId = await runWithRetry(() => findOfferIdBySku(offer.organizationId, marketplace, offer.sku), options);
+    remoteOfferId = await runWithRetry(() => findOfferIdBySku(offer.organizationId, marketplace, offer.sku, connectionId), options);
     if (!remoteOfferId) {
       try {
-        remoteOfferId = await createOffer(offer.organizationId, marketplace, offer.offerPayload);
+        remoteOfferId = await createOffer(offer.organizationId, marketplace, offer.offerPayload, connectionId);
       } catch (error) {
-        remoteOfferId = await findOfferIdBySku(offer.organizationId, marketplace, offer.sku).catch(() => null);
+        remoteOfferId = await findOfferIdBySku(offer.organizationId, marketplace, offer.sku, connectionId).catch(() => null);
         if (!remoteOfferId) throw error;
       }
     }
     await prisma.ebayOffer.update({ where: { id: offer.id }, data: { ebayOfferId: remoteOfferId } });
   }
-  const fees = await runWithRetry(() => getListingFees(offer.organizationId, marketplace, remoteOfferId!), options);
+  const fees = await runWithRetry(() => getListingFees(offer.organizationId, marketplace, remoteOfferId!, connectionId), options);
   await prisma.$transaction(async (tx) => {
     await tx.ebayOffer.update({
       where: { id: offer.id },
@@ -265,12 +267,13 @@ async function runPublish(job: Prisma.EbayOfferJobGetPayload<{ include: typeof j
   if (!offer?.ebayOfferId || offer.status !== "PUBLISH_QUEUED" || !offer.approvedAt) throw new EbayOfferError("Offer is not approved for publication", 409);
   if (offer.listingDraft.version !== offer.draftVersion || !offer.listingDraft.liveValidatedAt) throw new EbayOfferError("Draft changed after publication approval", 409);
   const marketplace = offer.marketplace as Marketplace;
-  let listingId = await runWithRetry(() => getPublishedListingId(offer.organizationId, marketplace, offer.ebayOfferId!), options);
+  const connectionId = offer.listingDraft.ebaySellerConnectionId;
+  let listingId = await runWithRetry(() => getPublishedListingId(offer.organizationId, marketplace, offer.ebayOfferId!, connectionId), options);
   if (!listingId) {
     try {
-      listingId = await publishOffer(offer.organizationId, marketplace, offer.ebayOfferId);
+      listingId = await publishOffer(offer.organizationId, marketplace, offer.ebayOfferId, connectionId);
     } catch (error) {
-      listingId = await getPublishedListingId(offer.organizationId, marketplace, offer.ebayOfferId).catch(() => null);
+      listingId = await getPublishedListingId(offer.organizationId, marketplace, offer.ebayOfferId, connectionId).catch(() => null);
       if (!listingId) throw error;
     }
   }

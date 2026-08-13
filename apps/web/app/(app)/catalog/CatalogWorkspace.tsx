@@ -345,6 +345,7 @@ export default function CatalogWorkspace() {
   const [fitmentEditor, setFitmentEditor] = useState<PartFitment | null>(null);
   const [manualFitmentBusy, setManualFitmentBusy] = useState(false);
   const [ebayConnection, setEbayConnection] = useState<EbayConnection>({ connected: false, status: "NOT_CONNECTED" });
+  const [ebayConnections, setEbayConnections] = useState<EbayConnection[]>([]);
   const [drafts, setDrafts] = useState<ListingDraft[]>([]);
   const [draftDetail, setDraftDetail] = useState<ListingDraft | null>(null);
   const [draftPartDetail, setDraftPartDetail] = useState<CatalogPartDetail | null>(null);
@@ -379,6 +380,7 @@ export default function CatalogWorkspace() {
   useEffect(() => {
     if (authStatus !== "ready" || demo) return;
     request("/api/ebay/connection").then((value) => setEbayConnection(value as EbayConnection)).catch(() => undefined);
+    request("/api/ebay/connections").then((value) => setEbayConnections((value as { connections: EbayConnection[] }).connections)).catch(() => undefined);
   }, [authStatus, demo, request]);
 
   useEffect(() => {
@@ -981,7 +983,7 @@ export default function CatalogWorkspace() {
       request(`/api/parts/${draft.partId}`)
         .then((value) => setDraftPartDetail(value as CatalogPartDetail))
         .catch(() => undefined);
-      setSellerResources(await request(`/api/ebay/resources?marketplace=${encodeURIComponent(draft.marketplace)}`) as EbaySellerResources);
+      setSellerResources(await request(`/api/ebay/resources?marketplace=${encodeURIComponent(draft.marketplace)}${draft.ebaySellerConnectionId ? `&connectionId=${encodeURIComponent(draft.ebaySellerConnectionId)}` : ""}`) as EbaySellerResources);
       request(`/api/listing-drafts/${id}/inventory-preparation`)
         .then((value) => setInventoryPreparation(value as InventoryPreparation))
         .catch(() => undefined);
@@ -1028,6 +1030,7 @@ export default function CatalogWorkspace() {
       returnPolicyId: String(form.get("returnPolicyId")) || null,
       shippingPolicyId: String(form.get("shippingPolicyId")) || null,
       merchantLocationKey: String(form.get("merchantLocationKey")) || null,
+      ebaySellerConnectionId: String(form.get("ebaySellerConnectionId")) || null,
       aspects,
     };
     setDraftBusy(true); setError("");
@@ -1050,12 +1053,29 @@ export default function CatalogWorkspace() {
     finally { setDraftBusy(false); }
   }
 
+  async function changeDraftEbayAccount(connectionId: string) {
+    if (!draftDetail) return;
+    const connection = ebayConnections.find((item) => item.id === connectionId);
+    setDraftDetail({
+      ...draftDetail,
+      ebaySellerConnectionId: connectionId || null,
+      ebaySellerConnection: connection ? { id: connection.id!, username: connection.username ?? null, isDefault: Boolean(connection.isDefault), status: connection.status } : null,
+      paymentPolicyId: connection?.defaultPaymentPolicyId ?? null,
+      returnPolicyId: connection?.defaultReturnPolicyId ?? null,
+      shippingPolicyId: connection?.defaultShippingPolicyId ?? null,
+      merchantLocationKey: connection?.defaultMerchantLocationKey ?? null,
+    });
+    if (connectionId) {
+      setSellerResources(await request(`/api/ebay/resources?marketplace=${encodeURIComponent(draftDetail.marketplace)}&connectionId=${encodeURIComponent(connectionId)}`) as EbaySellerResources);
+    }
+  }
+
   async function syncResources() {
     if (!draftDetail || demo || draftBusy) return;
     setDraftBusy(true); setError("");
     try {
       setSellerResources(await request("/api/ebay/resources/sync", {
-        method: "POST", body: JSON.stringify({ marketplace: draftDetail.marketplace }),
+        method: "POST", body: JSON.stringify({ marketplace: draftDetail.marketplace, connectionId: draftDetail.ebaySellerConnectionId || undefined }),
       }) as EbaySellerResources);
       setNotice("eBay business policies and inventory locations refreshed.");
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to refresh eBay seller resources"); }
@@ -1789,6 +1809,7 @@ export default function CatalogWorkspace() {
           </div>
 
           <section className={styles.detailSection}><h4>eBay store &amp; policies</h4><div className={styles.policyGrid}>
+            <div><span>Seller account</span><b>{draftDetail.ebaySellerConnection?.username || "Default eBay account"}</b></div>
             <div><span>Shipping</span><b>{sellerResources?.fulfillmentPolicies.find(({ remoteId }) => remoteId === draftDetail.shippingPolicyId)?.name || "Not assigned"}</b></div>
             <div><span>Returns</span><b>{sellerResources?.returnPolicies.find(({ remoteId }) => remoteId === draftDetail.returnPolicyId)?.name || "Not assigned"}</b></div>
             <div><span>Payment</span><b>{sellerResources?.paymentPolicies.find(({ remoteId }) => remoteId === draftDetail.paymentPolicyId)?.name || "Not assigned"}</b></div>
@@ -1856,7 +1877,7 @@ export default function CatalogWorkspace() {
               </div>
               <label className={styles.listingField}>
                 <span>Shipping policy</span>
-                <select name="shippingPolicyId" defaultValue={draftDetail.shippingPolicyId ?? ""}>
+                <select key={`${draftDetail.ebaySellerConnectionId}-shipping`} name="shippingPolicyId" defaultValue={draftDetail.shippingPolicyId ?? ""}>
                   <option value="">Select fulfillment policy</option>
                   {sellerResources?.fulfillmentPolicies.filter(({ enabled }) => enabled).map((resource) => (
                     <option key={resource.remoteId} value={resource.remoteId}>{resource.name ?? resource.remoteId}</option>
@@ -1888,9 +1909,17 @@ export default function CatalogWorkspace() {
           <section className={styles.listingDetailsCard}>
             <span className={styles.listingSectionLabel}>Policies & location</span>
             <div className={styles.listingDetailsGrid}>
+              <label className={styles.listingFieldWide}>
+                <span>eBay seller account</span>
+                <select name="ebaySellerConnectionId" value={draftDetail.ebaySellerConnectionId ?? ""} onChange={(event) => void changeDraftEbayAccount(event.target.value)}>
+                  <option value="">Select eBay account</option>
+                  {ebayConnections.filter((connection) => connection.status === "ACTIVE").map((connection) => <option key={connection.id} value={connection.id}>{connection.username || connection.ebayUserId || "eBay seller"}{connection.isDefault ? " — Default" : ""}</option>)}
+                </select>
+                <small>Changing the account resets policies to that seller account's defaults.</small>
+              </label>
               <label className={styles.listingField}>
                 <span>Payment policy</span>
-                <select name="paymentPolicyId" defaultValue={draftDetail.paymentPolicyId ?? ""}>
+                <select key={`${draftDetail.ebaySellerConnectionId}-payment`} name="paymentPolicyId" defaultValue={draftDetail.paymentPolicyId ?? ""}>
                   <option value="">Select payment policy</option>
                   {sellerResources?.paymentPolicies.filter(({ enabled }) => enabled).map((resource) => (
                     <option key={resource.remoteId} value={resource.remoteId}>{resource.name ?? resource.remoteId}</option>
@@ -1899,7 +1928,7 @@ export default function CatalogWorkspace() {
               </label>
               <label className={styles.listingField}>
                 <span>Return policy</span>
-                <select name="returnPolicyId" defaultValue={draftDetail.returnPolicyId ?? ""}>
+                <select key={`${draftDetail.ebaySellerConnectionId}-return`} name="returnPolicyId" defaultValue={draftDetail.returnPolicyId ?? ""}>
                   <option value="">Select return policy</option>
                   {sellerResources?.returnPolicies.filter(({ enabled }) => enabled).map((resource) => (
                     <option key={resource.remoteId} value={resource.remoteId}>{resource.name ?? resource.remoteId}</option>
@@ -1908,7 +1937,7 @@ export default function CatalogWorkspace() {
               </label>
               <label className={styles.listingFieldWide}>
                 <span>Merchant location</span>
-                <select name="merchantLocationKey" defaultValue={draftDetail.merchantLocationKey ?? ""}>
+                <select key={`${draftDetail.ebaySellerConnectionId}-location`} name="merchantLocationKey" defaultValue={draftDetail.merchantLocationKey ?? ""}>
                   <option value="">Select location</option>
                   {sellerResources?.inventoryLocations.filter(({ enabled }) => enabled).map((resource) => (
                     <option key={resource.remoteId} value={resource.remoteId}>{resource.name ?? resource.remoteId}</option>

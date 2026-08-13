@@ -62,8 +62,8 @@ async function providerError(response: Response, operation: string): Promise<Eba
   return new EbayApiError(`${operation} failed (${response.status})${detail ? `: ${detail}` : ""}`, response.status, operation);
 }
 
-async function sellerGet<T>(organizationId: string, path: string, marketplace: Marketplace, operation: string): Promise<T> {
-  const token = await getEbaySellerAccessToken(organizationId);
+async function sellerGet<T>(organizationId: string, connectionId: string, path: string, marketplace: Marketplace, operation: string): Promise<T> {
+  const token = await getEbaySellerAccessToken(organizationId, connectionId);
   const response = await fetch(`${apiBase()}${path}`, {
     signal: AbortSignal.timeout(30_000),
     headers: { Authorization: `Bearer ${token}`, "X-EBAY-C-MARKETPLACE-ID": marketplace },
@@ -148,29 +148,33 @@ export function normalizeCategoryAspects(rows: Array<Record<string, unknown>>): 
   });
 }
 
-export async function fetchSellerResources(organizationId: string, marketplace: Marketplace): Promise<{ resources: SellerResource[]; warnings: string[] }> {
+export async function fetchSellerResources(organizationId: string, connectionId: string, marketplace: Marketplace): Promise<{ resources: SellerResource[]; warnings: string[] }> {
   const warnings: string[] = [];
   const tasks = await Promise.allSettled([
     sellerGet<{ paymentPolicies?: Array<Record<string, unknown>> }>(
       organizationId,
+      connectionId,
       `/sell/account/v1/payment_policy?marketplace_id=${marketplace}`,
       marketplace,
       "eBay payment policy lookup",
     ),
     sellerGet<{ returnPolicies?: Array<Record<string, unknown>> }>(
       organizationId,
+      connectionId,
       `/sell/account/v1/return_policy?marketplace_id=${marketplace}`,
       marketplace,
       "eBay return policy lookup",
     ),
     sellerGet<{ fulfillmentPolicies?: Array<Record<string, unknown>> }>(
       organizationId,
+      connectionId,
       `/sell/account/v1/fulfillment_policy?marketplace_id=${marketplace}`,
       marketplace,
       "eBay fulfillment policy lookup",
     ),
     sellerGet<{ locations?: Array<Record<string, unknown>> }>(
       organizationId,
+      connectionId,
       "/sell/inventory/v1/location?limit=200&offset=0",
       marketplace,
       "eBay inventory location lookup",
