@@ -464,6 +464,105 @@
   margin-top: 4px;
 }
 
+.defaultsForm {
+  display: grid;
+  gap: 18px;
+  padding: 18px;
+  border: 1px solid #bfdbfe;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.defaultsHeading,
+.defaultsFooter {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+}
+
+.defaultsHeading h3 {
+  margin: 0;
+  color: #0c274d;
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.defaultsHeading p {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.defaultsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.defaultsGrid label {
+  display: grid;
+  gap: 6px;
+}
+
+.defaultsGrid label > span {
+  color: #475569;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.defaultsGrid select {
+  width: 100%;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #0f172a;
+  font: 600 12.5px/1 "Plus Jakarta Sans", sans-serif;
+  outline: none;
+}
+
+.defaultsGrid select:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.defaultsFooter {
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.defaultCheck {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.defaultCheck input {
+  width: 17px;
+  height: 17px;
+  margin-top: 2px;
+  accent-color: #2563eb;
+}
+
+.defaultCheck span {
+  display: grid;
+  gap: 3px;
+}
+
+.defaultCheck strong {
+  color: #0f172a;
+  font-size: 12.5px;
+}
+
+.defaultCheck small {
+  color: #64748b;
+  font-size: 11.5px;
+}
+
 .detailToolbar {
   display: flex;
   justify-content: space-between;
@@ -631,10 +730,24 @@
   .resourceGrid {
     grid-template-columns: 1fr;
   }
+  .defaultsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .page {
     padding: 20px 16px 36px;
   }
   .topbar {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 620px) {
+  .defaultsGrid {
+    grid-template-columns: 1fr;
+  }
+  .defaultsHeading,
+  .defaultsFooter {
+    align-items: stretch;
     flex-direction: column;
   }
 }

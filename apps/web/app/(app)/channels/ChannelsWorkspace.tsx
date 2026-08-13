@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../components/AuthProvider";
 import { ebayConnectNotice } from "../../lib/ebay-connect";
 import type { EbayConnection, EbaySellerResources } from "../catalog/types";
@@ -18,6 +18,11 @@ export interface EbayAccount {
   lastRefreshedAt: string | null;
   scopes: string[];
   lastError?: string | null;
+  defaultMarketplace: string;
+  defaultPaymentPolicyId: string | null;
+  defaultReturnPolicyId: string | null;
+  defaultShippingPolicyId: string | null;
+  defaultMerchantLocationKey: string | null;
 }
 
 function humanStatus(value: string) {
@@ -55,6 +60,11 @@ const initialDemoAccounts: EbayAccount[] = [
       "https://api.ebay.com/oauth/api_scope/sell.account",
       "https://api.ebay.com/oauth/api_scope/sell.fulfillment",
     ],
+    defaultMarketplace: "EBAY_US",
+    defaultPaymentPolicyId: "pay-1",
+    defaultReturnPolicyId: "ret-1",
+    defaultShippingPolicyId: "ship-1",
+    defaultMerchantLocationKey: "main-wh",
   },
   {
     id: "account-2",
@@ -69,6 +79,11 @@ const initialDemoAccounts: EbayAccount[] = [
       "https://api.ebay.com/oauth/api_scope/sell.inventory",
       "https://api.ebay.com/oauth/api_scope/sell.account",
     ],
+    defaultMarketplace: "EBAY_GB",
+    defaultPaymentPolicyId: "pay-1",
+    defaultReturnPolicyId: "ret-1",
+    defaultShippingPolicyId: "ship-1",
+    defaultMerchantLocationKey: "main-wh",
   },
 ];
 
@@ -129,24 +144,30 @@ export default function ChannelsWorkspace() {
     setLoading(true);
     setError("");
     try {
-      const conn = (await apiFetch("/api/ebay/connection")) as EbayConnection;
-      if (conn.status === "ACTIVE" || conn.username || conn.ebayUserId) {
-        const liveAcc: EbayAccount = {
-          id: "live-account",
-          username: conn.username || conn.ebayUserId || "Connected eBay Seller",
-          ebayUserId: conn.ebayUserId ?? null,
-          status: conn.status === "ACTIVE" ? "ACTIVE" : conn.status,
-          isDefault: true,
-          environment: conn.environment || conn.setup?.environment || "production",
-          registrationMarketplace: conn.registrationMarketplace || "EBAY_US",
-          lastRefreshedAt: conn.lastRefreshedAt ?? null,
-          scopes: conn.scopes || [],
-          lastError: conn.lastError,
-        };
-        setAccounts([liveAcc]);
-      } else {
-        setAccounts([]);
-      }
+      const result = (await apiFetch("/api/ebay/connections")) as { connections: EbayConnection[] };
+      const liveAccounts = result.connections
+        .filter((connection): connection is EbayConnection & { id: string } => Boolean(connection.id))
+        .map((connection): EbayAccount => ({
+          id: connection.id,
+          username: connection.username || connection.ebayUserId || "Connected eBay Seller",
+          ebayUserId: connection.ebayUserId ?? null,
+          status: connection.status,
+          isDefault: Boolean(connection.isDefault),
+          environment: connection.environment || "production",
+          registrationMarketplace: connection.registrationMarketplace || connection.defaultMarketplace || "EBAY_US",
+          lastRefreshedAt: connection.lastRefreshedAt ?? null,
+          scopes: connection.scopes || [],
+          lastError: connection.lastError,
+          defaultMarketplace: connection.defaultMarketplace || "EBAY_US",
+          defaultPaymentPolicyId: connection.defaultPaymentPolicyId ?? null,
+          defaultReturnPolicyId: connection.defaultReturnPolicyId ?? null,
+          defaultShippingPolicyId: connection.defaultShippingPolicyId ?? null,
+          defaultMerchantLocationKey: connection.defaultMerchantLocationKey ?? null,
+        }));
+      setAccounts(liveAccounts);
+      setExpandedId((current) => current && liveAccounts.some(({ id }) => id === current)
+        ? current
+        : liveAccounts.find(({ isDefault }) => isDefault)?.id || liveAccounts[0]?.id || null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to load connected seller accounts");
     } finally {
@@ -166,7 +187,7 @@ export default function ChannelsWorkspace() {
       }
       try {
         const res = (await apiFetch(
-          `/api/ebay/resources?marketplace=${encodeURIComponent(targetMarketplace)}`
+          `/api/ebay/resources?marketplace=${encodeURIComponent(targetMarketplace)}&connectionId=${encodeURIComponent(accountId)}`
         )) as EbaySellerResources;
         setResourcesMap((prev) => ({ ...prev, [accountId]: res }));
       } catch {
@@ -181,6 +202,15 @@ export default function ChannelsWorkspace() {
   }, [loadConnection]);
 
   useEffect(() => {
+    if (!expandedId || authStatus !== "ready") return;
+    const account = accounts.find(({ id }) => id === expandedId);
+    if (!account) return;
+    const accountMarketplace = account.defaultMarketplace || account.registrationMarketplace || "EBAY_US";
+    setMarketplace(accountMarketplace);
+    void loadResources(account.id, accountMarketplace);
+  }, [accounts, authStatus, expandedId, loadResources]);
+
+  useEffect(() => {
     if (authStatus !== "ready" || demo) return;
     const params = new URLSearchParams(window.location.search);
     const result = params.get("ebay");
@@ -190,15 +220,12 @@ export default function ChannelsWorkspace() {
     void loadConnection();
   }, [authStatus, demo, loadConnection]);
 
-  function setDefaultAccount(accountId: string) {
-    setAccounts((prev) =>
-      prev.map((acc) => ({
-        ...acc,
-        isDefault: acc.id === accountId,
-      }))
-    );
-    const target = accounts.find((a) => a.id === accountId);
-    setNotice(`Set "${target?.username || "Selected account"}" as default primary eBay account for listing sync.`);
+  function prepareDefaultAccount(accountId: string) {
+    const target = accounts.find((account) => account.id === accountId);
+    setExpandedId(accountId);
+    setMarketplace(target?.defaultMarketplace || target?.registrationMarketplace || "EBAY_US");
+    void loadResources(accountId, target?.defaultMarketplace || target?.registrationMarketplace || "EBAY_US");
+    setNotice("Select this account's default policies and item location, enable Default eBay account, then save defaults.");
   }
 
   async function connectEbay() {
@@ -233,7 +260,7 @@ export default function ChannelsWorkspace() {
     if (!demo) {
       setBusy(`disconnect-${accountId}`);
       try {
-        await apiFetch("/api/ebay/connection", { method: "DELETE" });
+        await apiFetch(`/api/ebay/connection?connectionId=${encodeURIComponent(accountId)}`, { method: "DELETE" });
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : "Unable to disconnect eBay account");
         setBusy("");
@@ -263,12 +290,47 @@ export default function ChannelsWorkspace() {
     try {
       const result = (await apiFetch("/api/ebay/resources/sync", {
         method: "POST",
-        body: JSON.stringify({ marketplace }),
+        body: JSON.stringify({ marketplace, connectionId: accountId }),
       })) as EbaySellerResources;
       setResourcesMap((prev) => ({ ...prev, [accountId]: result }));
       setNotice(`Synced payment, return, shipping policies and inventory locations for ${marketplaceLabel(marketplace)}.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to sync seller details from eBay");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function saveDefaults(accountId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    setBusy(`save-${accountId}`);
+    setError("");
+    setNotice("");
+    try {
+      if (demo) {
+        const wantsDefault = accounts.some((account) => account.id === accountId && account.isDefault) || form.get("isDefault") === "on";
+        setAccounts((current) => current.map((account) => ({
+          ...account,
+          isDefault: wantsDefault ? account.id === accountId : account.isDefault,
+        })));
+      } else {
+        await apiFetch(`/api/ebay/connections/${encodeURIComponent(accountId)}/defaults`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            isDefault: accounts.some((account) => account.id === accountId && account.isDefault) || form.get("isDefault") === "on",
+            defaultMarketplace: marketplace,
+            defaultPaymentPolicyId: String(form.get("paymentPolicyId") || ""),
+            defaultReturnPolicyId: String(form.get("returnPolicyId") || ""),
+            defaultShippingPolicyId: String(form.get("shippingPolicyId") || ""),
+            defaultMerchantLocationKey: String(form.get("merchantLocationKey") || ""),
+          }),
+        });
+        await loadConnection();
+      }
+      setNotice("Default eBay account, policies, and item location saved. New Quick SKU and Pipeline drafts will inherit them.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to save eBay account defaults");
     } finally {
       setBusy("");
     }
@@ -388,7 +450,7 @@ export default function ChannelsWorkspace() {
                           <button
                             type="button"
                             className={styles.setDefaultBtn}
-                            onClick={() => setDefaultAccount(acc.id)}
+                            onClick={() => prepareDefaultAccount(acc.id)}
                           >
                             Set as Default
                           </button>
@@ -444,7 +506,11 @@ export default function ChannelsWorkspace() {
                     className={styles.ghostBtn}
                     onClick={() => {
                       setExpandedId(isExpanded ? null : acc.id);
-                      if (!isExpanded) void loadResources(acc.id, marketplace);
+                      if (!isExpanded) {
+                        const accountMarketplace = acc.defaultMarketplace || acc.registrationMarketplace || "EBAY_US";
+                        setMarketplace(accountMarketplace);
+                        void loadResources(acc.id, accountMarketplace);
+                      }
                     }}
                   >
                     {isExpanded ? "Hide Details" : "View Policies & Locations"}
@@ -477,25 +543,32 @@ export default function ChannelsWorkspace() {
 
                 {isExpanded && (
                   <section className={styles.detailPanel}>
-                    <div className={styles.detailToolbar}>
-                      <label className={styles.marketplaceField}>
-                        <span>Sync marketplace region</span>
-                        <select
-                          value={marketplace}
-                          onChange={(event) => {
-                            setMarketplace(event.target.value);
-                            void loadResources(acc.id, event.target.value);
-                          }}
-                        >
-                          <option value="EBAY_US">eBay US</option>
-                          <option value="EBAY_GB">eBay UK</option>
-                          <option value="EBAY_DE">eBay Germany</option>
-                        </select>
-                      </label>
-                      <Link href="/catalog" className={styles.primaryLink}>
-                        Assign to Listings →
-                      </Link>
-                    </div>
+                    <form className={styles.defaultsForm} onSubmit={(event) => void saveDefaults(acc.id, event)}>
+                      <div className={styles.defaultsHeading}>
+                        <div>
+                          <span className={styles.eyebrow}>Listing defaults</span>
+                          <h3>Default account, policies &amp; location</h3>
+                          <p>Automatically assign these values to new Quick SKU and Pipeline catalog drafts.</p>
+                        </div>
+                        <Link href="/catalog" className={styles.primaryLink}>Manage catalog →</Link>
+                      </div>
+
+                      <div className={styles.defaultsGrid}>
+                        <label><span>Marketplace</span><select value={marketplace} onChange={(event) => {
+                          setMarketplace(event.target.value);
+                          void loadResources(acc.id, event.target.value);
+                        }}><option value="EBAY_US">eBay US</option><option value="EBAY_GB">eBay UK</option><option value="EBAY_DE">eBay Germany</option></select></label>
+                        <label><span>Payment policy</span><select name="paymentPolicyId" required defaultValue={acc.defaultPaymentPolicyId || ""}><option value="">Select payment policy</option>{paymentPolicies.map((item) => <option key={item.remoteId} value={item.remoteId}>{item.name || item.remoteId}</option>)}</select></label>
+                        <label><span>Return policy</span><select name="returnPolicyId" required defaultValue={acc.defaultReturnPolicyId || ""}><option value="">Select return policy</option>{returnPolicies.map((item) => <option key={item.remoteId} value={item.remoteId}>{item.name || item.remoteId}</option>)}</select></label>
+                        <label><span>Shipping policy</span><select name="shippingPolicyId" required defaultValue={acc.defaultShippingPolicyId || ""}><option value="">Select shipping policy</option>{shippingPolicies.map((item) => <option key={item.remoteId} value={item.remoteId}>{item.name || item.remoteId}</option>)}</select></label>
+                        <label><span>Item location</span><select name="merchantLocationKey" required defaultValue={acc.defaultMerchantLocationKey || ""}><option value="">Select item location</option>{locations.map((item) => <option key={item.remoteId} value={item.remoteId}>{item.name || item.remoteId}</option>)}</select></label>
+                      </div>
+
+                      <div className={styles.defaultsFooter}>
+                        <label className={styles.defaultCheck}><input type="checkbox" name="isDefault" defaultChecked={acc.isDefault} disabled={acc.isDefault} /><span><strong>Default eBay account</strong><small>{acc.isDefault ? "This is the current organization default." : "Use this seller account for newly created listing drafts."}</small></span></label>
+                        <button type="submit" className={styles.primary} disabled={busy === `save-${acc.id}` || !resourcesMap[acc.id]}>{busy === `save-${acc.id}` ? "Saving..." : "Save defaults"}</button>
+                      </div>
+                    </form>
 
                     <div className={styles.syncSummary}>
                       <article>
@@ -532,4 +605,3 @@ export default function ChannelsWorkspace() {
     </section>
   );
 }
-
