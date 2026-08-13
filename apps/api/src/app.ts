@@ -5,14 +5,14 @@ import { z } from "zod";
 import { AuthenticationError, AuthorizationError } from "./auth.js";
 import { assertTrustedAuthOrigin, clearRefreshCookie, getJwtConfiguration, isTrustedWebOrigin, readRefreshCookie, revokeRefreshToken, rotateTokenPair, setRefreshCookie } from "./auth-sessions.js";
 import { getConfig } from "./config.js";
-import { bulkUpdateCatalogParts, CatalogError, deleteCatalogParts, exportCatalogCsv, getCatalogPart, listCatalogParts, updateCatalogPart } from "./catalog-service.js";
+import { bulkUpdateCatalogParts, CatalogError, deleteCatalogParts, exportCatalogCsv, getCatalogPart, listCatalogParts, replaceCatalogPartMedia, updateCatalogPart } from "./catalog-service.js";
 import { databaseIsReachable } from "./db.js";
 import { calculateAnalytics } from "./domain/analytics.js";
 import { matchListing, normalizePartNumber } from "./domain/matching.js";
 import { accountDeletionNotificationSchema, generateChallengeResponse, verifyEbayNotificationSignature } from "./ebay-notifications.js";
 import { EbayApiError, searchEbay } from "./providers/ebay.js";
 import { deleteListingsForClosedEbayAccount, findLatestAnalytics, findListing, findSearchHistory, saveSearchResult } from "./repository.js";
-import { findMediaStorageKey, findMediaStorageKeys, saveConfirmedMediaAsset } from "./media-repository.js";
+import { findMediaStorageKey, findMediaStorageKeys, listOrganizationImageAssets, saveConfirmedMediaAsset } from "./media-repository.js";
 import { catalogImportTemplate, catalogImportTemplateFilename, catalogImportTemplateVersion, createCatalogImportCsv } from "./import-template.js";
 import { discardStaleBlankSkuConflictImport, findExistingNormalizedSkus, findImportByChecksum, stageParsedImport } from "./import-repository.js";
 import { applyExistingSkuConflicts, parseAndValidateImport } from "./import-parser.js";
@@ -112,6 +112,14 @@ const imageArchiveFilenameSchema = z.string().trim().min(1).max(255).regex(/\.zi
 const importPreviewQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(50),
+});
+const mediaAssetListQuerySchema = z.object({
+  search: z.string().trim().max(120).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(60),
+});
+const catalogPartMediaSchema = z.object({
+  mediaAssetIds: z.array(z.string().min(1)).max(24),
 });
 const pipelineStartSchema = z.object({
   listingTeamId: z.string().min(1),
@@ -898,6 +906,13 @@ app.get("/api/imports/template/schema", requireTenantContext, (_req, res) => {
   res.json(catalogImportTemplate);
 });
 
+app.get("/api/media/assets", requireTenantContext, requireAnyOrganizationPermission("media.view", "catalog.edit"), async (req, res, next) => {
+  try {
+    const tenant = getTenantContext(res);
+    res.json(await listOrganizationImageAssets(tenant.organization.id, mediaAssetListQuerySchema.parse(req.query)));
+  } catch (error) { next(error); }
+});
+
 app.get("/api/imports", requireTenantContext, requireOrganizationPermission("pipeline.view"), async (req, res, next) => {
   try {
     const tenant = getTenantContext(res);
@@ -1165,6 +1180,16 @@ app.patch("/api/parts/:id", writeRateLimit, requireTenantContext, requireOrganiz
     const partId = req.params.id;
     if (typeof partId !== "string") return res.status(400).json({ error: "Invalid catalog part ID" });
     res.json(await updateCatalogPart(getTenantContext(res).organization.id, partId, catalogPartUpdateSchema.parse(req.body)));
+  } catch (error) { next(error); }
+});
+
+app.put("/api/parts/:id/media", writeRateLimit, requireTenantContext, requireOrganizationPermission("catalog.edit"), async (req, res, next) => {
+  try {
+    const partId = req.params.id;
+    if (typeof partId !== "string") return res.status(400).json({ error: "Invalid catalog part ID" });
+    const tenant = getTenantContext(res);
+    const { mediaAssetIds } = catalogPartMediaSchema.parse(req.body);
+    res.json(await replaceCatalogPartMedia(tenant.organization.id, tenant.user.id, partId, mediaAssetIds));
   } catch (error) { next(error); }
 });
 

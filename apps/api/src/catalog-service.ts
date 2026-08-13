@@ -290,7 +290,7 @@ export async function getCatalogPart(organizationId: string, partId: string) {
       },
       media: {
         orderBy: { displayOrder: "asc" },
-        take: 12,
+        take: 24,
         select: {
           id: true,
           displayOrder: true,
@@ -441,6 +441,83 @@ export interface CatalogPartUpdate {
     height?: number | null;
     dimensionUnit?: "IN" | "CM" | null;
   };
+}
+
+export async function replaceCatalogPartMedia(
+  organizationId: string,
+  userId: string,
+  partId: string,
+  mediaAssetIds: string[],
+) {
+  const uniqueIds = [...new Set(mediaAssetIds)];
+  if (uniqueIds.length !== mediaAssetIds.length) throw new CatalogError("Each image can only be attached once", 400);
+  if (uniqueIds.length > 24) throw new CatalogError("A listing can have at most 24 images", 400);
+
+  await prisma.$transaction(async (tx) => {
+    const part = await tx.part.findFirst({
+      where: { id: partId, organizationId },
+      select: { id: true, status: true, partName: true, sku: true },
+    });
+    if (!part) throw new CatalogError("Catalog part not found", 404);
+
+    const assets = uniqueIds.length
+      ? await tx.mediaAsset.findMany({
+          where: {
+            id: { in: uniqueIds },
+            organizationId,
+            mimeType: { in: ["image/jpeg", "image/png", "image/webp"] },
+            status: { in: ["UPLOADED", "READY"] },
+          },
+          select: { id: true, originalFilename: true },
+        })
+      : [];
+    if (assets.length !== uniqueIds.length) {
+      throw new CatalogError("One or more images are unavailable or do not belong to this organization", 404);
+    }
+    const names = new Map(assets.map((asset) => [asset.id, asset.originalFilename]));
+
+    // Recreate the ordered links atomically. The first image is the primary image everywhere.
+    await tx.partMedia.deleteMany({ where: { organizationId, partId } });
+    if (uniqueIds.length) {
+      await tx.mediaAsset.updateMany({ where: { organizationId, id: { in: uniqueIds } }, data: { status: "READY" } });
+      await tx.partMedia.createMany({
+        data: uniqueIds.map((mediaAssetId, displayOrder) => ({
+          organizationId,
+          partId,
+          mediaAssetId,
+          displayOrder,
+          approved: true,
+          altText: `${part.partName || part.sku} - ${names.get(mediaAssetId) || `image ${displayOrder + 1}`}`.slice(0, 255),
+        })),
+      });
+    }
+    if (part.status !== "ARCHIVED") {
+      await tx.part.update({
+        where: { id: partId },
+        data: { status: uniqueIds.length ? (part.status === "NEEDS_IMAGES" ? "READY_FOR_ENRICHMENT" : part.status) : "NEEDS_IMAGES" },
+      });
+    }
+
+    const invalidatedDrafts = await invalidateListingDraftsForCatalogChanges(
+      tx,
+      organizationId,
+      userId,
+      [partId],
+      ["media"],
+    );
+    await recordAuditEvent(tx, {
+      organizationId,
+      actorUserId: userId,
+      action: "catalog.part_media.updated",
+      resourceType: "Part",
+      resourceId: partId,
+      severity: "INFO",
+      summary: `Updated ${uniqueIds.length} image${uniqueIds.length === 1 ? "" : "s"} for ${part.sku}`,
+      metadata: { mediaAssetIds: uniqueIds, invalidatedDrafts } as Prisma.InputJsonObject,
+    });
+  });
+
+  return getCatalogPart(organizationId, partId);
 }
 
 export async function updateCatalogPart(organizationId: string, partId: string, input: CatalogPartUpdate) {

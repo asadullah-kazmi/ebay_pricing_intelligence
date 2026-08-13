@@ -52,3 +52,44 @@ export async function findMediaStorageKeys(
   });
   return new Map(assets.map((asset) => [asset.id, asset.externalUrl ?? asset.storageKey]));
 }
+
+export async function listOrganizationImageAssets(
+  organizationId: string,
+  input: { search?: string; page: number; pageSize: number },
+) {
+  const search = input.search?.trim();
+  const where: Prisma.MediaAssetWhereInput = {
+    organizationId,
+    mimeType: { in: ["image/jpeg", "image/png", "image/webp"] },
+    status: { in: ["UPLOADED", "READY"] },
+    ...(search ? { originalFilename: { contains: search, mode: "insensitive" } } : {}),
+  };
+  const [assets, total] = await prisma.$transaction([
+    prisma.mediaAsset.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (input.page - 1) * input.pageSize,
+      take: input.pageSize,
+      select: {
+        id: true,
+        originalFilename: true,
+        mimeType: true,
+        byteSize: true,
+        width: true,
+        height: true,
+        status: true,
+        createdAt: true,
+      },
+    }),
+    prisma.mediaAsset.count({ where }),
+  ]);
+  return {
+    assets,
+    pagination: {
+      page: input.page,
+      pageSize: input.pageSize,
+      total,
+      totalPages: Math.ceil(total / input.pageSize) || 0,
+    },
+  };
+}

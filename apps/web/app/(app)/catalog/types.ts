@@ -142,6 +142,22 @@ export interface CatalogPartDetail extends Omit<CatalogPartCard, "media" | "inve
   }>;
 }
 
+export interface MediaLibraryAsset {
+  id: string;
+  originalFilename: string;
+  mimeType: string;
+  byteSize: number;
+  width: number | null;
+  height: number | null;
+  status: "UPLOADED" | "READY";
+  createdAt: string;
+}
+
+export interface MediaLibraryResponse {
+  assets: MediaLibraryAsset[];
+  pagination: { page: number; pageSize: number; total: number; totalPages: number };
+}
+
 export type ManualFitmentStatus = "PENDING" | "APPROVED" | "REJECTED" | "SUPERSEDED";
 export type ManualFitmentSource = "EBAY_CATALOG" | "MANUAL" | "DONOR_VEHICLE";
 
