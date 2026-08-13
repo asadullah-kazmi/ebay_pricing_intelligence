@@ -33,6 +33,25 @@ function escapeHtml(value: string) {
   })[character] ?? character);
 }
 
+function decodeHtml(value: string) {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
+export function listingTitleFromDescriptionHtml(description: string | null | undefined): string | null {
+  if (!description) return null;
+  const tagged = description.match(/<div[^>]*data-partpulse=["']listing-title["'][^>]*>([\s\S]*?)<\/div>/i);
+  const legacy = description.match(/<div[^>]*style=["'][^"']*font-size\s*:\s*22px[^"']*["'][^>]*>([\s\S]*?)<\/div>/i);
+  const value = tagged?.[1] ?? legacy?.[1];
+  if (!value) return null;
+  const plain = decodeHtml(value.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+  return plain || null;
+}
+
 function propertyValue(properties: Record<string, string>, ...keys: string[]): string | null {
   const entries = Object.entries(properties);
   for (const key of keys) {
@@ -200,7 +219,7 @@ function buildTitleCard(input: ListingDescriptionInput, applications: Array<Reco
 
   return `
     ${cardOpen()}
-      <div style="font-family:Arial,Helvetica,sans-serif;font-size:22px;line-height:1.25;font-weight:700;color:${TEXT};margin:0 0 10px 0;">${escapeHtml(input.title)}</div>
+      <div data-partpulse="listing-title" style="font-family:Arial,Helvetica,sans-serif;font-size:22px;line-height:1.25;font-weight:700;color:${TEXT};margin:0 0 10px 0;">${escapeHtml(input.title)}</div>
       <div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5;color:${MUTED};">${escapeHtml(metaBits.join(" | "))}</div>
     ${cardClose()}
   `;

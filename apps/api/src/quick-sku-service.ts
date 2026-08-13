@@ -618,6 +618,59 @@ async function persistQuickSkuPart(
       });
     }
 
+    const aspects = {
+      ...prepared.aspects,
+      "Manufacturer Part Number": [partNumber],
+      Brand: [prepared.identifiedBrand],
+      ...(prepared.placement ? { Placement: [prepared.placement] } : {}),
+    };
+    const validationIssues = [
+      { code: "IMAGES_REQUIRED", severity: "BLOCKER", field: "images", message: "Add approved listing images" },
+      { code: "POLICIES_REQUIRED", severity: "BLOCKER", field: "policies", message: "Assign eBay business policies" },
+    ];
+    const draft = await tx.listingDraft.create({
+      data: {
+        organizationId,
+        partId: part.id,
+        marketplace,
+        status: "BLOCKED",
+        title: prepared.listingTitle,
+        description: prepared.description,
+        categoryId: prepared.categoryId,
+        condition,
+        ebayCondition: condition === "NEW" ? "NEW" : null,
+        price: new Prisma.Decimal(input.price.toFixed(2)),
+        currency,
+        quantity: input.quantity,
+        aspects: asJson(aspects),
+        validationIssues: asJson(validationIssues),
+        validatedAt: new Date(),
+        createdById: userId,
+        updatedById: userId,
+      },
+    });
+    await tx.listingDraftVersion.create({
+      data: {
+        organizationId,
+        listingDraftId: draft.id,
+        version: 1,
+        snapshot: asJson({
+          title: prepared.listingTitle,
+          description: prepared.description,
+          categoryId: prepared.categoryId,
+          condition,
+          price: input.price,
+          currency,
+          quantity: input.quantity,
+          aspects,
+          status: "BLOCKED",
+          validationIssues,
+        }),
+        reason: "Created by Quick SKU catalog intake",
+        createdById: userId,
+      },
+    });
+
     await recordAuditEvent(tx, {
       organizationId,
       actorType: "USER",

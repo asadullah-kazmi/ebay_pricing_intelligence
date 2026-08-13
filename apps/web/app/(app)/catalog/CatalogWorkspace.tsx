@@ -85,6 +85,9 @@ function money(value: string | number, currency: string) {
 }
 
 function detailTitle(part: CatalogPartDetail) {
+  const draftTitle = part.listingDrafts?.[0]?.title?.trim();
+  if (draftTitle) return draftTitle;
+
   const donor = part.donorVehicle
     ? [part.donorVehicle.year, part.donorVehicle.make, part.donorVehicle.model].filter(Boolean).join(" ")
     : "";
@@ -96,6 +99,13 @@ function detailTitle(part: CatalogPartDetail) {
       .replace(/\b\w/g, (letter) => letter.toUpperCase());
   }
   return raw;
+}
+
+function catalogTitle(part: CatalogPartCard) {
+  return part.listingTitle?.trim()
+    || part.listingDrafts?.[0]?.title?.trim()
+    || part.partName?.trim()
+    || "Unnamed automotive part";
 }
 
 function fitmentLabel(properties: Record<string, string>) {
@@ -1518,7 +1528,7 @@ export default function CatalogWorkspace() {
                           <CatalogImage mediaId={part.media[0]?.mediaAsset.id} token={token} demo={demo}/>
                           <div className={styles.productCopy}>
                             <button type="button" className={styles.productTitle} onClick={() => void openPart(part.id)}>
-                              {part.partName || "Unnamed automotive part"}
+                              {catalogTitle(part)}
                             </button>
                             <span className={styles.productMeta}>{part.brand || "Brand not set"}</span>
                           </div>
@@ -1560,7 +1570,7 @@ export default function CatalogWorkspace() {
             </table>
           </div>
         ) : (
-          <div className={styles.gallery}>{catalog.parts.map((part) => <article key={part.id} className={styles.partCard}><button type="button" className={styles.cardSelect} aria-label={`Select ${part.sku}`} onClick={() => togglePart(part.id)}>{selected.has(part.id) ? "✓" : "+"}</button><CatalogImage mediaId={part.media[0]?.mediaAsset.id} token={token} demo={demo}/><span className={`${styles.statusPill} ${styles[part.status.toLowerCase()]}`}>{humanStatus(part.status)}</span><h3>{part.partName || "Unnamed automotive part"}</h3><p>{part.brand || "Brand not set"} · {part.condition}</p><div><b>{part.sku}</b><span>{part.primaryPartNumber}</span></div><footer><span>{part.inventoryItem?.quantity ?? 0} in stock</span><button type="button" onClick={() => void openManualFitment(part.id)}>Fitment</button><button type="button" onClick={() => void openPart(part.id)}>Edit part</button></footer></article>)}</div>
+          <div className={styles.gallery}>{catalog.parts.map((part) => <article key={part.id} className={styles.partCard}><button type="button" className={styles.cardSelect} aria-label={`Select ${part.sku}`} onClick={() => togglePart(part.id)}>{selected.has(part.id) ? "✓" : "+"}</button><CatalogImage mediaId={part.media[0]?.mediaAsset.id} token={token} demo={demo}/><span className={`${styles.statusPill} ${styles[part.status.toLowerCase()]}`}>{humanStatus(part.status)}</span><h3>{catalogTitle(part)}</h3><p>{part.brand || "Brand not set"} · {part.condition}</p><div><b>{part.sku}</b><span>{part.primaryPartNumber}</span></div><footer><span>{part.inventoryItem?.quantity ?? 0} in stock</span><button type="button" onClick={() => void openManualFitment(part.id)}>Fitment</button><button type="button" onClick={() => void openPart(part.id)}>Edit part</button></footer></article>)}</div>
         )}
 
         <div className={styles.pagination}>

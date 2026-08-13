@@ -32,6 +32,7 @@ export interface CatalogPartCard {
   primaryPartNumber: string;
   brand: string | null;
   partName: string | null;
+  listingTitle?: string | null;
   condition: PartCondition;
   status: CatalogStatus;
   createdAt: string;
@@ -61,7 +62,7 @@ export interface CatalogPartCard {
     completedAt: string | null;
     fitmentJob: { marketplace: string };
   }>;
-  listingDrafts?: Array<{ id: string; status: string }>;
+  listingDrafts?: Array<{ id: string; status: string; title: string }>;
   _count: { media: number };
 }
 

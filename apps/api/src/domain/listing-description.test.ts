@@ -4,6 +4,7 @@ import {
   buildListingDescriptionHtml,
   fitmentRowsFromApplications,
   isListingDescriptionTemplate,
+  listingTitleFromDescriptionHtml,
 } from "./listing-description.js";
 
 const fiatFitment = [
@@ -95,5 +96,18 @@ describe("listing description template", () => {
     expect(isListingDescriptionTemplate(html)).toBe(true);
     expect(isListingDescriptionTemplate("Hersteller: AUDI\nFarbe: Gris")).toBe(false);
     expect(isListingDescriptionTemplate(null)).toBe(false);
+  });
+
+  it("recovers listing titles from current and legacy generated descriptions", () => {
+    const html = buildListingDescriptionHtml({
+      title: "Audi S6 Front Right Door Shell 4G0831052 OEM Used",
+      partName: "Door Shell",
+      primaryPartNumber: "4G0831052",
+      condition: "USED",
+    });
+    expect(listingTitleFromDescriptionHtml(html)).toBe("Audi S6 Front Right Door Shell 4G0831052 OEM Used");
+
+    const legacy = '<div style="font-family:Arial;font-size:22px;font-weight:700;">Audi A6 Door Shell &amp; Trim</div>';
+    expect(listingTitleFromDescriptionHtml(legacy)).toBe("Audi A6 Door Shell & Trim");
   });
 });

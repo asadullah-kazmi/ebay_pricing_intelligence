@@ -1,7 +1,7 @@
 import { Prisma, type CatalogPartStatus, type PartCondition } from "@prisma/client";
 import { recordAuditEvent } from "./audit-service.js";
 import { prisma } from "./db.js";
-import { buildListingDescriptionHtml, isListingDescriptionTemplate } from "./domain/listing-description.js";
+import { buildListingDescriptionHtml, isListingDescriptionTemplate, listingTitleFromDescriptionHtml } from "./domain/listing-description.js";
 import { buildEbayListingTitle } from "./domain/listing-title.js";
 import { normalizePartNumber } from "./domain/matching.js";
 import { invalidateListingDraftsForCatalogChanges } from "./listing-draft-service.js";
@@ -113,6 +113,7 @@ const catalogCardSelect = {
   primaryPartNumber: true,
   brand: true,
   partName: true,
+  description: true,
   condition: true,
   status: true,
   createdAt: true,
@@ -132,7 +133,7 @@ const catalogCardSelect = {
   listingDrafts: {
     orderBy: { updatedAt: "desc" as const },
     take: 1,
-    select: { id: true, status: true },
+    select: { id: true, status: true, title: true },
   },
   _count: { select: { media: true } },
 } satisfies Prisma.PartSelect;
@@ -215,8 +216,13 @@ export async function listCatalogParts(organizationId: string, query: CatalogQue
   return {
     parts: parts.map((part) => {
       const pricing = pricingByPartId.get(part.id);
+      const { description, ...card } = part;
       return {
-        ...part,
+        ...card,
+        listingTitle: part.listingDrafts[0]?.title?.trim()
+          || listingTitleFromDescriptionHtml(description)
+          || part.partName?.trim()
+          || null,
         inventoryItem: part.inventoryItem
           ? { ...part.inventoryItem, warehouse: null, binLocation: null }
           : null,
