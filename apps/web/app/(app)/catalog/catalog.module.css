@@ -4113,6 +4113,146 @@
 .readinessTag b { background: #e8f8ef; color: #087a43; }
 .readinessTag i { background: #fff0f0; color: #c32929; }
 
+.catalogPageHidden {
+  display: none;
+}
+
+.readinessPage {
+  display: grid;
+  gap: 16px;
+  width: 100%;
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 28px 24px 42px;
+}
+
+.readinessPageHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.readinessPageHeader h1 {
+  margin: 4px 0 5px;
+  color: #092349;
+  font: 750 28px/1.18 "Plus Jakarta Sans", sans-serif;
+  letter-spacing: -0.75px;
+}
+
+.readinessPageHeader p,
+.readinessPageCardHead p {
+  margin: 0;
+  color: #64748b;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.readinessBack {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 13px;
+  border: 1px solid #cbdcf2;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #1459d9;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.readinessBack:hover {
+  background: #f2f7ff;
+}
+
+.readinessPage > .readinessStats {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.readinessPage > .readinessStats > div {
+  min-height: 70px;
+  padding: 12px 16px;
+  box-shadow: 0 8px 26px rgba(30, 61, 105, 0.05);
+}
+
+.readinessPage > .readinessStats span {
+  font-size: 10.5px;
+}
+
+.readinessPage > .readinessStats b {
+  font-size: 19px;
+}
+
+.readinessPageCard {
+  overflow: hidden;
+  border: 1px solid #dfe7f1;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 14px 36px rgba(30, 61, 105, 0.06);
+}
+
+.readinessPageCardHead {
+  min-height: 68px;
+  padding: 14px 20px;
+  border-bottom: 1px solid #e6edf5;
+}
+
+.readinessPageCardHead strong {
+  display: block;
+  margin: 0 0 3px;
+  color: #102442;
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.readinessPageCard > .readinessList {
+  max-height: none;
+  overflow: visible;
+  padding: 0 20px 10px;
+}
+
+.readinessPageCard .readinessRowMain > div > b {
+  display: -webkit-box;
+  margin: 0 0 5px;
+  overflow: hidden;
+  color: #102442;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.readinessPageCard .readinessRowMain > div > span {
+  display: block;
+  color: #718097;
+  font-size: 10.5px;
+  line-height: 1.35;
+}
+
+.readinessEmpty {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  padding: 64px 20px;
+  color: #64748b;
+  text-align: center;
+}
+
+.readinessEmpty b {
+  color: #102442;
+  font-size: 14px;
+}
+
+.readinessEmpty span {
+  font-size: 11.5px;
+}
+
 .readinessModal {
   width: min(960px, calc(100vw - 40px));
   height: min(720px, calc(100vh - 40px));
@@ -4197,17 +4337,17 @@
 
 .readinessRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, auto);
+  grid-template-columns: minmax(0, 1fr) minmax(350px, auto);
   align-items: center;
-  gap: 18px;
-  min-height: 78px;
-  padding: 12px 2px;
+  gap: 24px;
+  min-height: 76px;
+  padding: 13px 2px;
   border-bottom: 1px solid #e8edf4;
 }
 
 .readinessRow:last-child { border-bottom: 0; }
 
-.readinessRowMain { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 11px; }
+.readinessRowMain { min-width: 0; display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: start; gap: 12px; }
 .readinessRowMain > div { min-width: 0; }
 .readinessRowMain h3 {
   display: -webkit-box;
@@ -4234,16 +4374,19 @@
   font-weight: 800;
   white-space: nowrap;
 }
+.readinessStatus { justify-self: start; min-width: 58px; justify-content: center; }
 .readinessStatusReady { background: #e8f8ef; color: #087a43; }
 .readinessStatusBlocked, .readinessBlockers { background: #fff0f0; color: #c32929; }
 .readinessStatusDraft { background: #eef3f8; color: #53647b; }
 .readinessWarnings { background: #fff7e5; color: #9b6200; }
 
-.readinessRowMeta { display: flex; min-width: 0; align-items: center; justify-content: flex-end; gap: 8px; }
+.readinessRowMeta { display: grid; grid-template-columns: minmax(135px, auto) 74px 118px; min-width: 0; align-items: center; justify-content: end; gap: 10px; }
+.readinessIssueCounts { display: flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; }
 .readinessRowMeta > b { min-width: 82px; text-align: right; color: #102442; font-size: 12px; }
 .readinessRowMeta button {
   min-height: 34px;
-  padding: 0 12px;
+  width: 118px;
+  padding: 0 10px;
   border: 1px solid #b8d2fb;
   border-radius: 8px;
   background: #f4f8ff;
@@ -4258,11 +4401,22 @@
 @media (max-width: 900px) {
   .readinessTag > span { display: none; }
   .readinessRow { grid-template-columns: 1fr; gap: 10px; }
-  .readinessRowMeta { justify-content: flex-start; flex-wrap: wrap; }
+  .readinessRowMeta { grid-template-columns: minmax(0, 1fr) 74px 118px; justify-content: stretch; padding-left: 76px; }
   .readinessRowMeta > b { text-align: left; }
+  .readinessIssueCounts { justify-content: flex-start; }
 }
 
 @media (max-width: 560px) {
+  .readinessPage { padding: 20px 14px 32px; }
+  .readinessPageHeader { display: grid; }
+  .readinessPageHeader h1 { font-size: 24px; }
+  .readinessPageCard > .readinessList { padding-left: 14px; padding-right: 14px; }
+  .readinessPage > .readinessStats { grid-template-columns: 1fr 1fr 1fr; }
+  .readinessPage > .readinessStats > div { display: block; min-height: 58px; padding: 9px 10px; }
+  .readinessPage > .readinessStats b { display: block; margin-top: 4px; font-size: 17px; }
+  .readinessRowMain { grid-template-columns: 1fr; gap: 7px; }
+  .readinessRowMeta { grid-template-columns: 1fr auto; padding-left: 0; }
+  .readinessIssueCounts { grid-column: 1 / -1; }
   .readinessModal { width: calc(100vw - 18px); height: calc(100vh - 18px); max-height: calc(100vh - 18px); }
   .drawer > .readinessHeader, .readinessStats { padding-left: 15px; padding-right: 15px; }
   .readinessList { padding-left: 15px; padding-right: 15px; }
