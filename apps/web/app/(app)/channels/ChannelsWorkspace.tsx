@@ -45,6 +45,12 @@ function marketplaceLabel(value: string) {
   return "eBay US";
 }
 
+function marketplaceFlag(value: string) {
+  if (value === "EBAY_GB") return "🇬🇧";
+  if (value === "EBAY_DE") return "🇩🇪";
+  return "🇺🇸";
+}
+
 const initialDemoAccounts: EbayAccount[] = [
   {
     id: "account-1",
@@ -98,37 +104,20 @@ const demoResources: EbaySellerResources = {
   inventoryLocations: [{ type: "INVENTORY_LOCATION", remoteId: "main-wh", name: "Primary Yard & Warehouse", enabled: true, fetchedAt: new Date().toISOString() }],
 };
 
-function ResourcePanel({ title, items }: { title: string; items: Array<{ remoteId: string; name: string | null }> }) {
-  return (
-    <section className={styles.resourcePanel}>
-      <header>
-        <h3>{title}</h3>
-        <span>{items.length}</span>
-      </header>
-      {items.length ? (
-        <ul>
-          {items.map((item) => (
-            <li key={item.remoteId}>
-              <strong>{item.name || item.remoteId}</strong>
-              <small>{item.remoteId}</small>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className={styles.emptyResource}>None cached yet. Run sync to pull from eBay.</p>
-      )}
-    </section>
-  );
-}
-
 export default function ChannelsWorkspace() {
   const { status: authStatus, demo, apiFetch } = useAuth();
   const [accounts, setAccounts] = useState<EbayAccount[]>(initialDemoAccounts);
   const [expandedId, setExpandedId] = useState<string | null>("account-1");
+  const [activeTabMap, setActiveTabMap] = useState<Record<string, "defaults" | "resources" | "security">>({});
+  const [resourceSubTabMap, setResourceSubTabMap] = useState<Record<string, "payment" | "return" | "shipping" | "locations">>({});
+  
   const [resourcesMap, setResourcesMap] = useState<Record<string, EbaySellerResources>>({
     "account-1": demoResources,
     "account-2": { ...demoResources, marketplace: "EBAY_GB" },
   });
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterMarketplace, setFilterMarketplace] = useState<string>("ALL");
   const [marketplace, setMarketplace] = useState("EBAY_US");
   const [busy, setBusy] = useState("");
   const [loading, setLoading] = useState(false);
@@ -338,14 +327,34 @@ export default function ChannelsWorkspace() {
 
   const defaultAccount = useMemo(() => accounts.find((a) => a.isDefault), [accounts]);
 
+  const filteredAccounts = useMemo(() => {
+    return accounts.filter((acc) => {
+      const matchSearch =
+        !searchQuery ||
+        acc.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (acc.ebayUserId && acc.ebayUserId.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        acc.registrationMarketplace.toLowerCase().includes(searchQuery.toLowerCase());
+
+      const matchMarketplace =
+        filterMarketplace === "ALL"
+          ? true
+          : filterMarketplace === "DEFAULT"
+          ? acc.isDefault
+          : acc.registrationMarketplace === filterMarketplace;
+
+      return matchSearch && matchMarketplace;
+    });
+  }, [accounts, searchQuery, filterMarketplace]);
+
   return (
     <section className={styles.page}>
+      {/* Top Header */}
       <header className={styles.topbar}>
         <div>
-          <div className={styles.eyebrow}>EXCLUSIVELY EBAY INTEGRATED</div>
+          <div className={styles.eyebrow}>Exclusively eBay Integrated</div>
           <h1>eBay Seller Accounts</h1>
           <p>
-            Connect and manage multiple eBay seller accounts for your organization. Designate a default primary account for pricing, listing drafts, and inventory sync.
+            Manage and configure multiple connected eBay stores for your organization. Designate default policies and merchant inventory locations.
           </p>
         </div>
         <div className={styles.topActions}>
@@ -354,8 +363,9 @@ export default function ChannelsWorkspace() {
             className={styles.ghostBtn}
             disabled={loading}
             onClick={() => void loadConnection()}
+            title="Refresh connection status"
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
               <path d="M23 4v6h-6M1 20v-6h6" />
               <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
             </svg>
@@ -367,7 +377,7 @@ export default function ChannelsWorkspace() {
             disabled={!!busy}
             onClick={() => void connectEbay()}
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <line x1="12" y1="5" x2="12" y2="19" />
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
@@ -379,29 +389,99 @@ export default function ChannelsWorkspace() {
       {notice && <div className={styles.notice}>{notice}</div>}
       {error && <div className={styles.error}>{error}</div>}
 
-      {/* Account Overview Cards */}
-      <div className={styles.accountStats}>
-        <article>
-          <span>Connected eBay Accounts</span>
-          <b>{accounts.length}</b>
-          <small>Active Seller Accounts</small>
-        </article>
-        <article>
-          <span>Default Primary Account</span>
-          <b className={defaultAccount ? styles.primaryAccountName : styles.emptyAccountName}>
-            {defaultAccount ? defaultAccount.username : "None Selected"}
-          </b>
-          <small>{defaultAccount ? marketplaceLabel(defaultAccount.registrationMarketplace) : "Select a default account"}</small>
-        </article>
-        <article>
-          <span>API Connection Mode</span>
-          <b className={styles.modeName}>
-            REST &amp; Fulfillment API
-          </b>
-          <small>OAuth 2.0 PKCE Authorization</small>
-        </article>
+      {/* Streamlined Horizontal Summary Bar */}
+      <div className={styles.summaryBar}>
+        <div className={styles.summaryMetric}>
+          <span className={styles.summaryDotActive} />
+          <div>
+            <strong>{accounts.length} Connected {accounts.length === 1 ? "Store" : "Stores"}</strong>
+            <small>Active eBay accounts</small>
+          </div>
+        </div>
+        <div className={styles.summaryDivider} />
+        <div className={styles.summaryMetric}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.2">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+          </svg>
+          <div>
+            <strong>{defaultAccount ? defaultAccount.username : "No Primary Default"}</strong>
+            <small>{defaultAccount ? `${marketplaceLabel(defaultAccount.registrationMarketplace)} · Primary Store` : "Select a default account"}</small>
+          </div>
+        </div>
+        <div className={styles.summaryDivider} />
+        <div className={styles.summaryMetric}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          </svg>
+          <div>
+            <strong>REST &amp; Fulfillment API</strong>
+            <small>OAuth 2.0 PKCE Authorization</small>
+          </div>
+        </div>
       </div>
 
+      {/* Search & Filter Toolbar */}
+      {accounts.length > 0 && (
+        <div className={styles.toolbar}>
+          <div className={styles.searchBox}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search store name, User ID, or marketplace..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button type="button" className={styles.clearSearch} onClick={() => setSearchQuery("")}>
+                ✕
+              </button>
+            )}
+          </div>
+
+          <div className={styles.filterPills}>
+            <button
+              type="button"
+              className={`${styles.filterPill} ${filterMarketplace === "ALL" ? styles.filterPillActive : ""}`}
+              onClick={() => setFilterMarketplace("ALL")}
+            >
+              All ({accounts.length})
+            </button>
+            <button
+              type="button"
+              className={`${styles.filterPill} ${filterMarketplace === "DEFAULT" ? styles.filterPillActive : ""}`}
+              onClick={() => setFilterMarketplace("DEFAULT")}
+            >
+              ★ Primary
+            </button>
+            <button
+              type="button"
+              className={`${styles.filterPill} ${filterMarketplace === "EBAY_US" ? styles.filterPillActive : ""}`}
+              onClick={() => setFilterMarketplace("EBAY_US")}
+            >
+              🇺🇸 US
+            </button>
+            <button
+              type="button"
+              className={`${styles.filterPill} ${filterMarketplace === "EBAY_GB" ? styles.filterPillActive : ""}`}
+              onClick={() => setFilterMarketplace("EBAY_GB")}
+            >
+              🇬🇧 UK
+            </button>
+            <button
+              type="button"
+              className={`${styles.filterPill} ${filterMarketplace === "EBAY_DE" ? styles.filterPillActive : ""}`}
+              onClick={() => setFilterMarketplace("EBAY_DE")}
+            >
+              🇩🇪 DE
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Account Cards Container */}
       {accounts.length === 0 ? (
         <div className={styles.emptyStateCard}>
           <div className={styles.ebayLogoBadgeLarge}>
@@ -421,180 +501,382 @@ export default function ChannelsWorkspace() {
             Connect eBay Account
           </button>
         </div>
+      ) : filteredAccounts.length === 0 ? (
+        <div className={styles.emptySearchCard}>
+          <p>No seller accounts match your search filter <strong>"{searchQuery || filterMarketplace}"</strong>.</p>
+          <button type="button" className={styles.ghostBtn} onClick={() => { setSearchQuery(""); setFilterMarketplace("ALL"); }}>
+            Clear Filters
+          </button>
+        </div>
       ) : (
         <div className={styles.accountsList}>
-          {accounts.map((acc) => {
+          {filteredAccounts.map((acc) => {
             const isExpanded = expandedId === acc.id;
+            const activeTab = activeTabMap[acc.id] || "defaults";
+            const resourceSubTab = resourceSubTabMap[acc.id] || "payment";
+
             const res = resourcesMap[acc.id] || demoResources;
-            const paymentPolicies = res.paymentPolicies.filter((p) => p.enabled) ?? [];
-            const returnPolicies = res.returnPolicies.filter((p) => p.enabled) ?? [];
-            const shippingPolicies = res.fulfillmentPolicies.filter((p) => p.enabled) ?? [];
-            const locations = res.inventoryLocations.filter((p) => p.enabled) ?? [];
+            const paymentPolicies = res.paymentPolicies?.filter((p) => p.enabled) ?? [];
+            const returnPolicies = res.returnPolicies?.filter((p) => p.enabled) ?? [];
+            const shippingPolicies = res.fulfillmentPolicies?.filter((p) => p.enabled) ?? [];
+            const locations = res.inventoryLocations?.filter((p) => p.enabled) ?? [];
+            const totalPoliciesCount = paymentPolicies.length + returnPolicies.length + shippingPolicies.length + locations.length;
 
             return (
               <article
                 key={acc.id}
-                className={`${styles.card} ${acc.isDefault ? styles.cardDefault : ""}`}
+                className={`${styles.card} ${acc.isDefault ? styles.cardDefault : ""} ${isExpanded ? styles.cardExpanded : ""}`}
               >
-                <div className={styles.cardHeader}>
-                  <div className={styles.brandRow}>
-                    <div className={styles.ebayLogoBadge}>eBay</div>
-                    <div>
-                      <div className={styles.usernameRow}>
+                {/* Compact Row Header */}
+                <div className={styles.rowHeader}>
+                  <div className={styles.rowLeft}>
+                    <div className={styles.ebayBadge}>
+                      <span>eBay</span>
+                    </div>
+
+                    <div className={styles.accountInfo}>
+                      <div className={styles.nameRow}>
                         <h2>{acc.username}</h2>
                         {acc.isDefault ? (
                           <span className={styles.defaultBadge}>
-                            ★ Default Account
+                            ★ Primary Account
                           </span>
                         ) : (
                           <button
                             type="button"
                             className={styles.setDefaultBtn}
                             onClick={() => prepareDefaultAccount(acc.id)}
+                            title="Set as organization default primary store"
                           >
-                            Set as Default
+                            Make Primary
                           </button>
                         )}
                       </div>
-                      <p>
-                        User ID: <code>{acc.ebayUserId || acc.username}</code> · {marketplaceLabel(acc.registrationMarketplace)} ({acc.environment.toUpperCase()})
-                      </p>
+                      <div className={styles.subMetaRow}>
+                        <span className={styles.marketBadge}>
+                          {marketplaceFlag(acc.registrationMarketplace)} {marketplaceLabel(acc.registrationMarketplace)}
+                        </span>
+                        <code className={styles.userCode}>{acc.ebayUserId || acc.username}</code>
+                        <span className={styles.envTag}>{acc.environment.toUpperCase()}</span>
+                      </div>
                     </div>
                   </div>
 
-                  <div className={styles.statusGroup}>
-                    <span className={`${styles.status} ${acc.status === "ACTIVE" ? styles.statusActive : styles.statusOffline}`}>
-                      <i className={styles.dot} />
-                      {acc.status === "ACTIVE" ? "Connected" : humanStatus(acc.status)}
-                    </span>
+                  <div className={styles.rowRight}>
+                    <div className={styles.statusPill}>
+                      <span className={`${styles.statusDot} ${acc.status === "ACTIVE" ? styles.statusActive : styles.statusOffline}`} />
+                      <span>{acc.status === "ACTIVE" ? "Connected" : humanStatus(acc.status)}</span>
+                    </div>
+
+                    <div className={styles.policySummaryChip}>
+                      <strong>{totalPoliciesCount}</strong> Synced Policies
+                    </div>
+
+                    <div className={styles.rowActions}>
+                      <button
+                        type="button"
+                        className={styles.syncBtn}
+                        disabled={busy === `sync-${acc.id}`}
+                        onClick={() => void syncSellerDetails(acc.id)}
+                        title="Sync seller policies and locations from eBay"
+                      >
+                        <svg className={busy === `sync-${acc.id}` ? styles.spinIcon : ""} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                          <path d="M23 4v6h-6M1 20v-6h6" />
+                          <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+                        </svg>
+                        {busy === `sync-${acc.id}` ? "Syncing..." : "Sync"}
+                      </button>
+
+                      <button
+                        type="button"
+                        className={`${styles.manageBtn} ${isExpanded ? styles.manageBtnActive : ""}`}
+                        onClick={() => {
+                          setExpandedId(isExpanded ? null : acc.id);
+                          if (!isExpanded) {
+                            const accountMarketplace = acc.defaultMarketplace || acc.registrationMarketplace || "EBAY_US";
+                            setMarketplace(accountMarketplace);
+                            void loadResources(acc.id, accountMarketplace);
+                          }
+                        }}
+                      >
+                        <span>{isExpanded ? "Close" : "Manage"}</span>
+                        <svg
+                          className={`${styles.chevronIcon} ${isExpanded ? styles.chevronOpen : ""}`}
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.2"
+                        >
+                          <polyline points="6 9 12 15 18 9" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
 
-                <div className={styles.metaGrid}>
-                  <div className={styles.metaItem}>
-                    <span>Marketplace</span>
-                    <strong>{acc.registrationMarketplace}</strong>
-                  </div>
-                  <div className={styles.metaItem}>
-                    <span>Environment</span>
-                    <strong>{humanStatus(acc.environment)}</strong>
-                  </div>
-                  <div className={styles.metaItem}>
-                    <span>Token Refreshed</span>
-                    <strong>{formatTime(acc.lastRefreshedAt)}</strong>
-                  </div>
-                  <div className={styles.metaItem}>
-                    <span>Cached Policies</span>
-                    <strong>{paymentPolicies.length + returnPolicies.length + shippingPolicies.length} Active Policies</strong>
-                  </div>
-                </div>
-
-                {acc.scopes.length > 0 && (
-                  <div className={styles.scopesRow}>
-                    <span>Granted Permissions:</span>
-                    {acc.scopes.map((scope) => (
-                      <span key={scope} className={styles.scopeBadge}>
-                        {scopeLabel(scope)}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                <div className={styles.cardActions}>
-                  <button
-                    type="button"
-                    className={styles.ghostBtn}
-                    onClick={() => {
-                      setExpandedId(isExpanded ? null : acc.id);
-                      if (!isExpanded) {
-                        const accountMarketplace = acc.defaultMarketplace || acc.registrationMarketplace || "EBAY_US";
-                        setMarketplace(accountMarketplace);
-                        void loadResources(acc.id, accountMarketplace);
-                      }
-                    }}
-                  >
-                    {isExpanded ? "Hide Details" : "View Policies & Locations"}
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.secondaryBtn}
-                    disabled={!!busy}
-                    onClick={() => void syncSellerDetails(acc.id)}
-                  >
-                    {busy === `sync-${acc.id}` ? "Syncing..." : "Sync Seller Details"}
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.ghostBtn}
-                    disabled={!!busy}
-                    onClick={() => void connectEbay()}
-                  >
-                    Reconnect
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.dangerBtn}
-                    disabled={!!busy}
-                    onClick={() => void disconnectAccount(acc.id)}
-                  >
-                    Disconnect
-                  </button>
-                </div>
-
+                {/* Collapsible Tabbed Drawer */}
                 {isExpanded && (
-                  <section className={styles.detailPanel}>
-                    <form className={styles.defaultsForm} onSubmit={(event) => void saveDefaults(acc.id, event)}>
-                      <div className={styles.defaultsHeading}>
-                        <div>
-                          <span className={styles.eyebrow}>Listing defaults</span>
-                          <h3>Default account, policies &amp; location</h3>
-                          <p>Automatically assign these values to new Quick SKU and Pipeline catalog drafts.</p>
+                  <section className={styles.detailDrawer}>
+                    {/* Drawer Tab Navigation */}
+                    <nav className={styles.drawerNav}>
+                      <button
+                        type="button"
+                        className={`${styles.drawerTab} ${activeTab === "defaults" ? styles.drawerTabActive : ""}`}
+                        onClick={() => setActiveTabMap((prev) => ({ ...prev, [acc.id]: "defaults" }))}
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M12 20h9" />
+                          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                        </svg>
+                        Listing Defaults
+                      </button>
+
+                      <button
+                        type="button"
+                        className={`${styles.drawerTab} ${activeTab === "resources" ? styles.drawerTabActive : ""}`}
+                        onClick={() => setActiveTabMap((prev) => ({ ...prev, [acc.id]: "resources" }))}
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                          <polyline points="14 2 14 8 20 8" />
+                          <line x1="16" y1="13" x2="8" y2="13" />
+                          <line x1="16" y1="17" x2="8" y2="17" />
+                        </svg>
+                        Synced Policies ({totalPoliciesCount})
+                      </button>
+
+                      <button
+                        type="button"
+                        className={`${styles.drawerTab} ${activeTab === "security" ? styles.drawerTabActive : ""}`}
+                        onClick={() => setActiveTabMap((prev) => ({ ...prev, [acc.id]: "security" }))}
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                        </svg>
+                        Account &amp; OAuth
+                      </button>
+                    </nav>
+
+                    {/* Tab 1: Listing Defaults Form */}
+                    {activeTab === "defaults" && (
+                      <form className={styles.defaultsForm} onSubmit={(event) => void saveDefaults(acc.id, event)}>
+                        <div className={styles.formHeader}>
+                          <div>
+                            <h4>Default Account Policies &amp; Location</h4>
+                            <p>Automatically assigned to new Quick SKU and Pipeline listing drafts for this seller account.</p>
+                          </div>
+                          <Link href="/catalog" className={styles.primaryLink}>
+                            Catalog Workspace →
+                          </Link>
                         </div>
-                        <Link href="/catalog" className={styles.primaryLink}>Manage catalog →</Link>
+
+                        <div className={styles.defaultsGrid}>
+                          <label>
+                            <span>Target Marketplace</span>
+                            <select
+                              value={marketplace}
+                              onChange={(event) => {
+                                setMarketplace(event.target.value);
+                                void loadResources(acc.id, event.target.value);
+                              }}
+                            >
+                              <option value="EBAY_US">🇺🇸 eBay US</option>
+                              <option value="EBAY_GB">🇬🇧 eBay UK</option>
+                              <option value="EBAY_DE">🇩🇪 eBay Germany</option>
+                            </select>
+                          </label>
+
+                          <label>
+                            <span>Default Payment Policy</span>
+                            <select name="paymentPolicyId" required defaultValue={acc.defaultPaymentPolicyId || ""}>
+                              <option value="">Select payment policy...</option>
+                              {paymentPolicies.map((item) => (
+                                <option key={item.remoteId} value={item.remoteId}>
+                                  {item.name || item.remoteId}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label>
+                            <span>Default Return Policy</span>
+                            <select name="returnPolicyId" required defaultValue={acc.defaultReturnPolicyId || ""}>
+                              <option value="">Select return policy...</option>
+                              {returnPolicies.map((item) => (
+                                <option key={item.remoteId} value={item.remoteId}>
+                                  {item.name || item.remoteId}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label>
+                            <span>Default Shipping Policy</span>
+                            <select name="shippingPolicyId" required defaultValue={acc.defaultShippingPolicyId || ""}>
+                              <option value="">Select shipping policy...</option>
+                              {shippingPolicies.map((item) => (
+                                <option key={item.remoteId} value={item.remoteId}>
+                                  {item.name || item.remoteId}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label>
+                            <span>Default Item Location</span>
+                            <select name="merchantLocationKey" required defaultValue={acc.defaultMerchantLocationKey || ""}>
+                              <option value="">Select merchant location...</option>
+                              {locations.map((item) => (
+                                <option key={item.remoteId} value={item.remoteId}>
+                                  {item.name || item.remoteId}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+
+                        <div className={styles.defaultsFooter}>
+                          <label className={styles.defaultCheck}>
+                            <input
+                              type="checkbox"
+                              name="isDefault"
+                              defaultChecked={acc.isDefault}
+                              disabled={acc.isDefault}
+                            />
+                            <span>
+                              <strong>Primary Default Account</strong>
+                              <small>{acc.isDefault ? "This is currently your organization's primary default store." : "Set as primary default for newly generated catalog drafts."}</small>
+                            </span>
+                          </label>
+
+                          <button
+                            type="submit"
+                            className={styles.primary}
+                            disabled={busy === `save-${acc.id}` || !resourcesMap[acc.id]}
+                          >
+                            {busy === `save-${acc.id}` ? "Saving..." : "Save Defaults"}
+                          </button>
+                        </div>
+                      </form>
+                    )}
+
+                    {/* Tab 2: Synced Policies & Locations */}
+                    {activeTab === "resources" && (
+                      <div className={styles.resourcesTabContent}>
+                        <div className={styles.subTabNav}>
+                          <button
+                            type="button"
+                            className={`${styles.subTab} ${resourceSubTab === "payment" ? styles.subTabActive : ""}`}
+                            onClick={() => setResourceSubTabMap((prev) => ({ ...prev, [acc.id]: "payment" }))}
+                          >
+                            Payment Policies ({paymentPolicies.length})
+                          </button>
+                          <button
+                            type="button"
+                            className={`${styles.subTab} ${resourceSubTab === "return" ? styles.subTabActive : ""}`}
+                            onClick={() => setResourceSubTabMap((prev) => ({ ...prev, [acc.id]: "return" }))}
+                          >
+                            Return Policies ({returnPolicies.length})
+                          </button>
+                          <button
+                            type="button"
+                            className={`${styles.subTab} ${resourceSubTab === "shipping" ? styles.subTabActive : ""}`}
+                            onClick={() => setResourceSubTabMap((prev) => ({ ...prev, [acc.id]: "shipping" }))}
+                          >
+                            Shipping Policies ({shippingPolicies.length})
+                          </button>
+                          <button
+                            type="button"
+                            className={`${styles.subTab} ${resourceSubTab === "locations" ? styles.subTabActive : ""}`}
+                            onClick={() => setResourceSubTabMap((prev) => ({ ...prev, [acc.id]: "locations" }))}
+                          >
+                            Inventory Locations ({locations.length})
+                          </button>
+                        </div>
+
+                        <div className={styles.subTabBody}>
+                          {resourceSubTab === "payment" && (
+                            <ResourceList items={paymentPolicies} emptyText="No payment policies cached yet. Click Sync to refresh from eBay." />
+                          )}
+                          {resourceSubTab === "return" && (
+                            <ResourceList items={returnPolicies} emptyText="No return policies cached yet. Click Sync to refresh from eBay." />
+                          )}
+                          {resourceSubTab === "shipping" && (
+                            <ResourceList items={shippingPolicies} emptyText="No shipping policies cached yet. Click Sync to refresh from eBay." />
+                          )}
+                          {resourceSubTab === "locations" && (
+                            <ResourceList items={locations} emptyText="No merchant inventory locations cached yet. Click Sync to refresh from eBay." />
+                          )}
+                        </div>
                       </div>
+                    )}
 
-                      <div className={styles.defaultsGrid}>
-                        <label><span>Marketplace</span><select value={marketplace} onChange={(event) => {
-                          setMarketplace(event.target.value);
-                          void loadResources(acc.id, event.target.value);
-                        }}><option value="EBAY_US">eBay US</option><option value="EBAY_GB">eBay UK</option><option value="EBAY_DE">eBay Germany</option></select></label>
-                        <label><span>Payment policy</span><select name="paymentPolicyId" required defaultValue={acc.defaultPaymentPolicyId || ""}><option value="">Select payment policy</option>{paymentPolicies.map((item) => <option key={item.remoteId} value={item.remoteId}>{item.name || item.remoteId}</option>)}</select></label>
-                        <label><span>Return policy</span><select name="returnPolicyId" required defaultValue={acc.defaultReturnPolicyId || ""}><option value="">Select return policy</option>{returnPolicies.map((item) => <option key={item.remoteId} value={item.remoteId}>{item.name || item.remoteId}</option>)}</select></label>
-                        <label><span>Shipping policy</span><select name="shippingPolicyId" required defaultValue={acc.defaultShippingPolicyId || ""}><option value="">Select shipping policy</option>{shippingPolicies.map((item) => <option key={item.remoteId} value={item.remoteId}>{item.name || item.remoteId}</option>)}</select></label>
-                        <label><span>Item location</span><select name="merchantLocationKey" required defaultValue={acc.defaultMerchantLocationKey || ""}><option value="">Select item location</option>{locations.map((item) => <option key={item.remoteId} value={item.remoteId}>{item.name || item.remoteId}</option>)}</select></label>
+                    {/* Tab 3: Security & Connection Details */}
+                    {activeTab === "security" && (
+                      <div className={styles.securityTabContent}>
+                        <div className={styles.securityGrid}>
+                          <div className={styles.securityCard}>
+                            <span>User ID / eBay Store</span>
+                            <strong><code>{acc.ebayUserId || acc.username}</code></strong>
+                          </div>
+                          <div className={styles.securityCard}>
+                            <span>Environment</span>
+                            <strong>{acc.environment.toUpperCase()}</strong>
+                          </div>
+                          <div className={styles.securityCard}>
+                            <span>Token Last Refreshed</span>
+                            <strong>{formatTime(acc.lastRefreshedAt)}</strong>
+                          </div>
+                          <div className={styles.securityCard}>
+                            <span>Registration Marketplace</span>
+                            <strong>{marketplaceLabel(acc.registrationMarketplace)} ({acc.registrationMarketplace})</strong>
+                          </div>
+                        </div>
+
+                        {acc.scopes.length > 0 && (
+                          <div className={styles.scopesContainer}>
+                            <h4>Granted OAuth Scope Permissions</h4>
+                            <div className={styles.scopesBadges}>
+                              {acc.scopes.map((scope) => (
+                                <span key={scope} className={styles.scopeBadge}>
+                                  ✓ {scopeLabel(scope)}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className={styles.securityActions}>
+                          <button
+                            type="button"
+                            className={styles.ghostBtn}
+                            disabled={!!busy}
+                            onClick={() => void connectEbay()}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M23 4v6h-6M1 20v-6h6" />
+                              <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+                            </svg>
+                            Reconnect Account
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.dangerBtn}
+                            disabled={!!busy}
+                            onClick={() => void disconnectAccount(acc.id)}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <polyline points="3 6 5 6 21 6" />
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                            </svg>
+                            Disconnect Store
+                          </button>
+                        </div>
                       </div>
-
-                      <div className={styles.defaultsFooter}>
-                        <label className={styles.defaultCheck}><input type="checkbox" name="isDefault" defaultChecked={acc.isDefault} disabled={acc.isDefault} /><span><strong>Default eBay account</strong><small>{acc.isDefault ? "This is the current organization default." : "Use this seller account for newly created listing drafts."}</small></span></label>
-                        <button type="submit" className={styles.primary} disabled={busy === `save-${acc.id}` || !resourcesMap[acc.id]}>{busy === `save-${acc.id}` ? "Saving..." : "Save defaults"}</button>
-                      </div>
-                    </form>
-
-                    <div className={styles.syncSummary}>
-                      <article>
-                        <span>Payment Policies</span>
-                        <strong>{paymentPolicies.length}</strong>
-                      </article>
-                      <article>
-                        <span>Return Policies</span>
-                        <strong>{returnPolicies.length}</strong>
-                      </article>
-                      <article>
-                        <span>Shipping Policies</span>
-                        <strong>{shippingPolicies.length}</strong>
-                      </article>
-                      <article>
-                        <span>Inventory Locations</span>
-                        <strong>{locations.length}</strong>
-                      </article>
-                    </div>
-
-                    <div className={styles.resourceGrid}>
-                      <ResourcePanel title="Payment Policies" items={paymentPolicies} />
-                      <ResourcePanel title="Return Policies" items={returnPolicies} />
-                      <ResourcePanel title="Shipping Policies" items={shippingPolicies} />
-                      <ResourcePanel title="Inventory Locations" items={locations} />
-                    </div>
+                    )}
                   </section>
                 )}
               </article>
@@ -605,3 +887,24 @@ export default function ChannelsWorkspace() {
     </section>
   );
 }
+
+function ResourceList({ items, emptyText }: { items: Array<{ remoteId: string; name: string | null }>; emptyText: string }) {
+  if (!items.length) {
+    return <p className={styles.emptyResource}>{emptyText}</p>;
+  }
+
+  return (
+    <div className={styles.resourceListGrid}>
+      {items.map((item) => (
+        <div key={item.remoteId} className={styles.resourceItem}>
+          <div className={styles.resourceDot} />
+          <div>
+            <strong>{item.name || item.remoteId}</strong>
+            <small>Remote ID: <code>{item.remoteId}</code></small>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
