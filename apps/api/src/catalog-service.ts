@@ -636,7 +636,12 @@ export async function appendCatalogPartMedia(
   return getCatalogPart(organizationId, partId);
 }
 
-export async function updateCatalogPart(organizationId: string, partId: string, input: CatalogPartUpdate) {
+export async function updateCatalogPart(
+  organizationId: string,
+  partId: string,
+  input: CatalogPartUpdate,
+  options: { includeDetail?: boolean } = {},
+) {
   try {
     await prisma.$transaction(async (tx) => {
       const existing = await tx.part.findFirst({
@@ -734,7 +739,9 @@ export async function updateCatalogPart(organizationId: string, partId: string, 
         });
       }
     });
-    return getCatalogPart(organizationId, partId);
+    return options.includeDetail === false
+      ? { id: partId, updated: true }
+      : getCatalogPart(organizationId, partId);
   } catch (error) {
     if (error instanceof CatalogError) throw error;
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") throw new CatalogError("SKU or part number conflicts with another catalog record", 409);

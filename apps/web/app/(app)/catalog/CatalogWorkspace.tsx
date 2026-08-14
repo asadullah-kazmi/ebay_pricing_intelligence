@@ -751,7 +751,9 @@ export default function CatalogWorkspace() {
     setSaving(true);
     setError("");
     try {
-      await request(`/api/parts/${detail.id}`, { method: "PATCH", body: JSON.stringify(body) });
+      const saveOperations: Array<Promise<unknown>> = [
+        request(`/api/parts/${detail.id}?response=minimal`, { method: "PATCH", body: JSON.stringify(body) }),
+      ];
       if (draft) {
         const defaultConnection = ebayConnections.find(({ isDefault }) => isDefault)
           ?? (ebayConnection.isDefault ? ebayConnection : undefined);
@@ -759,7 +761,7 @@ export default function CatalogWorkspace() {
         const countryOfOrigin = String(form.get("countryOfOrigin") ?? "").trim();
         if (countryOfOrigin) aspects["Country/Region of Manufacture"] = [countryOfOrigin];
         else delete aspects["Country/Region of Manufacture"];
-        await request(`/api/listing-drafts/${draft.id}`, {
+        saveOperations.push(request(`/api/listing-drafts/${draft.id}?response=minimal`, {
           method: "PATCH",
           body: JSON.stringify({
             expectedVersion: draft.version,
@@ -778,9 +780,13 @@ export default function CatalogWorkspace() {
               merchantLocationKey: defaultConnection.defaultMerchantLocationKey || null,
             } : {}),
           }),
-        });
+        }));
       }
-      detailCache.delete(detail.id); setDetail(null); await loadCatalog();
+      await Promise.all(saveOperations);
+      detailCache.delete(detail.id);
+      setDetail(null);
+      setNotice("Listing details saved.");
+      void loadCatalog();
     }
     catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to save part"); }
     finally { setSaving(false); }

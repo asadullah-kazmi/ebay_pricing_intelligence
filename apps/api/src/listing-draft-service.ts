@@ -428,7 +428,13 @@ export interface ListingDraftPatch {
   ebaySellerConnectionId?: string | null;
 }
 
-export async function updateListingDraft(organizationId: string, userId: string, draftId: string, input: ListingDraftPatch) {
+export async function updateListingDraft(
+  organizationId: string,
+  userId: string,
+  draftId: string,
+  input: ListingDraftPatch,
+  options: { includeDetail?: boolean } = {},
+) {
   const current = await prisma.listingDraft.findFirst({ where: { id: draftId, organizationId }, include: contextInclude });
   if (!current) throw new ListingDraftError("Listing draft not found", 404);
   if (current.version !== input.expectedVersion) throw new ListingDraftError("Listing draft changed; reload it before saving", 409);
@@ -493,7 +499,9 @@ export async function updateListingDraft(organizationId: string, userId: string,
       payload: { draftId, version: nextVersion, status },
     });
   });
-  return getListingDraft(organizationId, draftId);
+  return options.includeDetail === false
+    ? { id: draftId, version: nextVersion, status }
+    : getListingDraft(organizationId, draftId);
 }
 
 function sellerResourceContext(resources: Awaited<ReturnType<typeof syncSellerResources>>) {

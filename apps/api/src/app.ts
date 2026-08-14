@@ -1181,7 +1181,12 @@ app.patch("/api/parts/:id", writeRateLimit, requireTenantContext, requireOrganiz
   try {
     const partId = req.params.id;
     if (typeof partId !== "string") return res.status(400).json({ error: "Invalid catalog part ID" });
-    res.json(await updateCatalogPart(getTenantContext(res).organization.id, partId, catalogPartUpdateSchema.parse(req.body)));
+    res.json(await updateCatalogPart(
+      getTenantContext(res).organization.id,
+      partId,
+      catalogPartUpdateSchema.parse(req.body),
+      { includeDetail: req.query.response !== "minimal" },
+    ));
   } catch (error) { next(error); }
 });
 
@@ -1578,7 +1583,13 @@ app.patch("/api/listing-drafts/:id", writeRateLimit, requireTenantContext, requi
     const draftId = req.params.id;
     if (typeof draftId !== "string") return res.status(400).json({ error: "Invalid listing draft ID" });
     const tenant = getTenantContext(res);
-    res.json(await updateListingDraft(tenant.organization.id, tenant.user.id, draftId, listingDraftPatchSchema.parse(req.body)));
+    res.json(await updateListingDraft(
+      tenant.organization.id,
+      tenant.user.id,
+      draftId,
+      listingDraftPatchSchema.parse(req.body),
+      { includeDetail: req.query.response !== "minimal" },
+    ));
   } catch (error) { next(error); }
 });
 
