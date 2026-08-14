@@ -1,11 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { contentLanguage, normalizeInventoryItemSummary, normalizeOfferSnapshot, normalizeOfferSummary, summarizeListingFees } from "./ebay-inventory.js";
+import { acceptLanguage, contentLanguage, normalizeInventoryItemSummary, normalizeOfferSnapshot, normalizeOfferSummary, summarizeListingFees } from "./ebay-inventory.js";
 
 describe("eBay Inventory API localization", () => {
   it("uses the marketplace content language required by inventory writes", () => {
     expect(contentLanguage("EBAY_US")).toBe("en-US");
     expect(contentLanguage("EBAY_GB")).toBe("en-GB");
     expect(contentLanguage("EBAY_DE")).toBe("de-DE");
+  });
+
+  it("uses regional accept-language values for inventory reads", () => {
+    expect(acceptLanguage("EBAY_US")).toBe("en-US");
+    expect(acceptLanguage("EBAY_GB")).toBe("en-GB");
+    expect(acceptLanguage("EBAY_DE")).toBe("de-DE");
   });
 
   it("totals expected fees while retaining the raw response", () => {

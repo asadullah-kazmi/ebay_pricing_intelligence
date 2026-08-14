@@ -95,7 +95,8 @@
 }
 
 .notice,
-.error {
+.error,
+.warning {
   margin-bottom: 12px;
   padding: 11px 14px;
   border-radius: 8px;
@@ -113,6 +114,20 @@
   border: 1px solid #fecaca;
   background: #fff1f2;
   color: #b91c1c;
+}
+
+.warning {
+  display: grid;
+  gap: 3px;
+  border: 1px solid #fed7aa;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.warning span {
+  color: #7c2d12;
+  font-weight: 500;
+  line-height: 1.45;
 }
 
 .metrics {

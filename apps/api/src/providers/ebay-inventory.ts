@@ -13,6 +13,10 @@ export function contentLanguage(marketplace: Marketplace): string {
   return "en-US";
 }
 
+export function acceptLanguage(marketplace: Marketplace): string {
+  return contentLanguage(marketplace);
+}
+
 async function providerError(response: Response, operation: string): Promise<EbayApiError> {
   let detail = "";
   try {
@@ -114,8 +118,9 @@ async function inventoryApiRequest<T>(input: {
     signal: AbortSignal.timeout(30_000),
     headers: {
       Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      "Content-Language": contentLanguage(input.marketplace),
+      ...(input.method === "GET"
+        ? { Accept: "application/json", "Accept-Language": acceptLanguage(input.marketplace) }
+        : { "Content-Type": "application/json", "Content-Language": contentLanguage(input.marketplace) }),
       "X-EBAY-C-MARKETPLACE-ID": input.marketplace,
     },
     ...(input.payload === undefined ? {} : { body: JSON.stringify(input.payload) }),
@@ -252,18 +257,15 @@ export async function getOffersPage(input: {
   organizationId: string;
   marketplace: Marketplace;
   connectionId: string;
-  limit?: number;
-  offset?: number;
-}): Promise<{ offers: EbayOfferSummary[]; total: number; size: number; limit: number; offset: number }> {
-  const limit = input.limit ?? 100;
-  const offset = input.offset ?? 0;
+  sku: string;
+}): Promise<{ offers: EbayOfferSummary[] }> {
   const response = await inventoryApiRequest<Record<string, unknown>>({
     organizationId: input.organizationId,
     marketplace: input.marketplace,
     connectionId: input.connectionId,
     method: "GET",
-    path: `/offer?marketplace_id=${encodeURIComponent(input.marketplace)}&limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}`,
-    operation: "eBay offer list",
+    path: `/offer?sku=${encodeURIComponent(input.sku)}&marketplace_id=${encodeURIComponent(input.marketplace)}`,
+    operation: "eBay offer list by SKU",
   });
   const offers = Array.isArray(response.offers)
     ? response.offers
@@ -271,13 +273,7 @@ export async function getOffersPage(input: {
       .map(normalizeOfferSummary)
       .filter((offer): offer is EbayOfferSummary => Boolean(offer))
     : [];
-  return {
-    offers,
-    total: numeric(response.total) ?? offers.length,
-    size: numeric(response.size) ?? offers.length,
-    limit,
-    offset,
-  };
+  return { offers };
 }
 
 export async function bulkUpdatePriceQuantity(

@@ -196,11 +196,12 @@ export default function InventoryWorkspace() {
 
       {notice && <div className={styles.notice}>{notice}</div>}
       {error && <div className={styles.error}>{error}</div>}
-      {inventory.errors.map((item) => (
-        <div key={item.connectionId} className={styles.error}>
-          {item.username ?? "eBay account"}: {item.message}
+      {inventory.errors.length > 0 && (
+        <div className={styles.warning}>
+          <b>{inventory.errors.length} sync warning{inventory.errors.length === 1 ? "" : "s"}</b>
+          <span>{inventory.errors.slice(0, 3).map((item) => `${item.username ?? "eBay account"}: ${item.message}`).join(" · ")}</span>
         </div>
-      ))}
+      )}
 
       <section className={styles.metrics}>
         <article><span>Accounts</span><b>{inventory.summary.connectedAccounts}</b></article>

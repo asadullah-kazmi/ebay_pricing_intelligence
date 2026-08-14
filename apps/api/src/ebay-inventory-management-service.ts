@@ -8,6 +8,7 @@ import {
   type EbayInventoryItemSummary,
   type EbayOfferSummary,
 } from "./providers/ebay-inventory.js";
+import { EbayApiError } from "./providers/ebay.js";
 
 export class EbayInventoryManagementError extends Error {
   constructor(message: string, readonly statusCode: 400 | 404 | 409 | 502 = 400) {
@@ -129,6 +130,46 @@ async function collectPages<T>(fetchPage: (offset: number) => Promise<{ total: n
   return output;
 }
 
+async function collectOffersForInventoryItems(input: {
+  organizationId: string;
+  connectionId: string;
+  marketplace: Marketplace;
+  inventoryItems: EbayInventoryItemSummary[];
+  errors: Array<{ connectionId: string; username: string | null; message: string }>;
+  username: string | null;
+}) {
+  const offers: EbayOfferSummary[] = [];
+  const skus = [...new Set(input.inventoryItems.map((item) => item.sku).filter(Boolean))];
+  const batchSize = 5;
+  for (let index = 0; index < skus.length; index += batchSize) {
+    const batch = skus.slice(index, index + batchSize);
+    const results = await Promise.allSettled(batch.map((sku) =>
+      getOffersPage({
+        organizationId: input.organizationId,
+        connectionId: input.connectionId,
+        marketplace: input.marketplace,
+        sku,
+      }),
+    ));
+    results.forEach((result, resultIndex) => {
+      if (result.status === "fulfilled") {
+        offers.push(...result.value.offers);
+        return;
+      }
+      if (result.reason instanceof EbayApiError && result.reason.status === 404) {
+        return;
+      }
+      const sku = batch[resultIndex];
+      input.errors.push({
+        connectionId: input.connectionId,
+        username: input.username,
+        message: `Offer lookup skipped for ${sku}: ${result.reason instanceof Error ? result.reason.message : "Unable to load offer"}`,
+      });
+    });
+  }
+  return offers;
+}
+
 export async function listEbayStoreInventory(input: {
   organizationId: string;
   connectionId?: string;
@@ -155,16 +196,18 @@ export async function listEbayStoreInventory(input: {
     const marketplace = asMarketplace(connection.defaultMarketplace);
     const account = { id: connection.id, username: connection.username, isDefault: connection.isDefault, marketplace };
     try {
-      const [inventoryItems, offers] = await Promise.all([
-        collectPages(
-          (offset) => getInventoryItemsPage({ organizationId: input.organizationId, connectionId: connection.id, marketplace, limit: 100, offset }),
-          (page) => page.inventoryItems,
-        ) as Promise<EbayInventoryItemSummary[]>,
-        collectPages(
-          (offset) => getOffersPage({ organizationId: input.organizationId, connectionId: connection.id, marketplace, limit: 100, offset }),
-          (page) => page.offers,
-        ) as Promise<EbayOfferSummary[]>,
-      ]);
+      const inventoryItems = await collectPages(
+        (offset) => getInventoryItemsPage({ organizationId: input.organizationId, connectionId: connection.id, marketplace, limit: 100, offset }),
+        (page) => page.inventoryItems,
+      ) as EbayInventoryItemSummary[];
+      const offers = await collectOffersForInventoryItems({
+        organizationId: input.organizationId,
+        connectionId: connection.id,
+        marketplace,
+        inventoryItems,
+        errors,
+        username: connection.username,
+      });
       rows.push(...mergeRows({ account, inventoryItems, offers }));
     } catch (error) {
       errors.push({
