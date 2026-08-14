@@ -1482,6 +1482,31 @@ export default function CatalogWorkspace() {
       <div className={styles.sectionHeading}>
         <div><h4>Product images <span>({media.length}/24)</span></h4><p className={styles.imageSectionHelp}>{editable ? "Drag images to reorder them. " : ""}The first image is used as the primary eBay listing image.</p></div>
       </div>
+      {imageUploadProgress && part?.id && (() => {
+        const currentCount = imageUploadProgress.completed + (imageUploadProgress.completed < imageUploadProgress.total ? 1 : 0);
+        const percent = Math.min(100, Math.round((currentCount / imageUploadProgress.total) * 100));
+        return (
+          <div className={styles.imageUploadProgress} role="status">
+            <div className={styles.uploadProgressTop}>
+              <div className={styles.uploadProgressTitle}>
+                <svg className={styles.uploadSpinner} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                </svg>
+                <b>Uploading {currentCount} of {imageUploadProgress.total}</b>
+              </div>
+              <span className={styles.uploadPercentBadge}>{percent}%</span>
+            </div>
+            <div className={styles.uploadProgressTrack}>
+              <div className={styles.uploadProgressFill} style={{ width: `${percent}%` }} />
+            </div>
+            <div className={styles.uploadProgressSub}>
+              <span className={styles.uploadFilename}>{imageUploadProgress.filename}</span>
+              <span className={styles.uploadSlotInfo}>{24 - media.length} slots remaining</span>
+            </div>
+          </div>
+        );
+      })()}
+      {imageUploadError && <div className={styles.imageUploadError} role="alert">{imageUploadError}</div>}
       {media.length ? <div className={styles.inlineListingImages}>{media.map((item, index) => {
         const mediaId = item.mediaAsset.id;
         const cardClassName = [
@@ -1526,31 +1551,6 @@ export default function CatalogWorkspace() {
         <b>{imageUploading ? "Uploading images…" : "Upload listing images"}</b>
         <small>JPEG, PNG, or WebP · {24 - media.length} slots available · files are also saved in Media Drive</small>
       </label>}
-      {imageUploadProgress && part?.id && (() => {
-        const currentCount = imageUploadProgress.completed + (imageUploadProgress.completed < imageUploadProgress.total ? 1 : 0);
-        const percent = Math.min(100, Math.round((currentCount / imageUploadProgress.total) * 100));
-        return (
-          <div className={styles.imageUploadProgress} role="status">
-            <div className={styles.uploadProgressTop}>
-              <div className={styles.uploadProgressTitle}>
-                <svg className={styles.uploadSpinner} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                </svg>
-                <b>Uploading {currentCount} of {imageUploadProgress.total}</b>
-              </div>
-              <span className={styles.uploadPercentBadge}>{percent}%</span>
-            </div>
-            <div className={styles.uploadProgressTrack}>
-              <div className={styles.uploadProgressFill} style={{ width: `${percent}%` }} />
-            </div>
-            <div className={styles.uploadProgressSub}>
-              <span className={styles.uploadFilename}>{imageUploadProgress.filename}</span>
-              <span className={styles.uploadSlotInfo}>{24 - media.length} slots remaining</span>
-            </div>
-          </div>
-        );
-      })()}
-      {imageUploadError && <div className={styles.imageUploadError} role="alert">{imageUploadError}</div>}
       {editable && !canUploadMedia && <p className={styles.imagePermissionNote}>You need Media Drive upload permission to add new images.</p>}
     </section>;
   }
