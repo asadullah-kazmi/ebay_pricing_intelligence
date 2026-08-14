@@ -99,6 +99,204 @@ async function offerRequest<T>(input: {
   return response.json() as Promise<T>;
 }
 
+async function inventoryApiRequest<T>(input: {
+  organizationId: string;
+  marketplace: Marketplace;
+  path: string;
+  method: "GET" | "POST";
+  payload?: unknown;
+  operation: string;
+  connectionId?: string | null;
+}): Promise<T> {
+  const token = await getEbaySellerAccessToken(input.organizationId, input.connectionId ?? undefined);
+  const response = await fetch(`${apiBase()}/sell/inventory/v1${input.path}`, {
+    method: input.method,
+    signal: AbortSignal.timeout(30_000),
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      "Content-Language": contentLanguage(input.marketplace),
+      "X-EBAY-C-MARKETPLACE-ID": input.marketplace,
+    },
+    ...(input.payload === undefined ? {} : { body: JSON.stringify(input.payload) }),
+  });
+  if (!response.ok) throw await providerError(response, input.operation);
+  if (response.status === 204) return undefined as T;
+  return response.json() as Promise<T>;
+}
+
+export interface EbayInventoryItemSummary {
+  sku: string;
+  title: string | null;
+  condition: string | null;
+  totalQuantity: number | null;
+  availability: Record<string, unknown>;
+  product: Record<string, unknown>;
+  payload: Record<string, unknown>;
+}
+
+export interface EbayOfferSummary {
+  offerId: string;
+  sku: string | null;
+  marketplaceId: string | null;
+  status: string | null;
+  listingId: string | null;
+  listingStatus: string | null;
+  listingOnHold: boolean;
+  priceValue: number | null;
+  priceCurrency: string | null;
+  availableQuantity: number | null;
+  categoryId: string | null;
+  format: string | null;
+  payload: Record<string, unknown>;
+}
+
+function text(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function numeric(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() && Number.isFinite(Number(value))) return Number(value);
+  return null;
+}
+
+export function normalizeInventoryItemSummary(item: Record<string, unknown>): EbayInventoryItemSummary | null {
+  const sku = text(item.sku);
+  if (!sku) return null;
+  const availability = typeof item.availability === "object" && item.availability !== null
+    ? item.availability as Record<string, unknown>
+    : {};
+  const shipTo = typeof availability.shipToLocationAvailability === "object" && availability.shipToLocationAvailability !== null
+    ? availability.shipToLocationAvailability as Record<string, unknown>
+    : {};
+  const product = typeof item.product === "object" && item.product !== null
+    ? item.product as Record<string, unknown>
+    : {};
+  return {
+    sku,
+    title: text(product.title),
+    condition: text(item.condition),
+    totalQuantity: numeric(shipTo.quantity),
+    availability,
+    product,
+    payload: item,
+  };
+}
+
+export function normalizeOfferSummary(offer: Record<string, unknown>): EbayOfferSummary | null {
+  const offerId = text(offer.offerId);
+  if (!offerId) return null;
+  const pricingSummary = typeof offer.pricingSummary === "object" && offer.pricingSummary !== null
+    ? offer.pricingSummary as Record<string, unknown>
+    : {};
+  const price = typeof pricingSummary.price === "object" && pricingSummary.price !== null
+    ? pricingSummary.price as Record<string, unknown>
+    : {};
+  const listing = typeof offer.listing === "object" && offer.listing !== null
+    ? offer.listing as Record<string, unknown>
+    : {};
+  const listingPolicies = typeof offer.listingPolicies === "object" && offer.listingPolicies !== null
+    ? offer.listingPolicies as Record<string, unknown>
+    : {};
+  return {
+    offerId,
+    sku: text(offer.sku),
+    marketplaceId: text(offer.marketplaceId),
+    status: text(offer.status),
+    listingId: text(listing.listingId) ?? text(offer.listingId),
+    listingStatus: text(listing.listingStatus),
+    listingOnHold: listing.listingOnHold === true,
+    priceValue: numeric(price.value),
+    priceCurrency: text(price.currency),
+    availableQuantity: numeric(offer.availableQuantity),
+    categoryId: text(offer.categoryId),
+    format: text(offer.format),
+    payload: { ...offer, listingPolicies },
+  };
+}
+
+export async function getInventoryItemsPage(input: {
+  organizationId: string;
+  marketplace: Marketplace;
+  connectionId: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ inventoryItems: EbayInventoryItemSummary[]; total: number; size: number; limit: number; offset: number }> {
+  const limit = input.limit ?? 100;
+  const offset = input.offset ?? 0;
+  const response = await inventoryApiRequest<Record<string, unknown>>({
+    organizationId: input.organizationId,
+    marketplace: input.marketplace,
+    connectionId: input.connectionId,
+    method: "GET",
+    path: `/inventory_item?limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}`,
+    operation: "eBay inventory item list",
+  });
+  const inventoryItems = Array.isArray(response.inventoryItems)
+    ? response.inventoryItems
+      .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+      .map(normalizeInventoryItemSummary)
+      .filter((item): item is EbayInventoryItemSummary => Boolean(item))
+    : [];
+  return {
+    inventoryItems,
+    total: numeric(response.total) ?? inventoryItems.length,
+    size: numeric(response.size) ?? inventoryItems.length,
+    limit,
+    offset,
+  };
+}
+
+export async function getOffersPage(input: {
+  organizationId: string;
+  marketplace: Marketplace;
+  connectionId: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ offers: EbayOfferSummary[]; total: number; size: number; limit: number; offset: number }> {
+  const limit = input.limit ?? 100;
+  const offset = input.offset ?? 0;
+  const response = await inventoryApiRequest<Record<string, unknown>>({
+    organizationId: input.organizationId,
+    marketplace: input.marketplace,
+    connectionId: input.connectionId,
+    method: "GET",
+    path: `/offer?marketplace_id=${encodeURIComponent(input.marketplace)}&limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}`,
+    operation: "eBay offer list",
+  });
+  const offers = Array.isArray(response.offers)
+    ? response.offers
+      .filter((offer): offer is Record<string, unknown> => typeof offer === "object" && offer !== null)
+      .map(normalizeOfferSummary)
+      .filter((offer): offer is EbayOfferSummary => Boolean(offer))
+    : [];
+  return {
+    offers,
+    total: numeric(response.total) ?? offers.length,
+    size: numeric(response.size) ?? offers.length,
+    limit,
+    offset,
+  };
+}
+
+export async function bulkUpdatePriceQuantity(
+  organizationId: string,
+  marketplace: Marketplace,
+  payload: unknown,
+  connectionId?: string | null,
+): Promise<Record<string, unknown>> {
+  return inventoryApiRequest<Record<string, unknown>>({
+    organizationId,
+    marketplace,
+    connectionId,
+    method: "POST",
+    path: "/bulk_update_price_quantity",
+    payload,
+    operation: "eBay price and quantity update",
+  });
+}
+
 export async function createOffer(organizationId: string, marketplace: Marketplace, payload: unknown, connectionId?: string | null): Promise<string> {
   const response = await offerRequest<{ offerId?: string }>({
     organizationId, marketplace, path: "/offer", method: "POST", payload, operation: "eBay offer creation", connectionId,

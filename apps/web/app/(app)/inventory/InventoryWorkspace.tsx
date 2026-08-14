@@ -1,343 +1,313 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useAuth } from "../../components/AuthProvider";
 import styles from "./inventory.module.css";
 
-type InventoryPart = {
-  id: string;
+type InventoryRow = {
+  key: string;
+  account: { id: string; username: string | null; isDefault: boolean; marketplace: "EBAY_US" | "EBAY_GB" | "EBAY_DE" };
   sku: string;
-  primaryPartNumber: string;
-  brand: string | null;
-  partName: string | null;
-  condition: "NEW" | "USED";
-  status: string;
-  updatedAt: string;
-  inventoryItem: {
-    quantity: number;
-    cost: string | number;
-    currency: string;
-    warehouse: { id: string; code: string; name: string } | null;
-    binLocation: { id: string; code: string } | null;
-  } | null;
+  title: string | null;
+  condition: string | null;
+  quantity: number | null;
+  price: number | null;
+  currency: string | null;
+  offerId: string | null;
+  offerStatus: string | null;
+  listingId: string | null;
+  listingStatus: string | null;
+  listingOnHold: boolean;
+  categoryId: string | null;
+  imageUrl: string | null;
 };
 
-type CatalogResponse = {
-  parts: InventoryPart[];
+type InventoryResponse = {
+  accounts: Array<{ id: string; username: string | null; isDefault: boolean; marketplace: string }>;
+  items: InventoryRow[];
   pagination: { page: number; pageSize: number; total: number; totalPages: number };
-  summary: { total: number; byStatus: Record<string, number> };
-  warehouses: Array<{ id: string; code: string; name: string }>;
+  summary: {
+    total: number;
+    filtered: number;
+    connectedAccounts: number;
+    published: number;
+    unpublished: number;
+    lowStock: number;
+    outOfStock: number;
+  };
+  errors: Array<{ connectionId: string; username: string | null; message: string }>;
+  syncedAt: string;
 };
 
-const empty: CatalogResponse = {
-  parts: [],
-  pagination: { page: 1, pageSize: 25, total: 0, totalPages: 0 },
-  summary: { total: 0, byStatus: {} },
-  warehouses: [],
+const emptyInventory: InventoryResponse = {
+  accounts: [],
+  items: [],
+  pagination: { page: 1, pageSize: 50, total: 0, totalPages: 1 },
+  summary: { total: 0, filtered: 0, connectedAccounts: 0, published: 0, unpublished: 0, lowStock: 0, outOfStock: 0 },
+  errors: [],
+  syncedAt: "",
 };
 
-const demoParts: InventoryPart[] = [
-  {
-    id: "d1",
-    sku: "GM-84178783-A",
-    primaryPartNumber: "84178783",
-    brand: "ACDelco",
-    partName: "HVAC Blower Motor Control Module",
-    condition: "USED",
-    status: "READY_FOR_ENRICHMENT",
-    updatedAt: new Date().toISOString(),
-    inventoryItem: { quantity: 14, cost: 28, currency: "USD", warehouse: { id: "w1", code: "MAIN", name: "Main Yard Warehouse" }, binLocation: { id: "b1", code: "A-14" } },
-  },
-  {
-    id: "d2",
-    sku: "AUD-8K0615301M",
-    primaryPartNumber: "8K0615301M",
-    brand: "Audi",
-    partName: "Rear Brake Caliper Assembly",
-    condition: "USED",
-    status: "NEEDS_IMAGES",
-    updatedAt: new Date(Date.now() - 86400000).toISOString(),
-    inventoryItem: { quantity: 3, cost: 46.5, currency: "USD", warehouse: { id: "w1", code: "MAIN", name: "Main Yard Warehouse" }, binLocation: { id: "b2", code: "C-08" } },
-  },
-  {
-    id: "d3",
-    sku: "BMW-64119355981",
-    primaryPartNumber: "64119355981",
-    brand: "BMW",
-    partName: "Air Conditioning Control Panel Unit",
-    condition: "USED",
-    status: "IMPORTED",
-    updatedAt: new Date(Date.now() - 172800000).toISOString(),
-    inventoryItem: { quantity: 0, cost: 65, currency: "USD", warehouse: { id: "w1", code: "MAIN", name: "Main Yard Warehouse" }, binLocation: null },
-  },
-  {
-    id: "d4",
-    sku: "FRD-FL3Z13008A",
-    primaryPartNumber: "FL3Z13008A",
-    brand: "Ford",
-    partName: "F-150 Right Headlight Assembly",
-    condition: "USED",
-    status: "READY_FOR_ENRICHMENT",
-    updatedAt: new Date(Date.now() - 3600000).toISOString(),
-    inventoryItem: { quantity: 1, cost: 95, currency: "USD", warehouse: { id: "w1", code: "MAIN", name: "Main Yard Warehouse" }, binLocation: { id: "b3", code: "B-02" } },
-  },
-];
-
-function money(value: string | number, currency: string) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(Number(value));
+function money(value: number | null, currency: string | null) {
+  if (value == null) return "-";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: currency || "USD" }).format(value);
 }
 
-function stockTone(qty: number) {
-  if (qty <= 0) return { label: "Out of Stock", tone: "bad" };
-  if (qty <= 5) return { label: "Low Stock", tone: "warn" };
-  return { label: "In Stock", tone: "good" };
+function stockLabel(quantity: number | null) {
+  const qty = quantity ?? 0;
+  if (qty <= 0) return { text: "Out", tone: "bad" };
+  if (qty <= 5) return { text: "Low", tone: "warn" };
+  return { text: "In stock", tone: "good" };
+}
+
+function statusLabel(row: InventoryRow) {
+  const status = row.offerStatus ?? row.listingStatus ?? "Inventory item";
+  return status.replace(/_/g, " ").toLowerCase();
 }
 
 export default function InventoryWorkspace() {
   const { status: authStatus, demo, apiFetch } = useAuth();
-  const [catalog, setCatalog] = useState<CatalogResponse>(empty);
+  const [inventory, setInventory] = useState<InventoryResponse>(emptyInventory);
   const [loading, setLoading] = useState(false);
+  const [savingKey, setSavingKey] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [search, setSearch] = useState("");
-  const [stockFilter, setStockFilter] = useState("");
-  const [warehouseId, setWarehouseId] = useState("");
-  const [condition, setCondition] = useState("");
+  const [connectionId, setConnectionId] = useState("");
+  const [stock, setStock] = useState("ALL");
+  const [offerStatus, setOfferStatus] = useState("ALL");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
+  const [pageSize, setPageSize] = useState(50);
+  const [editing, setEditing] = useState<InventoryRow | null>(null);
 
-  const queryString = useMemo(() => {
-    const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize), sort: "updated" });
-    if (search.trim()) query.set("q", search.trim());
-    if (condition) query.set("condition", condition);
-    if (warehouseId) query.set("warehouseId", warehouseId);
-    if (stockFilter === "in") { query.set("minQuantity", "6"); }
-    if (stockFilter === "low") { query.set("minQuantity", "1"); query.set("maxQuantity", "5"); }
-    if (stockFilter === "out") { query.set("maxQuantity", "0"); }
-    return query.toString();
-  }, [condition, page, pageSize, search, stockFilter, warehouseId]);
+  const query = useMemo(() => {
+    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), stock, offerStatus });
+    if (search.trim()) params.set("q", search.trim());
+    if (connectionId) params.set("connectionId", connectionId);
+    return params.toString();
+  }, [connectionId, offerStatus, page, pageSize, search, stock]);
 
   const load = useCallback(async () => {
-    if (authStatus !== "ready") return;
-    if (demo) {
-      setCatalog({
-        parts: demoParts,
-        pagination: { page: 1, pageSize: 25, total: demoParts.length, totalPages: 1 },
-        summary: { total: demoParts.length, byStatus: {} },
-        warehouses: [{ id: "w1", code: "MAIN", name: "Main Yard Warehouse" }],
-      });
-      return;
-    }
+    if (authStatus !== "ready" || demo) return;
     setLoading(true);
     setError("");
     try {
-      setCatalog((await apiFetch(`/api/parts?${queryString}`)) as CatalogResponse);
+      setInventory((await apiFetch(`/api/ebay/store-inventory?${query}`)) as InventoryResponse);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to load inventory records");
+      setError(caught instanceof Error ? caught.message : "Unable to sync eBay inventory");
     } finally {
       setLoading(false);
     }
-  }, [apiFetch, authStatus, demo, queryString]);
+  }, [apiFetch, authStatus, demo, query]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const metrics = useMemo(() => {
-    const parts = catalog.parts;
-    const totalSkus = catalog.pagination.total || parts.length;
-    const inStock = parts.filter((part) => (part.inventoryItem?.quantity ?? 0) > 5).length;
-    const low = parts.filter((part) => {
-      const qty = part.inventoryItem?.quantity ?? 0;
-      return qty > 0 && qty <= 5;
-    }).length;
-    const out = parts.filter((part) => (part.inventoryItem?.quantity ?? 0) <= 0).length;
-    const value = parts.reduce((sum, part) => sum + Number(part.inventoryItem?.cost ?? 0) * (part.inventoryItem?.quantity ?? 0), 0);
-    return { totalSkus, inStock, low, out, value };
-  }, [catalog.pagination.total, catalog.parts]);
+  async function saveInventory(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editing) return;
+    const form = new FormData(event.currentTarget);
+    const quantity = Number(form.get("quantity"));
+    const priceRaw = String(form.get("price") ?? "").trim();
+    const price = priceRaw ? Number(priceRaw) : undefined;
+    setSavingKey(editing.key);
+    setError("");
+    setNotice("");
+    try {
+      await apiFetch("/api/ebay/store-inventory/item", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          connectionId: editing.account.id,
+          sku: editing.sku,
+          marketplace: editing.account.marketplace,
+          offerId: editing.offerId,
+          quantity,
+          ...(price === undefined ? {} : { price, currency: editing.currency ?? "USD" }),
+        }),
+      });
+      setNotice(`Updated ${editing.sku} on ${editing.account.username ?? "eBay"}.`);
+      setEditing(null);
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to update eBay inventory");
+    } finally {
+      setSavingKey("");
+    }
+  }
+
+  async function withdraw(row: InventoryRow) {
+    if (!row.offerId) return;
+    if (!window.confirm(`Withdraw eBay offer ${row.offerId} for SKU ${row.sku}? This can end the live listing.`)) return;
+    setSavingKey(row.key);
+    setError("");
+    setNotice("");
+    try {
+      await apiFetch("/api/ebay/store-inventory/withdraw", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          connectionId: row.account.id,
+          marketplace: row.account.marketplace,
+          offerId: row.offerId,
+          confirmWithdraw: true,
+        }),
+      });
+      setNotice(`Withdrawal queued by eBay for ${row.sku}.`);
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to withdraw eBay offer");
+    } finally {
+      setSavingKey("");
+    }
+  }
 
   if (authStatus !== "ready") return null;
 
+  if (demo) {
+    return (
+      <div className={styles.page}>
+        <section className={styles.emptyState}>
+          <b>Inventory sync needs a connected eBay account</b>
+          <span>Demo mode does not load seller inventory.</span>
+          <Link className={styles.primaryBtn} href="/channels">Open channels</Link>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.page}>
-      <header className={styles.topbar}>
+      <header className={styles.header}>
         <div>
-          <span className={styles.eyebrow}>WAREHOUSE &amp; INVENTORY OPERATIONS</span>
-          <h1>Inventory Control &amp; Valuation</h1>
-          <p>Monitor stock levels, bin locations, on-hand valuation, and warehouse replenishment across seller accounts.</p>
+          <span className={styles.eyebrow}>EBAY STORE INVENTORY</span>
+          <h1>Inventory</h1>
+          <p>Sync stock and offer status from every connected eBay seller account.</p>
         </div>
-        <div className={styles.topActions}>
-          <button type="button" className={styles.iconBtn} onClick={() => void load()} aria-label="Refresh Inventory" title="Refresh Inventory">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+        <div className={styles.actions}>
+          <button type="button" className={styles.secondaryBtn} onClick={() => void load()} disabled={loading}>
+            {loading ? "Syncing..." : "Sync all stores"}
           </button>
-          <Link className={styles.ghostBtn} href="/catalog">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-            Open catalog
-          </Link>
-          <Link className={styles.primary} href="/pipeline">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 5v14M5 12h14"/></svg>
-            Receive stock
-          </Link>
+          <Link className={styles.primaryBtn} href="/channels">Manage stores</Link>
         </div>
       </header>
 
-      {error && (
-        <div className={styles.error}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-          {error}
+      {notice && <div className={styles.notice}>{notice}</div>}
+      {error && <div className={styles.error}>{error}</div>}
+      {inventory.errors.map((item) => (
+        <div key={item.connectionId} className={styles.error}>
+          {item.username ?? "eBay account"}: {item.message}
         </div>
-      )}
+      ))}
 
-      {/* Executive Summary Metrics Grid */}
       <section className={styles.metrics}>
-        <article className={styles.metricCard}>
-          <div className={styles.metricHeader}>
-            <span>TOTAL INVENTORY SKUs</span>
-            <span className={styles.metricBadgeTotal}>ACTIVE</span>
-          </div>
-          <b>{metrics.totalSkus}</b>
-          <small>Tracked across warehouses</small>
-        </article>
-        <article className={styles.metricCard}>
-          <div className={styles.metricHeader}>
-            <span>IN STOCK</span>
-            <span className={styles.metricBadgeGood}>HEALTHY</span>
-          </div>
-          <b className={styles.metricGood}>{metrics.inStock}</b>
-          <small>&gt; 5 available units</small>
-        </article>
-        <article className={styles.metricCard}>
-          <div className={styles.metricHeader}>
-            <span>LOW STOCK</span>
-            <span className={styles.metricBadgeWarn}>REORDER</span>
-          </div>
-          <b className={styles.metricWarn}>{metrics.low}</b>
-          <small>1–5 units remaining</small>
-        </article>
-        <article className={styles.metricCard}>
-          <div className={styles.metricHeader}>
-            <span>OUT OF STOCK</span>
-            <span className={styles.metricBadgeBad}>CRITICAL</span>
-          </div>
-          <b className={styles.metricBad}>{metrics.out}</b>
-          <small>Needs stock replenishment</small>
-        </article>
-        <article className={styles.metricCard}>
-          <div className={styles.metricHeader}>
-            <span>ON-HAND VALUATION</span>
-            <span className={styles.metricBadgeValue}>USD</span>
-          </div>
-          <b className={styles.metricValue}>{money(metrics.value, "USD")}</b>
-          <small>Cost × quantity (page)</small>
-        </article>
+        <article><span>Accounts</span><b>{inventory.summary.connectedAccounts}</b></article>
+        <article><span>Synced SKUs</span><b>{inventory.summary.total}</b></article>
+        <article><span>Published offers</span><b>{inventory.summary.published}</b></article>
+        <article><span>Low stock</span><b>{inventory.summary.lowStock}</b></article>
+        <article><span>Out of stock</span><b>{inventory.summary.outOfStock}</b></article>
       </section>
 
-      {/* Primary Inventory Data Panel */}
       <section className={styles.panel}>
         <div className={styles.toolbar}>
-          <label className={styles.searchBox}>
-            <span className={styles.srOnly}>Search inventory</span>
-            <svg className={styles.searchIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-            <input
-              value={search}
-              onChange={(event) => { setSearch(event.target.value); setPage(1); }}
-              placeholder="Filter inventory by SKU, OEM part number, brand, or title..."
-            />
-            <span className={styles.kbdHint}>⌘K</span>
+          <label className={styles.search}>
+            <span>Search</span>
+            <input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="SKU, title, listing ID, seller account" />
           </label>
-          <div className={styles.filterRow}>
-            <label className={styles.filterField}>
-              <span>STOCK LEVEL</span>
-              <select value={stockFilter} onChange={(event) => { setStockFilter(event.target.value); setPage(1); }}>
-                <option value="">All Stock Levels</option>
-                <option value="in">In Stock (&gt;5)</option>
-                <option value="low">Low Stock (1–5)</option>
-                <option value="out">Out of Stock (0)</option>
-              </select>
-            </label>
-            <label className={styles.filterField}>
-              <span>WAREHOUSE</span>
-              <select value={warehouseId} onChange={(event) => { setWarehouseId(event.target.value); setPage(1); }}>
-                <option value="">All Locations</option>
-                {catalog.warehouses.map((warehouse) => (
-                  <option key={warehouse.id} value={warehouse.id}>{warehouse.code} — {warehouse.name}</option>
-                ))}
-              </select>
-            </label>
-            <label className={styles.filterField}>
-              <span>CONDITION</span>
-              <select value={condition} onChange={(event) => { setCondition(event.target.value); setPage(1); }}>
-                <option value="">All Conditions</option>
-                <option value="NEW">New</option>
-                <option value="USED">Used</option>
-              </select>
-            </label>
-          </div>
+          <label>
+            <span>Store</span>
+            <select value={connectionId} onChange={(event) => { setConnectionId(event.target.value); setPage(1); }}>
+              <option value="">All connected stores</option>
+              {inventory.accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.username ?? "eBay account"}{account.isDefault ? " (default)" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Stock</span>
+            <select value={stock} onChange={(event) => { setStock(event.target.value); setPage(1); }}>
+              <option value="ALL">All stock</option>
+              <option value="IN_STOCK">In stock</option>
+              <option value="LOW_STOCK">Low stock</option>
+              <option value="OUT_OF_STOCK">Out of stock</option>
+            </select>
+          </label>
+          <label>
+            <span>Offer status</span>
+            <select value={offerStatus} onChange={(event) => { setOfferStatus(event.target.value); setPage(1); }}>
+              <option value="ALL">All offers</option>
+              <option value="PUBLISHED">Published</option>
+              <option value="UNPUBLISHED">Unpublished</option>
+              <option value="ENDED">Ended</option>
+            </select>
+          </label>
+          <div className={styles.filterCount}>{inventory.summary.filtered} shown</div>
         </div>
 
-        {loading ? (
-          <div className={styles.empty}>
-            <div className={styles.spinner} />
-            <b>Refreshing inventory control records...</b>
-          </div>
-        ) : catalog.parts.length === 0 ? (
-          <div className={styles.empty}>
-            <b>No inventory records found</b>
-            <span>Import catalog parts from Pipeline or adjust your stock filters.</span>
-            <Link href="/pipeline" className={styles.primaryInline}>Go to pipeline</Link>
+        {loading && inventory.items.length === 0 ? (
+          <div className={styles.emptyState}><b>Syncing eBay inventory...</b><span>This can take a moment when multiple stores are connected.</span></div>
+        ) : inventory.items.length === 0 ? (
+          <div className={styles.emptyState}>
+            <b>No eBay inventory found</b>
+            <span>Connect a store, publish through PartPulse, or adjust your filters.</span>
           </div>
         ) : (
           <div className={styles.tableWrap}>
             <table>
               <thead>
                 <tr>
-                  <th>SKU &amp; PART NO</th>
-                  <th>PART DETAILS</th>
-                  <th>CONDITION</th>
-                  <th>QTY</th>
-                  <th>STOCK STATUS</th>
-                  <th>LOCATION</th>
-                  <th>UNIT COST</th>
-                  <th>ON-HAND VALUE</th>
-                  <th>LAST UPDATED</th>
+                  <th>Store</th>
+                  <th>SKU and listing</th>
+                  <th>Product</th>
+                  <th>Qty</th>
+                  <th>Price</th>
+                  <th>Status</th>
+                  <th>Category</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {catalog.parts.map((part) => {
-                  const qty = part.inventoryItem?.quantity ?? 0;
-                  const stock = stockTone(qty);
-                  const cost = Number(part.inventoryItem?.cost ?? 0);
-                  const currency = part.inventoryItem?.currency || "USD";
+                {inventory.items.map((row) => {
+                  const stockState = stockLabel(row.quantity);
                   return (
-                    <tr key={part.id}>
+                    <tr key={row.key}>
                       <td>
-                        <Link className={styles.skuLink} href="/catalog">
-                          <code>{part.sku}</code>
-                        </Link>
-                        <span className={styles.subtle}>{part.primaryPartNumber}</span>
+                        <b>{row.account.username ?? "eBay"}</b>
+                        <span className={styles.muted}>{row.account.marketplace}{row.account.isDefault ? " · default" : ""}</span>
                       </td>
                       <td>
-                        <b className={styles.titleCell}>{part.partName || "Unnamed catalog item"}</b>
-                        <span className={styles.subtle}>{part.brand || "Brand unavailable"}</span>
+                        <code>{row.sku}</code>
+                        <span className={styles.muted}>{row.listingId ? `Listing ${row.listingId}` : row.offerId ? `Offer ${row.offerId}` : "Inventory item only"}</span>
+                      </td>
+                      <td className={styles.productCell}>
+                        {row.imageUrl ? <img src={row.imageUrl} alt="" /> : <span className={styles.noImage}>No image</span>}
+                        <div>
+                          <b>{row.title || "Untitled inventory item"}</b>
+                          <span className={styles.muted}>{row.condition || "Condition not set"}</span>
+                        </div>
                       </td>
                       <td>
-                        <span className={styles.conditionTag}>{part.condition === "NEW" ? "New" : "Used"}</span>
+                        <b>{row.quantity ?? "-"}</b>
+                        <span className={`${styles.pill} ${styles[stockState.tone]}`}>{stockState.text}</span>
                       </td>
+                      <td><b>{money(row.price, row.currency)}</b></td>
                       <td>
-                        <b className={styles.qtyNumber}>{qty}</b>
+                        <span className={styles.status}>{statusLabel(row)}</span>
+                        {row.listingOnHold && <span className={styles.muted}>On hold</span>}
                       </td>
+                      <td>{row.categoryId ?? "-"}</td>
                       <td>
-                        <span className={`${styles.statusPill} ${styles[`tone_${stock.tone}`]}`}>
-                          {stock.label}
-                        </span>
+                        <div className={styles.rowActions}>
+                          <button type="button" onClick={() => setEditing(row)} disabled={Boolean(savingKey)}>Edit</button>
+                          <button type="button" className={styles.dangerBtn} onClick={() => void withdraw(row)} disabled={!row.offerId || Boolean(savingKey)}>
+                            {savingKey === row.key ? "Working..." : "Withdraw"}
+                          </button>
+                        </div>
                       </td>
-                      <td>
-                        <span className={styles.locationCode}>{part.inventoryItem?.warehouse?.code || "—"}</span>
-                        <span className={styles.subtle}>{part.inventoryItem?.binLocation?.code ? `Bin: ${part.inventoryItem.binLocation.code}` : "Unassigned bin"}</span>
-                      </td>
-                      <td className={styles.costCell}>{money(cost, currency)}</td>
-                      <td className={styles.valueCell}>{money(cost * qty, currency)}</td>
-                      <td className={styles.dateCell}>{new Date(part.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</td>
                     </tr>
                   );
                 })}
@@ -346,33 +316,51 @@ export default function InventoryWorkspace() {
           </div>
         )}
 
-        <div className={styles.pagination}>
+        <footer className={styles.pagination}>
           <span>
-            Showing <b>{catalog.parts.length ? ((catalog.pagination.page - 1) * catalog.pagination.pageSize) + 1 : 0}</b> to <b>{Math.min(catalog.pagination.page * catalog.pagination.pageSize, catalog.pagination.total)}</b> of <b>{catalog.pagination.total}</b> inventory items
+            Page {inventory.pagination.page} of {inventory.pagination.totalPages} · {inventory.pagination.total} records
           </span>
-          <div className={styles.pageSize}>
-            <span>Rows per page</span>
-            <select
-              value={pageSize}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value));
-                setPage(1);
-              }}
-              aria-label="Rows per page"
-            >
-              <option value={10}>10</option>
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
+          <div>
+            <select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }}>
+              <option value={25}>25 rows</option>
+              <option value={50}>50 rows</option>
+              <option value={100}>100 rows</option>
             </select>
-            <div className={styles.pageButtons}>
-              <button type="button" disabled={page <= 1} onClick={() => setPage((value) => value - 1)} aria-label="Previous page">‹</button>
-              <em className={styles.pageCurrent}>{catalog.pagination.page}</em>
-              <button type="button" disabled={page >= catalog.pagination.totalPages} onClick={() => setPage((value) => value + 1)} aria-label="Next page">›</button>
-            </div>
+            <button type="button" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>Previous</button>
+            <button type="button" disabled={page >= inventory.pagination.totalPages} onClick={() => setPage((value) => value + 1)}>Next</button>
           </div>
-        </div>
+        </footer>
       </section>
+
+      {editing && (
+        <div className={styles.modalBackdrop} role="presentation">
+          <form className={styles.modal} onSubmit={(event) => void saveInventory(event)}>
+            <header>
+              <div>
+                <span className={styles.eyebrow}>UPDATE EBAY INVENTORY</span>
+                <h2>{editing.sku}</h2>
+                <p>{editing.account.username ?? "eBay"} · {editing.offerId ? `Offer ${editing.offerId}` : "inventory quantity only"}</p>
+              </div>
+              <button type="button" onClick={() => setEditing(null)} aria-label="Close">x</button>
+            </header>
+            <label>
+              <span>Quantity</span>
+              <input name="quantity" type="number" min="0" defaultValue={editing.quantity ?? 0} required />
+            </label>
+            <label>
+              <span>Selling price</span>
+              <input name="price" type="number" min="0" step="0.01" defaultValue={editing.price ?? ""} disabled={!editing.offerId} />
+            </label>
+            {!editing.offerId && <p className={styles.helpText}>This SKU has no offer yet, so only quantity can be updated from Inventory.</p>}
+            <footer>
+              <button type="button" className={styles.secondaryBtn} onClick={() => setEditing(null)}>Cancel</button>
+              <button type="submit" className={styles.primaryBtn} disabled={savingKey === editing.key}>
+                {savingKey === editing.key ? "Saving..." : "Save to eBay"}
+              </button>
+            </footer>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

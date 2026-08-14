@@ -56,6 +56,7 @@ import { bulkAssignListingDraftPolicies, createListingDrafts, getListingDraft, L
 import { listCachedSellerResources, refreshCategoryMetadata, syncSellerResources } from "./ebay-resource-service.js";
 import { createInventoryPreparationJob, getInventoryPreparationJob, getLatestInventoryPreparation, InventoryPreparationError, startInventoryPreparationJob } from "./inventory-preparation-service.js";
 import { createEbayInventorySyncJob, EbayInventorySyncError, getEbayInventorySyncJob, getLatestEbayInventorySyncJob, startEbayInventorySyncJob } from "./ebay-inventory-sync-service.js";
+import { EbayInventoryManagementError, listEbayStoreInventory, updateEbayStoreInventoryItem, withdrawEbayStoreOffer } from "./ebay-inventory-management-service.js";
 import { createOfferPreparationJob, createOfferPublishJob, EbayOfferError, getOffer, getOfferByDraft, getOfferJob, startOfferJob } from "./ebay-offer-service.js";
 import { createReconciliationJob, createRevisionJob, createWithdrawalJob, EbayListingOperationError, getListingOperationJob, startListingOperationJob } from "./ebay-listing-operation-service.js";
 import { listAuditEvents } from "./audit-service.js";
@@ -130,6 +131,29 @@ const pipelineStartSchema = z.object({
   assignImages: z.boolean().default(false),
 });
 const pipelineListQuerySchema = z.object({ limit: z.coerce.number().int().min(1).max(100).default(30) });
+const ebayInventoryQuerySchema = z.object({
+  connectionId: z.string().min(1).optional(),
+  q: z.string().trim().max(120).optional(),
+  stock: z.enum(["ALL", "IN_STOCK", "LOW_STOCK", "OUT_OF_STOCK"]).default("ALL"),
+  offerStatus: z.enum(["ALL", "PUBLISHED", "UNPUBLISHED", "ENDED"]).default("ALL"),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(50),
+});
+const ebayInventoryUpdateSchema = z.object({
+  connectionId: z.string().min(1),
+  sku: z.string().trim().min(1).max(100),
+  marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]),
+  offerId: z.string().trim().min(1).nullable().optional(),
+  quantity: z.number().int().min(0).max(1_000_000).optional(),
+  price: z.number().positive().max(100_000_000).optional(),
+  currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).default("USD"),
+}).strict().refine((value) => value.quantity !== undefined || value.price !== undefined, "Enter a quantity or price to update");
+const ebayInventoryWithdrawSchema = z.object({
+  connectionId: z.string().min(1),
+  marketplace: z.enum(["EBAY_US", "EBAY_GB", "EBAY_DE"]),
+  offerId: z.string().trim().min(1),
+  confirmWithdraw: z.literal(true),
+}).strict();
 const imageMatchCorrectionSchema = z.object({
   importRowId: z.string().min(1).nullable(),
   displayOrder: z.number().int().min(0).optional(),
@@ -845,6 +869,44 @@ app.post("/api/ebay/resources/sync", writeRateLimit, requireTenantContext, requi
   try {
     const { marketplace, connectionId } = sellerResourceSyncSchema.parse(req.body);
     res.json(await syncSellerResources(getTenantContext(res).organization.id, marketplace, connectionId));
+  } catch (error) { next(error); }
+});
+
+app.get("/api/ebay/store-inventory", requireTenantContext, requireOrganizationPermission("inventory.view"), async (req, res, next) => {
+  try {
+    res.json(await listEbayStoreInventory({
+      organizationId: getTenantContext(res).organization.id,
+      ...ebayInventoryQuerySchema.parse(req.query),
+    }));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/ebay/store-inventory/sync", requireTenantContext, requireOrganizationPermission("inventory.view"), async (req, res, next) => {
+  try {
+    res.json(await listEbayStoreInventory({
+      organizationId: getTenantContext(res).organization.id,
+      ...ebayInventoryQuerySchema.parse(req.body ?? {}),
+    }));
+  } catch (error) { next(error); }
+});
+
+app.patch("/api/ebay/store-inventory/item", writeRateLimit, requireTenantContext, requireOrganizationPermission("inventory.edit"), async (req, res, next) => {
+  try {
+    assertTrustedAuthOrigin(req);
+    res.json(await updateEbayStoreInventoryItem({
+      organizationId: getTenantContext(res).organization.id,
+      ...ebayInventoryUpdateSchema.parse(req.body),
+    }));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/ebay/store-inventory/withdraw", writeRateLimit, requireTenantContext, requireOrganizationPermission("inventory.edit"), async (req, res, next) => {
+  try {
+    assertTrustedAuthOrigin(req);
+    res.json(await withdrawEbayStoreOffer({
+      organizationId: getTenantContext(res).organization.id,
+      ...ebayInventoryWithdrawSchema.parse(req.body),
+    }));
   } catch (error) { next(error); }
 });
 
@@ -2386,6 +2448,7 @@ app.use((error: unknown, req: express.Request, res: express.Response, _next: exp
   if (error instanceof ListingDraftError) return response(error.statusCode, { error: error.message });
   if (error instanceof InventoryPreparationError) return response(error.statusCode, { error: error.message });
   if (error instanceof EbayInventorySyncError) return response(error.statusCode, { error: error.message });
+  if (error instanceof EbayInventoryManagementError) return response(error.statusCode, { error: error.message });
   if (error instanceof EbayOfferError) return response(error.statusCode, { error: error.message });
   if (error instanceof EbayListingOperationError) return response(error.statusCode, { error: error.message });
   if (error instanceof AdminOperationsError) return response(error.statusCode, { error: error.message });
