@@ -387,6 +387,14 @@ export default function CatalogWorkspace() {
   const [draftMode, setDraftMode] = useState<"view" | "edit">("view");
   const [draftBusy, setDraftBusy] = useState(false);
   const [sellerResources, setSellerResources] = useState<EbaySellerResources | null>(null);
+  const [catalogPolicyResources, setCatalogPolicyResources] = useState<EbaySellerResources | null>(null);
+  const [catalogPolicyResourcesLoading, setCatalogPolicyResourcesLoading] = useState(false);
+  const [catalogPolicyResourcesError, setCatalogPolicyResourcesError] = useState("");
+  const [catalogPolicySelection, setCatalogPolicySelection] = useState({
+    shippingPolicyId: "",
+    returnPolicyId: "",
+    paymentPolicyId: "",
+  });
   const [categoryAspects, setCategoryAspects] = useState<EbayAspectRequirement[]>([]);
   const [categoryConditions, setCategoryConditions] = useState<EbayConditionOption[]>([]);
   const [inventoryPreparation, setInventoryPreparation] = useState<InventoryPreparation | null>(null);
@@ -659,6 +667,63 @@ export default function CatalogWorkspace() {
     }
   }
 
+  function beginDetailEdit() {
+    if (!detail) return;
+    const draft = detail.listingDrafts?.[0];
+    const defaultConnection = ebayConnections.find(({ isDefault }) => isDefault)
+      ?? (ebayConnection.isDefault ? ebayConnection : undefined);
+    setCatalogPolicySelection({
+      shippingPolicyId: draft?.shippingPolicyId || defaultConnection?.defaultShippingPolicyId || "",
+      returnPolicyId: draft?.returnPolicyId || defaultConnection?.defaultReturnPolicyId || "",
+      paymentPolicyId: draft?.paymentPolicyId || defaultConnection?.defaultPaymentPolicyId || "",
+    });
+    setCatalogPolicyResourcesError("");
+    setDetailMode("edit");
+  }
+
+  useEffect(() => {
+    if (authStatus !== "ready" || demo || detailMode !== "edit" || !detail) return;
+    const defaultConnection = ebayConnections.find(({ isDefault }) => isDefault)
+      ?? (ebayConnection.isDefault ? ebayConnection : undefined);
+    if (!defaultConnection?.id) {
+      setCatalogPolicyResources(null);
+      setCatalogPolicyResourcesLoading(false);
+      setCatalogPolicyResourcesError("Set a default eBay account in Channels before assigning listing policies.");
+      return;
+    }
+
+    let active = true;
+    const marketplace = detail.listingDrafts?.[0]?.marketplace || defaultConnection.defaultMarketplace || "EBAY_US";
+    setCatalogPolicyResourcesLoading(true);
+    setCatalogPolicyResourcesError("");
+    request(`/api/ebay/resources?marketplace=${encodeURIComponent(marketplace)}&connectionId=${encodeURIComponent(defaultConnection.id)}`)
+      .then((value) => {
+        if (!active) return;
+        const resources = value as EbaySellerResources;
+        setCatalogPolicyResources(resources);
+        const selectAvailable = (selected: string, fallback: string | null | undefined, options: EbaySellerResources["paymentPolicies"]) => {
+          const enabledIds = new Set(options.filter(({ enabled }) => enabled).map(({ remoteId }) => remoteId));
+          if (selected && enabledIds.has(selected)) return selected;
+          if (fallback && enabledIds.has(fallback)) return fallback;
+          return "";
+        };
+        setCatalogPolicySelection((current) => ({
+          shippingPolicyId: selectAvailable(current.shippingPolicyId, defaultConnection.defaultShippingPolicyId, resources.fulfillmentPolicies),
+          returnPolicyId: selectAvailable(current.returnPolicyId, defaultConnection.defaultReturnPolicyId, resources.returnPolicies),
+          paymentPolicyId: selectAvailable(current.paymentPolicyId, defaultConnection.defaultPaymentPolicyId, resources.paymentPolicies),
+        }));
+      })
+      .catch((caught) => {
+        if (!active) return;
+        setCatalogPolicyResources(null);
+        setCatalogPolicyResourcesError(caught instanceof Error ? caught.message : "Unable to load policies for the default eBay account.");
+      })
+      .finally(() => {
+        if (active) setCatalogPolicyResourcesLoading(false);
+      });
+    return () => { active = false; };
+  }, [authStatus, demo, detail, detailMode, ebayConnection, ebayConnections, request]);
+
   async function savePart(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!detail || demo) { setDetail(null); return; }
@@ -688,6 +753,8 @@ export default function CatalogWorkspace() {
     try {
       await request(`/api/parts/${detail.id}`, { method: "PATCH", body: JSON.stringify(body) });
       if (draft) {
+        const defaultConnection = ebayConnections.find(({ isDefault }) => isDefault)
+          ?? (ebayConnection.isDefault ? ebayConnection : undefined);
         const aspects = { ...draft.aspects };
         const countryOfOrigin = String(form.get("countryOfOrigin") ?? "").trim();
         if (countryOfOrigin) aspects["Country/Region of Manufacture"] = [countryOfOrigin];
@@ -703,6 +770,13 @@ export default function CatalogWorkspace() {
             price: form.get("price") === "" ? null : Number(form.get("price")),
             quantity: Number(form.get("quantity")),
             aspects,
+            ...(defaultConnection?.id ? {
+              ebaySellerConnectionId: defaultConnection.id,
+              shippingPolicyId: catalogPolicySelection.shippingPolicyId || null,
+              returnPolicyId: catalogPolicySelection.returnPolicyId || null,
+              paymentPolicyId: catalogPolicySelection.paymentPolicyId || null,
+              merchantLocationKey: defaultConnection.defaultMerchantLocationKey || null,
+            } : {}),
           }),
         });
       }
@@ -1962,7 +2036,7 @@ export default function CatalogWorkspace() {
           <header className={styles.inventoryHeader}>
             <div><h2 id="edit-part-title">Inventory details</h2>{detailHydrating ? <span className={styles.detailHydrating}>Refreshing details…</span> : null}</div>
             <div className={styles.inventoryHeaderActions}>
-              {detailMode === "view" ? <button type="button" className={styles.editDetailsBtn} disabled={detailHydrating} onClick={() => setDetailMode("edit")}><span>✎</span> Edit details</button> : <span className={styles.editingPill}>✎ Editing</span>}
+              {detailMode === "view" ? <button type="button" className={styles.editDetailsBtn} disabled={detailHydrating} onClick={beginDetailEdit}><span>✎</span> Edit details</button> : <span className={styles.editingPill}>✎ Editing</span>}
               <button type="button" className={styles.iconClose} aria-label="Close editor" onClick={() => setDetail(null)}>×</button>
             </div>
           </header>
@@ -2000,7 +2074,23 @@ export default function CatalogWorkspace() {
               <label><span><DetailIcon name="location"/> Storage location</span><input name="warehouseCode" defaultValue={detail.inventoryItem?.warehouse?.code ?? ""}/></label>
               <div className={styles.readonlyDatum}><span><DetailIcon name="date"/> Date added</span><b>{new Date(detail.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</b></div>
             </div>
-            <section className={styles.detailSection}><h4>eBay store &amp; policies</h4><div className={styles.policyGrid}><div><span>Shipping</span><b>{draft?.shippingPolicyName || "Not assigned"}</b></div><div><span>Returns</span><b>{draft?.returnPolicyName || "Not assigned"}</b></div><div><span>Payment</span><b>{draft?.paymentPolicyName || "Not assigned"}</b></div></div></section>
+            <section className={styles.detailSection}>
+              <div className={styles.policySectionHeading}>
+                <div><h4>eBay store &amp; policies</h4><p>{(() => {
+                  const defaultConnection = ebayConnections.find(({ isDefault }) => isDefault) ?? (ebayConnection.isDefault ? ebayConnection : undefined);
+                  return defaultConnection ? `Policies from default account${defaultConnection.username ? ` · ${defaultConnection.username}` : ""}` : "No default eBay account configured";
+                })()}</p></div>
+                {catalogPolicyResourcesLoading && <span>Loading policies…</span>}
+              </div>
+              <div className={styles.policyEditorGrid}>
+                <label><span>Shipping</span><select name="shippingPolicyId" value={catalogPolicySelection.shippingPolicyId} disabled={catalogPolicyResourcesLoading || !draft} onChange={(event) => setCatalogPolicySelection((current) => ({ ...current, shippingPolicyId: event.target.value }))}><option value="">Not assigned</option>{catalogPolicyResources?.fulfillmentPolicies.filter(({ enabled }) => enabled).map((resource) => <option key={resource.remoteId} value={resource.remoteId}>{resource.name || resource.remoteId}</option>)}</select></label>
+                <label><span>Returns</span><select name="returnPolicyId" value={catalogPolicySelection.returnPolicyId} disabled={catalogPolicyResourcesLoading || !draft} onChange={(event) => setCatalogPolicySelection((current) => ({ ...current, returnPolicyId: event.target.value }))}><option value="">Not assigned</option>{catalogPolicyResources?.returnPolicies.filter(({ enabled }) => enabled).map((resource) => <option key={resource.remoteId} value={resource.remoteId}>{resource.name || resource.remoteId}</option>)}</select></label>
+                <label><span>Payment</span><select name="paymentPolicyId" value={catalogPolicySelection.paymentPolicyId} disabled={catalogPolicyResourcesLoading || !draft} onChange={(event) => setCatalogPolicySelection((current) => ({ ...current, paymentPolicyId: event.target.value }))}><option value="">Not assigned</option>{catalogPolicyResources?.paymentPolicies.filter(({ enabled }) => enabled).map((resource) => <option key={resource.remoteId} value={resource.remoteId}>{resource.name || resource.remoteId}</option>)}</select></label>
+              </div>
+              {catalogPolicyResourcesError && <p className={styles.policyEditorError}>{catalogPolicyResourcesError}</p>}
+              {!catalogPolicyResourcesLoading && !catalogPolicyResourcesError && catalogPolicyResources && !catalogPolicyResources.fulfillmentPolicies.length && !catalogPolicyResources.returnPolicies.length && !catalogPolicyResources.paymentPolicies.length && <p className={styles.policyEditorHint}>No policies are cached for the default account. Open Channels and refresh that account&apos;s policies.</p>}
+              {!draft && <p className={styles.policyEditorHint}>Create a listing draft before assigning eBay policies.</p>}
+            </section>
             <section className={styles.detailSection}><h4>Category</h4><p>{categoryLabel}</p></section>
             {listingImagesSection(detail, canEditCatalog)}
             <section className={styles.detailSection}><div className={styles.sectionHeading}><h4>Fitments / compatibility</h4><button type="button" className={styles.sectionAction} onClick={() => void openManualFitment(detail.id)}>Manage</button></div>{fitmentItems.length ? <div className={styles.fitmentChips}>{fitmentItems.map((application) => <span key={application.id} className={styles.fitmentChip}>{fitmentLabel(application.properties)}</span>)}</div> : <p className={styles.emptyFitment}>No vehicle compatibility assigned.</p>}</section>

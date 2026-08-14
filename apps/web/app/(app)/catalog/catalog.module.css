@@ -3512,6 +3512,79 @@
   font-size: 11px;
 }
 
+.policySectionHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.policySectionHeading h4 {
+  margin-bottom: 3px;
+}
+
+.policySectionHeading p,
+.policySectionHeading > span {
+  margin: 0;
+  color: #71819a;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.policyEditorGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.policyEditorGrid label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.policyEditorGrid label > span {
+  color: #60728f;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+}
+
+.policyEditorGrid select {
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  padding: 0 32px 0 10px;
+  border: 1px solid #d8e2ef;
+  border-radius: 9px;
+  background: #fbfcfe;
+  color: #12294a;
+  font: 650 11px/1 "Plus Jakarta Sans", sans-serif;
+}
+
+.policyEditorGrid select:focus {
+  border-color: #1f64ed;
+  box-shadow: 0 0 0 3px rgb(31 100 237 / 10%);
+  outline: none;
+}
+
+.policyEditorGrid select:disabled {
+  cursor: wait;
+  opacity: .65;
+}
+
+.policyEditorError,
+.policyEditorHint {
+  margin: 9px 0 0;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.policyEditorError { color: #c72b2b; }
+.policyEditorHint { color: #71819a; }
+
 .compactImageGrid {
   display: flex;
   gap: 8px;
@@ -3953,7 +4026,8 @@
     gap: 0;
   }
 
-  .policyGrid {
+  .policyGrid,
+  .policyEditorGrid {
     grid-template-columns: 1fr;
   }
 
