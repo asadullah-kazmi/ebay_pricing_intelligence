@@ -3,6 +3,7 @@ import { Prisma, type PartCondition } from "@prisma/client";
 import { recordAuditEvent } from "./audit-service.js";
 import { prisma } from "./db.js";
 import { parseConfirmableImportRow } from "./import-review-service.js";
+import { getDefaultEbayListingSettings, type DefaultEbayListingSettings } from "./ebay-seller-oauth.js";
 import {
   assembleQuickSkuPrepared,
   enhanceQuickSkuWithAi,
@@ -149,6 +150,7 @@ async function processPipelineRow(input: {
   condition: PartCondition;
   marketplace: Marketplace;
   assignImages: boolean;
+  defaultEbaySettings: DefaultEbayListingSettings | null;
 }) {
   const row = await prisma.importRow.findFirst({
     where: { id: input.rowId, importBatchId: input.batchId, organizationId: input.organizationId },
@@ -317,13 +319,19 @@ async function processPipelineRow(input: {
     const issues = [
       ...(!uniqueMediaIds.length ? [{ code: "IMAGES_REQUIRED", severity: "BLOCKER", field: "images", message: "Add approved listing images" }] : []),
       ...(data.sellingPrice === undefined ? [{ code: "PRICE_REQUIRED", severity: "BLOCKER", field: "price", message: "Set a selling price" }] : []),
-      { code: "POLICIES_REQUIRED", severity: "BLOCKER", field: "policies", message: "Assign eBay business policies" },
+      ...(!(input.defaultEbaySettings?.defaultPaymentPolicyId
+        && input.defaultEbaySettings.defaultReturnPolicyId
+        && input.defaultEbaySettings.defaultShippingPolicyId
+        && input.defaultEbaySettings.defaultMerchantLocationKey)
+        ? [{ code: "POLICIES_REQUIRED", severity: "BLOCKER", field: "policies", message: "Assign eBay business policies and an item location" }]
+        : []),
     ];
     const draft = await tx.listingDraft.create({
       data: {
         organizationId: input.organizationId,
         partId: part.id,
         marketplace: input.marketplace,
+        ebaySellerConnectionId: input.defaultEbaySettings?.id ?? null,
         status: "BLOCKED",
         title: prepared.listingTitle,
         description: data.description ?? prepared.description,
@@ -333,6 +341,10 @@ async function processPipelineRow(input: {
         price: data.sellingPrice === undefined ? null : new Prisma.Decimal(data.sellingPrice),
         currency: data.currency,
         quantity: data.quantity,
+        paymentPolicyId: input.defaultEbaySettings?.defaultPaymentPolicyId ?? null,
+        returnPolicyId: input.defaultEbaySettings?.defaultReturnPolicyId ?? null,
+        shippingPolicyId: input.defaultEbaySettings?.defaultShippingPolicyId ?? null,
+        merchantLocationKey: input.defaultEbaySettings?.defaultMerchantLocationKey ?? null,
         aspects: asJson(aspects),
         validationIssues: asJson(issues),
         validatedAt: new Date(),
@@ -346,7 +358,23 @@ async function processPipelineRow(input: {
         organizationId: input.organizationId,
         listingDraftId: draft.id,
         version: 1,
-        snapshot: asJson({ title: prepared.listingTitle, description: data.description ?? prepared.description, categoryId: prepared.categoryId, condition: input.condition, price: data.sellingPrice ?? null, currency: data.currency, quantity: data.quantity, aspects, status: "BLOCKED", validationIssues: issues }),
+        snapshot: asJson({
+          title: prepared.listingTitle,
+          description: data.description ?? prepared.description,
+          categoryId: prepared.categoryId,
+          condition: input.condition,
+          price: data.sellingPrice ?? null,
+          currency: data.currency,
+          quantity: data.quantity,
+          aspects,
+          ebaySellerConnectionId: input.defaultEbaySettings?.id ?? null,
+          paymentPolicyId: input.defaultEbaySettings?.defaultPaymentPolicyId ?? null,
+          returnPolicyId: input.defaultEbaySettings?.defaultReturnPolicyId ?? null,
+          shippingPolicyId: input.defaultEbaySettings?.defaultShippingPolicyId ?? null,
+          merchantLocationKey: input.defaultEbaySettings?.defaultMerchantLocationKey ?? null,
+          status: "BLOCKED",
+          validationIssues: issues,
+        }),
         reason: "Created by automated catalog pipeline",
         createdById: input.userId,
       },
@@ -387,7 +415,12 @@ async function processPipelineRow(input: {
               ...(data.sellingPrice === undefined
                 ? [{ code: "PRICE_REQUIRED", severity: "BLOCKER", field: "price", message: "Set a selling price" }]
                 : []),
-              { code: "POLICIES_REQUIRED", severity: "BLOCKER", field: "policies", message: "Assign eBay business policies" },
+              ...(!(input.defaultEbaySettings?.defaultPaymentPolicyId
+                && input.defaultEbaySettings.defaultReturnPolicyId
+                && input.defaultEbaySettings.defaultShippingPolicyId
+                && input.defaultEbaySettings.defaultMerchantLocationKey)
+                ? [{ code: "POLICIES_REQUIRED", severity: "BLOCKER", field: "policies", message: "Assign eBay business policies and an item location" }]
+                : []),
             ]),
           },
         }),
@@ -423,6 +456,7 @@ export async function runPipelineJob(input: { organizationId: string; importBatc
       orderBy: { rowNumber: "asc" },
       select: { id: true },
     });
+    const defaultEbaySettings = await getDefaultEbayListingSettings(input.organizationId);
     for (const row of rows) {
       try {
         await processPipelineRow({
@@ -434,6 +468,7 @@ export async function runPipelineJob(input: { organizationId: string; importBatc
           condition: batch.defaultCondition,
           marketplace: batch.marketplace as Marketplace,
           assignImages: batch.assignImages,
+          defaultEbaySettings,
         });
         await prisma.importBatch.update({ where: { id: batch.id }, data: { processedRows: { increment: 1 } } });
       } catch (error) {

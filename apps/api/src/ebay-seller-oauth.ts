@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "./db.js";
 import { getConfig, type EbayEnvironment } from "./config.js";
 
@@ -266,6 +267,32 @@ const publicConnectionSelect = {
   lastRefreshedAt: true, lastError: true, connectedBy: { select: { id: true, email: true, name: true } },
   createdAt: true, updatedAt: true,
 };
+
+const defaultListingSettingsSelect = {
+  id: true,
+  defaultMarketplace: true,
+  defaultPaymentPolicyId: true,
+  defaultReturnPolicyId: true,
+  defaultShippingPolicyId: true,
+  defaultMerchantLocationKey: true,
+} satisfies Prisma.EbaySellerConnectionSelect;
+
+export type DefaultEbayListingSettings = Prisma.EbaySellerConnectionGetPayload<{
+  select: typeof defaultListingSettingsSelect;
+}>;
+
+export async function getDefaultEbayListingSettings(
+  organizationId: string,
+): Promise<DefaultEbayListingSettings | null> {
+  return prisma.ebaySellerConnection.findFirst({
+    where: {
+      organizationId,
+      isDefault: true,
+      status: "ACTIVE",
+    },
+    select: defaultListingSettingsSelect,
+  });
+}
 
 export async function getEbayConnection(organizationId: string) {
   const connection = await prisma.ebaySellerConnection.findFirst({

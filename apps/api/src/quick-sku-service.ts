@@ -5,6 +5,7 @@ import { prisma } from "./db.js";
 import { buildListingDescriptionHtml } from "./domain/listing-description.js";
 import { normalizePartNumber } from "./domain/matching.js";
 import { buildEbayListingTitle, cleanPartNameForTitle, isWeakPartName, modelFromText, yearRangeFromText } from "./domain/listing-title.js";
+import { getDefaultEbayListingSettings } from "./ebay-seller-oauth.js";
 import { normalizeFitmentApplications, scoreFitmentCandidate } from "./fitment-service.js";
 import { discoverEbayFitment, getEbayProductCompatibilities, isBrowseDerivedEpid, type EbayFitmentDiscovery } from "./providers/ebay-fitment.js";
 import { searchEbay } from "./providers/ebay.js";
@@ -547,6 +548,13 @@ async function persistQuickSkuPart(
   requestId?: string,
 ) {
   const { partNumber, brand, marketplace, condition, productSource, currency, normalized } = parseQuickSkuBase(input);
+  const defaultEbaySettings = await getDefaultEbayListingSettings(organizationId);
+  const hasDefaultPolicies = Boolean(
+    defaultEbaySettings?.defaultPaymentPolicyId
+      && defaultEbaySettings.defaultReturnPolicyId
+      && defaultEbaySettings.defaultShippingPolicyId
+      && defaultEbaySettings.defaultMerchantLocationKey,
+  );
   return prisma.$transaction(async (tx) => {
     const { sku, normalizedSku } = await allocateOrganizationSku(tx, organizationId, partNumber);
     const part = await tx.part.create({
@@ -626,13 +634,16 @@ async function persistQuickSkuPart(
     };
     const validationIssues = [
       { code: "IMAGES_REQUIRED", severity: "BLOCKER", field: "images", message: "Add approved listing images" },
-      { code: "POLICIES_REQUIRED", severity: "BLOCKER", field: "policies", message: "Assign eBay business policies" },
+      ...(!hasDefaultPolicies
+        ? [{ code: "POLICIES_REQUIRED", severity: "BLOCKER", field: "policies", message: "Assign eBay business policies and an item location" }]
+        : []),
     ];
     const draft = await tx.listingDraft.create({
       data: {
         organizationId,
         partId: part.id,
         marketplace,
+        ebaySellerConnectionId: defaultEbaySettings?.id ?? null,
         status: "BLOCKED",
         title: prepared.listingTitle,
         description: prepared.description,
@@ -642,6 +653,10 @@ async function persistQuickSkuPart(
         price: new Prisma.Decimal(input.price.toFixed(2)),
         currency,
         quantity: input.quantity,
+        paymentPolicyId: defaultEbaySettings?.defaultPaymentPolicyId ?? null,
+        returnPolicyId: defaultEbaySettings?.defaultReturnPolicyId ?? null,
+        shippingPolicyId: defaultEbaySettings?.defaultShippingPolicyId ?? null,
+        merchantLocationKey: defaultEbaySettings?.defaultMerchantLocationKey ?? null,
         aspects: asJson(aspects),
         validationIssues: asJson(validationIssues),
         validatedAt: new Date(),
@@ -663,6 +678,11 @@ async function persistQuickSkuPart(
           currency,
           quantity: input.quantity,
           aspects,
+          ebaySellerConnectionId: defaultEbaySettings?.id ?? null,
+          paymentPolicyId: defaultEbaySettings?.defaultPaymentPolicyId ?? null,
+          returnPolicyId: defaultEbaySettings?.defaultReturnPolicyId ?? null,
+          shippingPolicyId: defaultEbaySettings?.defaultShippingPolicyId ?? null,
+          merchantLocationKey: defaultEbaySettings?.defaultMerchantLocationKey ?? null,
           status: "BLOCKED",
           validationIssues,
         }),
