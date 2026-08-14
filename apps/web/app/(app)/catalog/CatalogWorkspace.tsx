@@ -9,7 +9,7 @@ import { useWorkspacePathname } from "../../components/WorkspaceProvider";
 import { apiBase, apiRequest, refreshAccessSession, SessionExpiredError } from "../../lib/auth-session";
 import { dismissFitmentJob, isDismissedFitmentJob, isDismissedPricingJob, shouldAutoShowJob } from "../../lib/dismissed-jobs";
 import { permissionSet } from "../../lib/organization-access";
-import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogSavedView, CatalogStatus, EbayAspectRequirement, EbayConditionOption, EbayConnection, EbayInventorySyncJob, EbayListingOperationJob, EbayOffer, EbayOfferJob, EbaySellerResources, FitmentJob, FitmentJobSummary, InventoryPreparation, InventoryPreparationJob, ListingDraft, LiveDraftValidation, ManualFitmentApplication, MediaLibraryAsset, MediaLibraryResponse, PartCondition, PartFitment, PricingConditionMode, PricingJob, PricingJobSummary } from "./types";
+import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogSavedView, CatalogStatus, EbayAspectRequirement, EbayConditionOption, EbayConnection, EbayInventorySyncJob, EbayListingOperationJob, EbayOffer, EbayOfferJob, EbaySellerResources, FitmentJob, FitmentJobSummary, InventoryPreparation, InventoryPreparationJob, ListingDraft, LiveDraftValidation, ManualFitmentApplication, MediaLibraryAsset, PartCondition, PartFitment, PricingConditionMode, PricingJob, PricingJobSummary } from "./types";
 
 const statuses: CatalogStatus[] = ["IMPORTED", "NEEDS_IMAGES", "IMPORT_ERROR", "READY_FOR_ENRICHMENT", "ARCHIVED"];
 const emptyCatalog: CatalogResponse = { parts: [], pagination: { page: 1, pageSize: 25, total: 0, totalPages: 0 }, summary: { total: 0, byStatus: {} }, warehouses: [] };
@@ -372,14 +372,8 @@ export default function CatalogWorkspace() {
   const [bulkPoliciesOpen, setBulkPoliciesOpen] = useState(false);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [detailMode, setDetailMode] = useState<"view" | "edit">("view");
-  const [imageManagerPart, setImageManagerPart] = useState<CatalogPartDetail | null>(null);
-  const [imageLibrary, setImageLibrary] = useState<MediaLibraryAsset[]>([]);
-  const [selectedImageIds, setSelectedImageIds] = useState<string[]>([]);
-  const [imageSearch, setImageSearch] = useState("");
-  const [imageManagerLoading, setImageManagerLoading] = useState(false);
   const [imageManagerSaving, setImageManagerSaving] = useState(false);
   const [imageUploading, setImageUploading] = useState(false);
-  const imageFileInput = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (authStatus !== "ready") return;
@@ -1067,47 +1061,48 @@ export default function CatalogWorkspace() {
     finally { setDraftBusy(false); }
   }
 
-  async function openImageManager(part: CatalogPartDetail | null) {
-    if (!part || demo) return;
-    setImageManagerPart(part);
-    setSelectedImageIds(part.media.map(({ mediaAsset }) => mediaAsset.id));
-    setImageSearch("");
-    setImageManagerLoading(true);
+  async function persistListingImages(part: CatalogPartDetail, mediaAssetIds: string[], successMessage: string) {
+    if (imageManagerSaving) return;
+    setImageManagerSaving(true);
     setError("");
     try {
-      const response = await request("/api/media/assets?page=1&pageSize=100") as MediaLibraryResponse;
-      setImageLibrary(response.assets);
+      const updated = await request(`/api/parts/${part.id}/media`, {
+        method: "PUT",
+        body: JSON.stringify({ mediaAssetIds }),
+      }) as CatalogPartDetail;
+      detailCache.set(updated.id, updated);
+      setDetail((current) => current?.id === updated.id ? updated : current);
+      setDraftPartDetail((current) => current?.id === updated.id ? updated : current);
+      setNotice(successMessage);
+      await loadCatalog();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to load Media Drive images");
+      setError(caught instanceof Error ? caught.message : "Unable to save listing images");
     } finally {
-      setImageManagerLoading(false);
+      setImageManagerSaving(false);
     }
   }
 
-  function toggleManagedImage(id: string) {
-    setSelectedImageIds((current) => current.includes(id)
-      ? current.filter((mediaId) => mediaId !== id)
-      : current.length < 24 ? [...current, id] : current);
+  function reorderListingImage(part: CatalogPartDetail, index: number, direction: -1 | 1) {
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= part.media.length) return;
+    const ids = part.media.map(({ mediaAsset }) => mediaAsset.id);
+    [ids[index], ids[nextIndex]] = [ids[nextIndex], ids[index]];
+    void persistListingImages(part, ids, "Listing images reordered.");
   }
 
-  function moveManagedImage(id: string, direction: -1 | 1) {
-    setSelectedImageIds((current) => {
-      const index = current.indexOf(id);
-      const nextIndex = index + direction;
-      if (index < 0 || nextIndex < 0 || nextIndex >= current.length) return current;
-      const next = [...current];
-      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
-      return next;
-    });
+  function makeListingImagePrimary(part: CatalogPartDetail, id: string) {
+    const ids = [id, ...part.media.map(({ mediaAsset }) => mediaAsset.id).filter((mediaId) => mediaId !== id)];
+    void persistListingImages(part, ids, "Primary listing image updated.");
   }
 
-  function makeManagedImagePrimary(id: string) {
-    setSelectedImageIds((current) => current[0] === id ? current : [id, ...current.filter((mediaId) => mediaId !== id)]);
+  function removeListingImage(part: CatalogPartDetail, id: string) {
+    const ids = part.media.map(({ mediaAsset }) => mediaAsset.id).filter((mediaId) => mediaId !== id);
+    void persistListingImages(part, ids, "Image removed from this listing.");
   }
 
-  async function uploadManagedImages(files: FileList | null) {
+  async function uploadManagedImages(part: CatalogPartDetail, files: FileList | null) {
     if (!files?.length || !canUploadMedia || imageUploading) return;
-    const available = 24 - selectedImageIds.length;
+    const available = 24 - part.media.length;
     const chosen = Array.from(files).slice(0, available);
     if (!chosen.length) { setError("This listing already has the maximum of 24 images"); return; }
     const invalid = chosen.find((file) => !["image/jpeg", "image/png", "image/webp"].includes(file.type));
@@ -1130,36 +1125,15 @@ export default function CatalogWorkspace() {
         }) as MediaLibraryAsset;
         uploaded.push(asset);
       }
-      setImageLibrary((current) => [...uploaded, ...current.filter(({ id }) => !uploaded.some((asset) => asset.id === id))]);
-      setSelectedImageIds((current) => [...current, ...uploaded.map(({ id }) => id)].slice(0, 24));
-      setNotice(`${uploaded.length} image${uploaded.length === 1 ? "" : "s"} uploaded. Save to attach them to this listing.`);
+      await persistListingImages(
+        part,
+        [...part.media.map(({ mediaAsset }) => mediaAsset.id), ...uploaded.map(({ id }) => id)].slice(0, 24),
+        `${uploaded.length} image${uploaded.length === 1 ? "" : "s"} uploaded and attached to this listing.`,
+      );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to upload images");
     } finally {
       setImageUploading(false);
-      if (imageFileInput.current) imageFileInput.current.value = "";
-    }
-  }
-
-  async function saveManagedImages() {
-    if (!imageManagerPart || imageManagerSaving) return;
-    setImageManagerSaving(true);
-    setError("");
-    try {
-      const updated = await request(`/api/parts/${imageManagerPart.id}/media`, {
-        method: "PUT",
-        body: JSON.stringify({ mediaAssetIds: selectedImageIds }),
-      }) as CatalogPartDetail;
-      detailCache.set(updated.id, updated);
-      setDetail((current) => current?.id === updated.id ? updated : current);
-      setDraftPartDetail((current) => current?.id === updated.id ? updated : current);
-      setImageManagerPart(null);
-      setNotice(`Saved ${updated.media.length} listing image${updated.media.length === 1 ? "" : "s"}.`);
-      await loadCatalog();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to save listing images");
-    } finally {
-      setImageManagerSaving(false);
     }
   }
 
@@ -1425,6 +1399,32 @@ export default function CatalogWorkspace() {
       const url = URL.createObjectURL(await response.blob());
       const anchor = document.createElement("a"); anchor.href = url; anchor.download = "partpulse-catalog.csv"; anchor.click(); URL.revokeObjectURL(url);
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to export catalog"); }
+  }
+
+  function listingImagesSection(part: CatalogPartDetail | null, editable: boolean) {
+    const media = part?.media ?? [];
+    const busy = imageUploading || imageManagerSaving;
+    return <section className={styles.detailSection}>
+      <div className={styles.sectionHeading}>
+        <div><h4>Product images <span>({media.length}/24)</span></h4><p className={styles.imageSectionHelp}>The first image is used as the primary eBay listing image.</p></div>
+      </div>
+      {media.length ? <div className={styles.inlineListingImages}>{media.map((item, index) => <article key={item.id} className={index === 0 ? styles.inlinePrimaryImage : undefined}>
+        <div className={styles.inlineImagePreview}><CatalogImage mediaId={item.mediaAsset.id} token={token} demo={demo}/>{index === 0 && <span>Primary</span>}</div>
+        {editable && part && <div className={styles.inlineImageActions}>
+          <button type="button" onClick={() => reorderListingImage(part, index, -1)} disabled={busy || index === 0} aria-label={`Move image ${index + 1} left`}>←</button>
+          <button type="button" onClick={() => reorderListingImage(part, index, 1)} disabled={busy || index === media.length - 1} aria-label={`Move image ${index + 1} right`}>→</button>
+          {index > 0 && <button type="button" onClick={() => makeListingImagePrimary(part, item.mediaAsset.id)} disabled={busy}>Primary</button>}
+          <button type="button" className={styles.inlineRemoveImage} onClick={() => removeListingImage(part, item.mediaAsset.id)} disabled={busy}>Remove</button>
+        </div>}
+      </article>)}</div> : <div className={styles.noImagesBox}><b>No images yet</b><span>{editable ? "Upload images directly to this listing below." : "No listing images are assigned."}</span></div>}
+      {editable && part && canUploadMedia && <label className={`${styles.inlineImageUpload} ${busy || media.length >= 24 ? styles.inlineImageUploadDisabled : ""}`}>
+        <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={busy || media.length >= 24} onChange={(event) => { const input = event.currentTarget; void uploadManagedImages(part, input.files).finally(() => { input.value = ""; }); }}/>
+        <span aria-hidden="true">＋</span>
+        <b>{imageUploading ? "Uploading images…" : "Upload listing images"}</b>
+        <small>JPEG, PNG, or WebP · {24 - media.length} slots available · files are also saved in Media Drive</small>
+      </label>}
+      {editable && !canUploadMedia && <p className={styles.imagePermissionNote}>You need Media Drive upload permission to add new images.</p>}
+    </section>;
   }
 
   if (authStatus !== "ready") return null;
@@ -1852,7 +1852,7 @@ export default function CatalogWorkspace() {
               <div><span>Payment</span><b>{draft?.paymentPolicyName || "Not assigned"}</b></div>
             </div></section>
             <section className={styles.detailSection}><h4>Category</h4><p>{categoryLabel}</p></section>
-            <section className={styles.detailSection}><div className={styles.sectionHeading}><h4>Product images <span>({detail.media.length}/24)</span></h4>{canEditCatalog && <button type="button" className={styles.sectionAction} onClick={() => void openImageManager(detail)}>Manage images</button>}</div>{detail.media.length ? <div className={styles.compactImageGrid}>{detail.media.map((item, index) => <div key={item.id} className={styles.compactImage}><CatalogImage mediaId={item.mediaAsset.id} token={token} demo={demo}/>{index === 0 && <span>Primary</span>}</div>)}</div> : <div className={styles.noImagesBox}><b>No images yet</b><span>{canEditCatalog ? "Upload images or select them from Media Drive." : "No listing images are assigned."}</span></div>}</section>
+            {listingImagesSection(detail, canEditCatalog)}
             <section className={styles.detailSection}><div className={styles.sectionHeading}><h4>Fitments / compatibility</h4><button type="button" className={styles.sectionAction} onClick={() => void openManualFitment(detail.id)}>Manage</button></div>{fitmentItems.length ? <div className={styles.fitmentChips}>{fitmentItems.map((application) => <span key={application.id} className={styles.fitmentChip}>{fitmentLabel(application.properties)}</span>)}</div> : <p className={styles.emptyFitment}>No vehicle compatibility assigned.</p>}</section>
             <section className={styles.detailSection}><h4>Donor vehicle</h4><p>{donorLabel}</p></section>
             <section className={styles.detailSection}><h4>HTML description</h4>{htmlDescription ? <div className={styles.compactDescription} dangerouslySetInnerHTML={{ __html: htmlDescription }}/> : <p className={styles.emptyFitment}>No description added.</p>}</section>
@@ -1874,7 +1874,7 @@ export default function CatalogWorkspace() {
             </div>
             <section className={styles.detailSection}><h4>eBay store &amp; policies</h4><div className={styles.policyGrid}><div><span>Shipping</span><b>{draft?.shippingPolicyName || "Not assigned"}</b></div><div><span>Returns</span><b>{draft?.returnPolicyName || "Not assigned"}</b></div><div><span>Payment</span><b>{draft?.paymentPolicyName || "Not assigned"}</b></div></div></section>
             <section className={styles.detailSection}><h4>Category</h4><p>{categoryLabel}</p></section>
-            <section className={styles.detailSection}><div className={styles.sectionHeading}><h4>Product images <span>({detail.media.length}/24)</span></h4>{canEditCatalog && <button type="button" className={styles.sectionAction} onClick={() => void openImageManager(detail)}>Manage images</button>}</div>{detail.media.length ? <div className={styles.compactImageGrid}>{detail.media.map((item, index) => <div key={item.id} className={styles.compactImage}><CatalogImage mediaId={item.mediaAsset.id} token={token} demo={demo}/>{index === 0 && <span>Primary</span>}</div>)}</div> : <div className={styles.noImagesBox}><b>No images yet</b><span>Upload images or select them from Media Drive.</span></div>}</section>
+            {listingImagesSection(detail, canEditCatalog)}
             <section className={styles.detailSection}><div className={styles.sectionHeading}><h4>Fitments / compatibility</h4><button type="button" className={styles.sectionAction} onClick={() => void openManualFitment(detail.id)}>Manage</button></div>{fitmentItems.length ? <div className={styles.fitmentChips}>{fitmentItems.map((application) => <span key={application.id} className={styles.fitmentChip}>{fitmentLabel(application.properties)}</span>)}</div> : <p className={styles.emptyFitment}>No vehicle compatibility assigned.</p>}</section>
             <section className={styles.detailSection}><h4>Donor vehicle</h4><p>{donorLabel}</p></section>
             <section className={styles.detailSection}><label className={styles.htmlField}><span>HTML description</span><textarea name="description" rows={10} defaultValue={htmlDescription}/></label></section>
@@ -1925,7 +1925,7 @@ export default function CatalogWorkspace() {
             <div><span>Payment</span><b>{sellerResources?.paymentPolicies.find(({ remoteId }) => remoteId === draftDetail.paymentPolicyId)?.name || "Not assigned"}</b></div>
           </div></section>
           <section className={styles.detailSection}><h4>Category</h4><p>{draftDetail.categoryId ? `eBay category ${draftDetail.categoryId}` : "Not assigned"}</p></section>
-          <section className={styles.detailSection}><div className={styles.sectionHeading}><h4>Product images <span>({draftPartDetail?.media.length ?? 0}/24)</span></h4>{canEditCatalog && <button type="button" className={styles.sectionAction} disabled={!draftPartDetail} onClick={() => void openImageManager(draftPartDetail)}>Manage images</button>}</div>{draftPartDetail?.media.length ? <div className={styles.compactImageGrid}>{draftPartDetail.media.map((item, index) => <div key={item.id} className={styles.compactImage}><CatalogImage mediaId={item.mediaAsset.id} token={token} demo={demo}/>{index === 0 && <span>Primary</span>}</div>)}</div> : <div className={styles.noImagesBox}><b>No images yet</b><span>Upload images or select them from Media Drive.</span></div>}</section>
+          {listingImagesSection(draftPartDetail, canEditCatalog)}
           <section className={styles.detailSection}><div className={styles.sectionHeading}><h4>Fitments / compatibility</h4><button type="button" className={styles.sectionAction} onClick={() => { const partId = draftDetail.partId; setDraftDetail(null); void openManualFitment(partId); }}>Manage</button></div>{draftPartDetail?.fitmentApplications?.length ? <div className={styles.fitmentChips}>{draftPartDetail.fitmentApplications.map((application) => <span key={application.id} className={styles.fitmentChip}>{fitmentLabel(application.properties)}</span>)}</div> : <p className={styles.emptyFitment}>No vehicle compatibility assigned.</p>}</section>
           <section className={styles.detailSection}><h4>HTML description</h4>{draftDetail.description ? <div className={styles.compactDescription} dangerouslySetInnerHTML={{ __html: draftDetail.description }}/> : <p className={styles.emptyFitment}>No description added.</p>}</section>
           <div className={styles.draftReviewActions}><button type="button" onClick={() => setDraftMode("edit")}>Edit details</button><button type="button" className={styles.primary} disabled={draftBusy || !draftDetail.categoryId} onClick={() => void validateDraftLive()}>{draftBusy ? "Contacting eBay..." : "Validate with eBay"}</button></div>
@@ -2076,22 +2076,7 @@ export default function CatalogWorkspace() {
             </section>
           )}
 
-          <section className={`${styles.detailSection} ${styles.draftEditSection}`}>
-            <div className={styles.sectionHeading}>
-              <h4>Product images <span>({draftPartDetail?.media.length ?? 0}/24)</span></h4>
-              {canEditCatalog && <button type="button" className={styles.sectionAction} disabled={!draftPartDetail} onClick={() => void openImageManager(draftPartDetail)}>Manage images</button>}
-            </div>
-            {draftPartDetail?.media.length ? (
-              <div className={styles.compactImageGrid}>
-                {draftPartDetail.media.map((item, index) => (
-                  <div key={item.id} className={styles.compactImage}>
-                    <CatalogImage mediaId={item.mediaAsset.id} token={token} demo={demo} />
-                    {index === 0 && <span>Primary</span>}
-                  </div>
-                ))}
-              </div>
-            ) : <div className={styles.noImagesBox}><b>No images yet</b><span>Add images from Media Drive.</span></div>}
-          </section>
+          <div className={styles.draftEditSection}>{listingImagesSection(draftPartDetail, canEditCatalog)}</div>
 
           <section className={`${styles.detailSection} ${styles.draftEditSection}`}>
             <div className={styles.sectionHeading}>
@@ -2185,67 +2170,5 @@ export default function CatalogWorkspace() {
         </form>}
       </section>
     </div>}
-    {imageManagerPart && (() => {
-      const currentAssets = imageManagerPart.media.map(({ mediaAsset }) => ({
-        ...mediaAsset,
-        byteSize: 0,
-        width: null,
-        height: null,
-        status: "READY" as const,
-        createdAt: imageManagerPart.updatedAt,
-      }));
-      const assetsById = new Map([...currentAssets, ...imageLibrary].map((asset) => [asset.id, asset]));
-      const selectedAssets = selectedImageIds.flatMap((id) => {
-        const asset = assetsById.get(id);
-        return asset ? [asset] : [];
-      });
-      const normalizedSearch = imageSearch.trim().toLowerCase();
-      const availableAssets = imageLibrary.filter((asset) => !selectedImageIds.includes(asset.id)
-        && (!normalizedSearch || asset.originalFilename.toLowerCase().includes(normalizedSearch)));
-      return <div className={`${styles.modalBackdrop} ${styles.imageManagerBackdrop}`} role="presentation" onClick={(event) => { if (event.target === event.currentTarget && !imageManagerSaving && !imageUploading) setImageManagerPart(null); }}>
-        <section className={styles.imageManagerModal} role="dialog" aria-modal="true" aria-labelledby="image-manager-title">
-          <header className={styles.imageManagerHeader}>
-            <div><span>Listing media</span><h2 id="image-manager-title">Manage product images</h2><p>{imageManagerPart.sku} · first image is used as the primary listing image</p></div>
-            <button type="button" aria-label="Close image manager" onClick={() => setImageManagerPart(null)} disabled={imageManagerSaving || imageUploading}>×</button>
-          </header>
-
-          <div className={styles.imageManagerBody}>
-            <section className={styles.selectedImagesSection}>
-              <div className={styles.imageManagerSectionHead}><div><h3>Listing images</h3><p>Reorder, set the primary image, or remove an attachment.</p></div><strong>{selectedImageIds.length}/24</strong></div>
-              {selectedAssets.length ? <div className={styles.managedImageGrid}>{selectedAssets.map((asset, index) => <article key={asset.id} className={index === 0 ? styles.primaryManagedImage : undefined}>
-                <div className={styles.managedImagePreview}><CatalogImage mediaId={asset.id} demo={demo}/>{index === 0 && <span>Primary</span>}</div>
-                <div className={styles.managedImageMeta}><b title={asset.originalFilename}>{asset.originalFilename}</b><small>Position {index + 1}</small></div>
-                <div className={styles.managedImageActions}>
-                  <button type="button" onClick={() => moveManagedImage(asset.id, -1)} disabled={index === 0} aria-label={`Move ${asset.originalFilename} left`}>←</button>
-                  <button type="button" onClick={() => moveManagedImage(asset.id, 1)} disabled={index === selectedAssets.length - 1} aria-label={`Move ${asset.originalFilename} right`}>→</button>
-                  {index !== 0 && <button type="button" onClick={() => makeManagedImagePrimary(asset.id)}>Make primary</button>}
-                  <button type="button" className={styles.removeManagedImage} onClick={() => toggleManagedImage(asset.id)}>Remove</button>
-                </div>
-              </article>)}</div> : <div className={styles.imageManagerEmpty}><b>No images attached</b><span>Upload new files or choose existing images from Media Drive below.</span></div>}
-            </section>
-
-            {canUploadMedia && <section className={styles.uploadImagesSection}>
-              <div className={styles.imageManagerSectionHead}><div><h3>Upload images</h3><p>JPEG, PNG, or WebP. Uploaded files are also saved in Media Drive.</p></div></div>
-              <input ref={imageFileInput} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={(event) => void uploadManagedImages(event.target.files)}/>
-              <button type="button" className={styles.imageUploadDropzone} disabled={imageUploading || selectedImageIds.length >= 24} onClick={() => imageFileInput.current?.click()}>
-                <span>＋</span><b>{imageUploading ? "Uploading images…" : "Choose image files"}</b><small>{selectedImageIds.length >= 24 ? "Remove an image before uploading another." : `${24 - selectedImageIds.length} listing image slots available`}</small>
-              </button>
-            </section>}
-
-            <section className={styles.mediaLibrarySection}>
-              <div className={styles.imageManagerSectionHead}><div><h3>Media Drive</h3><p>Select existing organization images to attach to this listing.</p></div><input value={imageSearch} onChange={(event) => setImageSearch(event.target.value)} placeholder="Search filenames" aria-label="Search Media Drive images"/></div>
-              {imageManagerLoading ? <div className={styles.imageManagerEmpty}><b>Loading Media Drive…</b></div> : availableAssets.length ? <div className={styles.mediaLibraryGrid}>{availableAssets.map((asset) => <button type="button" key={asset.id} onClick={() => toggleManagedImage(asset.id)} disabled={selectedImageIds.length >= 24}>
-                <CatalogImage mediaId={asset.id} demo={demo}/><span title={asset.originalFilename}>{asset.originalFilename}</span><small>＋ Add to listing</small>
-              </button>)}</div> : <div className={styles.imageManagerEmpty}><b>{imageLibrary.length ? "No matching available images" : "Media Drive is empty"}</b><span>{imageLibrary.length ? "Clear the search or upload a new image." : "Upload images above to begin."}</span></div>}
-            </section>
-          </div>
-
-          <footer className={styles.imageManagerFooter}>
-            <span>{selectedImageIds.length ? `${selectedImageIds.length} image${selectedImageIds.length === 1 ? "" : "s"} will be attached` : "Saving will mark this listing as needing images"}</span>
-            <div><button type="button" onClick={() => setImageManagerPart(null)} disabled={imageManagerSaving || imageUploading}>Cancel</button><button type="button" className={styles.primary} onClick={() => void saveManagedImages()} disabled={imageManagerSaving || imageUploading}>{imageManagerSaving ? "Saving…" : "Save images"}</button></div>
-          </footer>
-        </section>
-      </div>;
-    })()}
   </>;
 }
