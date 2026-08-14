@@ -5,7 +5,7 @@ import { z } from "zod";
 import { AuthenticationError, AuthorizationError } from "./auth.js";
 import { assertTrustedAuthOrigin, clearRefreshCookie, getJwtConfiguration, isTrustedWebOrigin, readRefreshCookie, revokeRefreshToken, rotateTokenPair, setRefreshCookie } from "./auth-sessions.js";
 import { getConfig } from "./config.js";
-import { bulkUpdateCatalogParts, CatalogError, deleteCatalogParts, exportCatalogCsv, getCatalogPart, listCatalogParts, replaceCatalogPartMedia, updateCatalogPart } from "./catalog-service.js";
+import { appendCatalogPartMedia, bulkUpdateCatalogParts, CatalogError, deleteCatalogParts, exportCatalogCsv, getCatalogPart, listCatalogParts, replaceCatalogPartMedia, updateCatalogPart } from "./catalog-service.js";
 import { databaseIsReachable } from "./db.js";
 import { calculateAnalytics } from "./domain/analytics.js";
 import { matchListing, normalizePartNumber } from "./domain/matching.js";
@@ -18,7 +18,7 @@ import { discardStaleBlankSkuConflictImport, findExistingNormalizedSkus, findImp
 import { applyExistingSkuConflicts, parseAndValidateImport } from "./import-parser.js";
 import { ImageImportError, importImageArchive } from "./image-import-service.js";
 import { confirmImportBatch, correctImportMediaMatch, discardImportMediaMatch, getImportPreview, ImportReviewError } from "./import-review-service.js";
-import { getObjectStorage, ObjectStorageError } from "./object-storage.js";
+import { allowedImageMimeTypes, detectImageMimeType, getObjectStorage, ObjectStorageError } from "./object-storage.js";
 import {
   deleteMediaDriveFolder,
   getMediaDriveFolder,
@@ -121,6 +121,8 @@ const mediaAssetListQuerySchema = z.object({
 const catalogPartMediaSchema = z.object({
   mediaAssetIds: z.array(z.string().min(1)).max(24),
 });
+const catalogImageUploadBody = express.raw({ type: () => true, limit: getConfig().storage?.maxImageBytes ?? 20_971_520 });
+const catalogImageFilenameSchema = z.string().trim().min(1).max(255);
 const pipelineStartSchema = z.object({
   listingTeamId: z.string().min(1),
   condition: z.enum(["NEW", "USED"]),
@@ -1192,6 +1194,52 @@ app.put("/api/parts/:id/media", writeRateLimit, requireTenantContext, requireOrg
     res.json(await replaceCatalogPartMedia(tenant.organization.id, tenant.user.id, partId, mediaAssetIds));
   } catch (error) { next(error); }
 });
+
+app.post(
+  "/api/parts/:id/images",
+  writeRateLimit,
+  requireTenantContext,
+  requireOrganizationPermission("catalog.edit"),
+  requireOrganizationPermission("media.upload"),
+  catalogImageUploadBody,
+  async (req, res, next) => {
+    try {
+      const storage = getObjectStorage();
+      if (!storage) return res.status(503).json({ error: "Object storage is not configured" });
+      const partId = req.params.id;
+      if (typeof partId !== "string") return res.status(400).json({ error: "Invalid catalog part ID" });
+      if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: "Image file body is required" });
+
+      let decodedFilename: string;
+      try {
+        decodedFilename = decodeURIComponent(req.get("x-file-name") ?? "");
+      } catch {
+        return res.status(400).json({ error: "Image filename is invalid" });
+      }
+      const filename = catalogImageFilenameSchema.parse(decodedFilename);
+      const detectedMimeType = detectImageMimeType(req.body);
+      if (!detectedMimeType) return res.status(400).json({ error: "Only valid JPEG, PNG, or WebP images are supported" });
+      const suppliedMimeType = req.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
+      if (suppliedMimeType && allowedImageMimeTypes.includes(suppliedMimeType as (typeof allowedImageMimeTypes)[number]) && suppliedMimeType !== detectedMimeType) {
+        return res.status(400).json({ error: "The image content does not match its file type" });
+      }
+
+      const tenant = getTenantContext(res);
+      const image = await storage.storeExtractedImage({
+        organizationId: tenant.organization.id,
+        filename,
+        mimeType: detectedMimeType,
+        bytes: req.body,
+        checksum: createHash("sha256").update(req.body).digest("hex"),
+      });
+      const asset = await saveConfirmedMediaAsset(tenant.organization.id, image, {
+        sourceType: "CATALOG_UPLOAD",
+        sourceMetadata: { partId, uploadedByUserId: tenant.user.id },
+      });
+      res.status(201).json(await appendCatalogPartMedia(tenant.organization.id, tenant.user.id, partId, asset.id));
+    } catch (error) { next(error); }
+  },
+);
 
 app.post("/api/pricing/jobs", searchRateLimit, requireTenantContext, requireOrganizationPermission("pricing.run"), async (req, res, next) => {
   try {

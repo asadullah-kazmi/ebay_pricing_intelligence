@@ -515,7 +515,77 @@ export async function replaceCatalogPartMedia(
       summary: `Updated ${uniqueIds.length} image${uniqueIds.length === 1 ? "" : "s"} for ${part.sku}`,
       metadata: { mediaAssetIds: uniqueIds, invalidatedDrafts } as Prisma.InputJsonObject,
     });
-  });
+  }, { maxWait: 10_000, timeout: 60_000 });
+
+  return getCatalogPart(organizationId, partId);
+}
+
+export async function appendCatalogPartMedia(
+  organizationId: string,
+  userId: string,
+  partId: string,
+  mediaAssetId: string,
+) {
+  await prisma.$transaction(async (tx) => {
+    const part = await tx.part.findFirst({
+      where: { id: partId, organizationId },
+      select: {
+        id: true,
+        status: true,
+        partName: true,
+        sku: true,
+        media: { orderBy: { displayOrder: "asc" }, select: { mediaAssetId: true, displayOrder: true } },
+      },
+    });
+    if (!part) throw new CatalogError("Catalog part not found", 404);
+    if (part.media.some((item) => item.mediaAssetId === mediaAssetId)) return;
+    if (part.media.length >= 24) throw new CatalogError("This listing already has the maximum of 24 images", 400);
+
+    const asset = await tx.mediaAsset.findFirst({
+      where: {
+        id: mediaAssetId,
+        organizationId,
+        mimeType: { in: ["image/jpeg", "image/png", "image/webp"] },
+        status: { in: ["UPLOADED", "READY"] },
+      },
+      select: { id: true, originalFilename: true },
+    });
+    if (!asset) throw new CatalogError("The uploaded image is unavailable", 404);
+
+    const displayOrder = part.media.reduce((maximum, item) => Math.max(maximum, item.displayOrder), -1) + 1;
+    await tx.partMedia.create({
+      data: {
+        organizationId,
+        partId,
+        mediaAssetId,
+        displayOrder,
+        approved: true,
+        altText: `${part.partName || part.sku} - ${asset.originalFilename}`.slice(0, 255),
+      },
+    });
+    await tx.mediaAsset.update({ where: { id: mediaAssetId }, data: { status: "READY" } });
+    if (part.status === "NEEDS_IMAGES") {
+      await tx.part.update({ where: { id: partId }, data: { status: "READY_FOR_ENRICHMENT" } });
+    }
+
+    const invalidatedDrafts = await invalidateListingDraftsForCatalogChanges(
+      tx,
+      organizationId,
+      userId,
+      [partId],
+      ["media"],
+    );
+    await recordAuditEvent(tx, {
+      organizationId,
+      actorUserId: userId,
+      action: "catalog.part_media.uploaded",
+      resourceType: "Part",
+      resourceId: partId,
+      severity: "INFO",
+      summary: `Uploaded ${asset.originalFilename} for ${part.sku}`,
+      metadata: { mediaAssetId, displayOrder, invalidatedDrafts } as Prisma.InputJsonObject,
+    });
+  }, { maxWait: 10_000, timeout: 60_000 });
 
   return getCatalogPart(organizationId, partId);
 }

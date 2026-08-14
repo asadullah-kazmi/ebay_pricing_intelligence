@@ -9,7 +9,7 @@ import { useWorkspacePathname } from "../../components/WorkspaceProvider";
 import { apiBase, apiRequest, refreshAccessSession, SessionExpiredError } from "../../lib/auth-session";
 import { dismissFitmentJob, isDismissedFitmentJob, isDismissedPricingJob, shouldAutoShowJob } from "../../lib/dismissed-jobs";
 import { permissionSet } from "../../lib/organization-access";
-import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogSavedView, CatalogStatus, EbayAspectRequirement, EbayConditionOption, EbayConnection, EbayInventorySyncJob, EbayListingOperationJob, EbayOffer, EbayOfferJob, EbaySellerResources, FitmentJob, FitmentJobSummary, InventoryPreparation, InventoryPreparationJob, ListingDraft, LiveDraftValidation, ManualFitmentApplication, MediaLibraryAsset, PartCondition, PartFitment, PricingConditionMode, PricingJob, PricingJobSummary } from "./types";
+import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogSavedView, CatalogStatus, EbayAspectRequirement, EbayConditionOption, EbayConnection, EbayInventorySyncJob, EbayListingOperationJob, EbayOffer, EbayOfferJob, EbaySellerResources, FitmentJob, FitmentJobSummary, InventoryPreparation, InventoryPreparationJob, ListingDraft, LiveDraftValidation, ManualFitmentApplication, PartCondition, PartFitment, PricingConditionMode, PricingJob, PricingJobSummary } from "./types";
 
 const statuses: CatalogStatus[] = ["IMPORTED", "NEEDS_IMAGES", "IMPORT_ERROR", "READY_FOR_ENRICHMENT", "ARCHIVED"];
 const emptyCatalog: CatalogResponse = { parts: [], pagination: { page: 1, pageSize: 25, total: 0, totalPages: 0 }, summary: { total: 0, byStatus: {} }, warehouses: [] };
@@ -100,11 +100,6 @@ function detailTitle(part: CatalogPartDetail) {
       .replace(/\b\w/g, (letter) => letter.toUpperCase());
   }
   return raw;
-}
-
-async function sha256Hex(file: File) {
-  const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function catalogTitle(part: CatalogPartCard) {
@@ -374,6 +369,8 @@ export default function CatalogWorkspace() {
   const [detailMode, setDetailMode] = useState<"view" | "edit">("view");
   const [imageManagerSaving, setImageManagerSaving] = useState(false);
   const [imageUploading, setImageUploading] = useState(false);
+  const [imageUploadError, setImageUploadError] = useState("");
+  const [imageUploadProgress, setImageUploadProgress] = useState<{ completed: number; total: number; filename: string } | null>(null);
 
   useEffect(() => {
     if (authStatus !== "ready") return;
@@ -581,6 +578,8 @@ export default function CatalogWorkspace() {
     }
 
     setError("");
+    setImageUploadError("");
+    setImageUploadProgress(null);
     setDetailMode("view");
     const cached = detailCache.get(id);
     const card = catalog.parts.find((part) => part.id === id);
@@ -975,6 +974,8 @@ export default function CatalogWorkspace() {
 
   async function openDraft(id: string, mode: "view" | "edit" = "view") {
     setError("");
+    setImageUploadError("");
+    setImageUploadProgress(null);
     setCategoryAspects([]);
     setCategoryConditions([]);
     setInventoryPreparation(null);
@@ -1065,6 +1066,7 @@ export default function CatalogWorkspace() {
     if (imageManagerSaving) return;
     setImageManagerSaving(true);
     setError("");
+    setImageUploadError("");
     try {
       const updated = await request(`/api/parts/${part.id}/media`, {
         method: "PUT",
@@ -1076,7 +1078,9 @@ export default function CatalogWorkspace() {
       setNotice(successMessage);
       await loadCatalog();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to save listing images");
+      const message = caught instanceof Error ? caught.message : "Unable to save listing images";
+      setError(message);
+      setImageUploadError(message);
     } finally {
       setImageManagerSaving(false);
     }
@@ -1104,36 +1108,38 @@ export default function CatalogWorkspace() {
     if (!files?.length || !canUploadMedia || imageUploading) return;
     const available = 24 - part.media.length;
     const chosen = Array.from(files).slice(0, available);
-    if (!chosen.length) { setError("This listing already has the maximum of 24 images"); return; }
+    if (!chosen.length) { setImageUploadError("This listing already has the maximum of 24 images"); return; }
     const invalid = chosen.find((file) => !["image/jpeg", "image/png", "image/webp"].includes(file.type));
-    if (invalid) { setError(`${invalid.name} is not a JPEG, PNG, or WebP image`); return; }
+    if (invalid) { setImageUploadError(`${invalid.name} is not a JPEG, PNG, or WebP image`); return; }
 
     setImageUploading(true);
     setError("");
+    setImageUploadError("");
+    setImageUploadProgress({ completed: 0, total: chosen.length, filename: chosen[0].name });
     try {
-      const uploaded: MediaLibraryAsset[] = [];
-      for (const file of chosen) {
-        const upload = await request("/api/media/upload-url", {
+      let updatedPart = part;
+      for (let index = 0; index < chosen.length; index += 1) {
+        const file = chosen[index];
+        setImageUploadProgress({ completed: index, total: chosen.length, filename: file.name });
+        updatedPart = await request(`/api/parts/${part.id}/images`, {
           method: "POST",
-          body: JSON.stringify({ filename: file.name, mimeType: file.type, byteSize: file.size, checksum: await sha256Hex(file) }),
-        }) as { storageKey: string; uploadUrl: string; requiredHeaders: Record<string, string> };
-        const result = await fetch(upload.uploadUrl, { method: "PUT", headers: upload.requiredHeaders, body: file });
-        if (!result.ok) throw new Error(`Unable to upload ${file.name} to object storage`);
-        const asset = await request("/api/media/uploads/confirm", {
-          method: "POST",
-          body: JSON.stringify({ storageKey: upload.storageKey }),
-        }) as MediaLibraryAsset;
-        uploaded.push(asset);
+          headers: { "Content-Type": file.type, "x-file-name": encodeURIComponent(file.name) },
+          body: file,
+        }) as CatalogPartDetail;
+        detailCache.set(updatedPart.id, updatedPart);
+        setDetail((current) => current?.id === updatedPart.id ? updatedPart : current);
+        setDraftPartDetail((current) => current?.id === updatedPart.id ? updatedPart : current);
+        setImageUploadProgress({ completed: index + 1, total: chosen.length, filename: file.name });
       }
-      await persistListingImages(
-        part,
-        [...part.media.map(({ mediaAsset }) => mediaAsset.id), ...uploaded.map(({ id }) => id)].slice(0, 24),
-        `${uploaded.length} image${uploaded.length === 1 ? "" : "s"} uploaded and attached to this listing.`,
-      );
+      setNotice(`${chosen.length} image${chosen.length === 1 ? "" : "s"} uploaded and attached to this listing.`);
+      await loadCatalog();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to upload images");
+      const message = caught instanceof Error ? caught.message : "Unable to upload images";
+      setError(message);
+      setImageUploadError(message);
     } finally {
       setImageUploading(false);
+      setImageUploadProgress(null);
     }
   }
 
@@ -1416,13 +1422,18 @@ export default function CatalogWorkspace() {
           {index > 0 && <button type="button" onClick={() => makeListingImagePrimary(part, item.mediaAsset.id)} disabled={busy}>Primary</button>}
           <button type="button" className={styles.inlineRemoveImage} onClick={() => removeListingImage(part, item.mediaAsset.id)} disabled={busy}>Remove</button>
         </div>}
-      </article>)}</div> : <div className={styles.noImagesBox}><b>No images yet</b><span>{editable ? "Upload images directly to this listing below." : "No listing images are assigned."}</span></div>}
+      </article>)}</div> : null}
       {editable && part && canUploadMedia && <label className={`${styles.inlineImageUpload} ${busy || media.length >= 24 ? styles.inlineImageUploadDisabled : ""}`}>
         <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={busy || media.length >= 24} onChange={(event) => { const input = event.currentTarget; void uploadManagedImages(part, input.files).finally(() => { input.value = ""; }); }}/>
         <span aria-hidden="true">＋</span>
         <b>{imageUploading ? "Uploading images…" : "Upload listing images"}</b>
         <small>JPEG, PNG, or WebP · {24 - media.length} slots available · files are also saved in Media Drive</small>
       </label>}
+      {imageUploadProgress && part?.id && <div className={styles.imageUploadProgress} role="status">
+        <div><b>Uploading {imageUploadProgress.completed + (imageUploadProgress.completed < imageUploadProgress.total ? 1 : 0)} of {imageUploadProgress.total}</b><span>{imageUploadProgress.filename}</span></div>
+        <progress value={imageUploadProgress.completed} max={imageUploadProgress.total}/>
+      </div>}
+      {imageUploadError && <div className={styles.imageUploadError} role="alert">{imageUploadError}</div>}
       {editable && !canUploadMedia && <p className={styles.imagePermissionNote}>You need Media Drive upload permission to add new images.</p>}
     </section>;
   }
