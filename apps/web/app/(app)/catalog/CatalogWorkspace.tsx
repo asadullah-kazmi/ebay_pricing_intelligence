@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, type ReactNode, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, type DragEvent as ReactDragEvent, type ReactNode, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import styles from "./catalog.module.css";
 import { useAuth } from "../../components/AuthProvider";
@@ -14,7 +14,9 @@ import type { CatalogPartCard, CatalogPartDetail, CatalogResponse, CatalogSavedV
 const statuses: CatalogStatus[] = ["IMPORTED", "NEEDS_IMAGES", "IMPORT_ERROR", "READY_FOR_ENRICHMENT", "ARCHIVED"];
 const emptyCatalog: CatalogResponse = { parts: [], pagination: { page: 1, pageSize: 25, total: 0, totalPages: 0 }, summary: { total: 0, byStatus: {} }, warehouses: [] };
 
-const mediaUrlCache = new Map<string, string>();
+type CachedMediaUrl = { url: string; expiresAt: number };
+
+const mediaUrlCache = new Map<string, CachedMediaUrl>();
 const mediaUrlWaiters = new Map<string, Array<(url: string | null) => void>>();
 let mediaUrlFlushTimer: ReturnType<typeof setTimeout> | null = null;
 const mediaUrlPending = new Set<string>();
@@ -33,7 +35,9 @@ function flushMediaUrlBatch() {
       const found = new Set<string>();
       for (const item of urls) {
         found.add(item.id);
-        mediaUrlCache.set(item.id, item.downloadUrl);
+        // Download URLs expire after five minutes. Expire our copy a minute early so
+        // reopening the catalog never tries to render a stale signed URL.
+        mediaUrlCache.set(item.id, { url: item.downloadUrl, expiresAt: Date.now() + 240_000 });
         const waiters = mediaUrlWaiters.get(item.id) ?? [];
         mediaUrlWaiters.delete(item.id);
         for (const resolve of waiters) resolve(item.downloadUrl);
@@ -54,8 +58,18 @@ function flushMediaUrlBatch() {
     });
 }
 
-function requestMediaDownloadUrl(mediaId: string): Promise<string | null> {
+function getCachedMediaUrl(mediaId: string): string | null {
   const cached = mediaUrlCache.get(mediaId);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    mediaUrlCache.delete(mediaId);
+    return null;
+  }
+  return cached.url;
+}
+
+function requestMediaDownloadUrl(mediaId: string, force = false): Promise<string | null> {
+  const cached = force ? null : getCachedMediaUrl(mediaId);
   if (cached) return Promise.resolve(cached);
   return new Promise((resolve) => {
     const waiters = mediaUrlWaiters.get(mediaId) ?? [];
@@ -175,12 +189,14 @@ function cardToDetailPreview(card: CatalogPartCard): CatalogPartDetail {
 
 const detailCache = new Map<string, CatalogPartDetail>();
 
-function CatalogImage({ mediaId, demo }: { mediaId?: string; token?: string; demo: boolean }) {
-  const [url, setUrl] = useState(() => (mediaId ? mediaUrlCache.get(mediaId) ?? "" : ""));
-  const [visible, setVisible] = useState(false);
+function CatalogImage({ mediaId, demo, eager = false, priority = false }: { mediaId?: string; token?: string; demo: boolean; eager?: boolean; priority?: boolean }) {
+  const [url, setUrl] = useState(() => (mediaId ? getCachedMediaUrl(mediaId) ?? "" : ""));
+  const [visible, setVisible] = useState(eager);
+  const [retried, setRetried] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    if (eager) { setVisible(true); return; }
     const node = rootRef.current;
     if (!node || !mediaId || demo) return;
     const observer = new IntersectionObserver(
@@ -194,7 +210,12 @@ function CatalogImage({ mediaId, demo }: { mediaId?: string; token?: string; dem
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, [demo, mediaId]);
+  }, [demo, eager, mediaId]);
+
+  useEffect(() => {
+    setUrl(mediaId ? getCachedMediaUrl(mediaId) ?? "" : "");
+    setRetried(false);
+  }, [mediaId]);
 
   useEffect(() => {
     if (!mediaId || demo || !visible) return;
@@ -209,7 +230,20 @@ function CatalogImage({ mediaId, demo }: { mediaId?: string; token?: string; dem
 
   return (
     <div ref={rootRef} className={styles.thumb}>
-      {url ? <img src={url} alt="Catalog part" loading="lazy" /> : <span>{demo || mediaId ? "PART" : "NO IMAGE"}</span>}
+      {url ? <img
+        src={url}
+        alt="Catalog part"
+        loading={eager ? "eager" : "lazy"}
+        decoding="async"
+        fetchPriority={priority ? "high" : "auto"}
+        onError={() => {
+          if (!mediaId || retried) return;
+          setRetried(true);
+          mediaUrlCache.delete(mediaId);
+          setUrl("");
+          void requestMediaDownloadUrl(mediaId, true).then((freshUrl) => { if (freshUrl) setUrl(freshUrl); });
+        }}
+      /> : <span>{demo || mediaId ? "PART" : "NO IMAGE"}</span>}
     </div>
   );
 }
@@ -371,6 +405,8 @@ export default function CatalogWorkspace() {
   const [imageUploading, setImageUploading] = useState(false);
   const [imageUploadError, setImageUploadError] = useState("");
   const [imageUploadProgress, setImageUploadProgress] = useState<{ completed: number; total: number; filename: string } | null>(null);
+  const [draggedImageId, setDraggedImageId] = useState<string | null>(null);
+  const [dragOverImageId, setDragOverImageId] = useState<string | null>(null);
 
   useEffect(() => {
     if (authStatus !== "ready") return;
@@ -580,6 +616,8 @@ export default function CatalogWorkspace() {
     setError("");
     setImageUploadError("");
     setImageUploadProgress(null);
+    setDraggedImageId(null);
+    setDragOverImageId(null);
     setDetailMode("view");
     const cached = detailCache.get(id);
     const card = catalog.parts.find((part) => part.id === id);
@@ -1064,6 +1102,16 @@ export default function CatalogWorkspace() {
 
   async function persistListingImages(part: CatalogPartDetail, mediaAssetIds: string[], successMessage: string) {
     if (imageManagerSaving) return;
+    const previousMedia = part.media;
+    const mediaById = new Map(previousMedia.map((item) => [item.mediaAsset.id, item]));
+    const nextMedia = mediaAssetIds.flatMap((id, displayOrder) => {
+      const item = mediaById.get(id);
+      return item ? [{ ...item, displayOrder }] : [];
+    });
+    const optimisticPart = { ...part, media: nextMedia };
+    detailCache.set(part.id, optimisticPart);
+    setDetail((current) => current?.id === part.id ? optimisticPart : current);
+    setDraftPartDetail((current) => current?.id === part.id ? optimisticPart : current);
     setImageManagerSaving(true);
     setError("");
     setImageUploadError("");
@@ -1076,8 +1124,12 @@ export default function CatalogWorkspace() {
       setDetail((current) => current?.id === updated.id ? updated : current);
       setDraftPartDetail((current) => current?.id === updated.id ? updated : current);
       setNotice(successMessage);
-      await loadCatalog();
+      // Keep the modal responsive. The catalog list can refresh in the background.
+      void loadCatalog();
     } catch (caught) {
+      detailCache.set(part.id, part);
+      setDetail((current) => current?.id === part.id ? part : current);
+      setDraftPartDetail((current) => current?.id === part.id ? part : current);
       const message = caught instanceof Error ? caught.message : "Unable to save listing images";
       setError(message);
       setImageUploadError(message);
@@ -1091,6 +1143,22 @@ export default function CatalogWorkspace() {
     if (nextIndex < 0 || nextIndex >= part.media.length) return;
     const ids = part.media.map(({ mediaAsset }) => mediaAsset.id);
     [ids[index], ids[nextIndex]] = [ids[nextIndex], ids[index]];
+    void persistListingImages(part, ids, "Listing images reordered.");
+  }
+
+  function dropListingImage(part: CatalogPartDetail, targetId: string, event: ReactDragEvent<HTMLElement>) {
+    event.preventDefault();
+    const sourceId = event.dataTransfer.getData("application/x-partpulse-image") || draggedImageId;
+    setDraggedImageId(null);
+    setDragOverImageId(null);
+    if (!sourceId || sourceId === targetId || imageManagerSaving || imageUploading) return;
+
+    const ids = part.media.map(({ mediaAsset }) => mediaAsset.id);
+    const sourceIndex = ids.indexOf(sourceId);
+    const targetIndex = ids.indexOf(targetId);
+    if (sourceIndex < 0 || targetIndex < 0) return;
+    ids.splice(sourceIndex, 1);
+    ids.splice(targetIndex, 0, sourceId);
     void persistListingImages(part, ids, "Listing images reordered.");
   }
 
@@ -1412,27 +1480,76 @@ export default function CatalogWorkspace() {
     const busy = imageUploading || imageManagerSaving;
     return <section className={styles.detailSection}>
       <div className={styles.sectionHeading}>
-        <div><h4>Product images <span>({media.length}/24)</span></h4><p className={styles.imageSectionHelp}>The first image is used as the primary eBay listing image.</p></div>
+        <div><h4>Product images <span>({media.length}/24)</span></h4><p className={styles.imageSectionHelp}>{editable ? "Drag images to reorder them. " : ""}The first image is used as the primary eBay listing image.</p></div>
       </div>
-      {media.length ? <div className={styles.inlineListingImages}>{media.map((item, index) => <article key={item.id} className={index === 0 ? styles.inlinePrimaryImage : undefined}>
-        <div className={styles.inlineImagePreview}><CatalogImage mediaId={item.mediaAsset.id} token={token} demo={demo}/>{index === 0 && <span>Primary</span>}</div>
-        {editable && part && <div className={styles.inlineImageActions}>
-          <button type="button" onClick={() => reorderListingImage(part, index, -1)} disabled={busy || index === 0} aria-label={`Move image ${index + 1} left`}>←</button>
-          <button type="button" onClick={() => reorderListingImage(part, index, 1)} disabled={busy || index === media.length - 1} aria-label={`Move image ${index + 1} right`}>→</button>
-          {index > 0 && <button type="button" onClick={() => makeListingImagePrimary(part, item.mediaAsset.id)} disabled={busy}>Primary</button>}
-          <button type="button" className={styles.inlineRemoveImage} onClick={() => removeListingImage(part, item.mediaAsset.id)} disabled={busy}>Remove</button>
-        </div>}
-      </article>)}</div> : null}
+      {media.length ? <div className={styles.inlineListingImages}>{media.map((item, index) => {
+        const mediaId = item.mediaAsset.id;
+        const cardClassName = [
+          index === 0 ? styles.inlinePrimaryImage : "",
+          editable && !busy ? styles.inlineDraggableImage : "",
+          draggedImageId === mediaId ? styles.inlineDraggingImage : "",
+          dragOverImageId === mediaId && draggedImageId !== mediaId ? styles.inlineImageDropTarget : "",
+        ].filter(Boolean).join(" ");
+        return <article
+          key={item.id}
+          className={cardClassName || undefined}
+          draggable={editable && !busy}
+          onDragStart={(event) => {
+            if (!editable || busy) { event.preventDefault(); return; }
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("application/x-partpulse-image", mediaId);
+            event.dataTransfer.setData("text/plain", mediaId);
+            setDraggedImageId(mediaId);
+          }}
+          onDragEnter={() => { if (editable && !busy && draggedImageId !== mediaId) setDragOverImageId(mediaId); }}
+          onDragOver={(event) => { if (editable && !busy) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; } }}
+          onDrop={(event) => { if (editable && part) dropListingImage(part, mediaId, event); }}
+          onDragEnd={() => { setDraggedImageId(null); setDragOverImageId(null); }}
+          title={editable ? `Drag image ${index + 1} to change its position` : undefined}
+        >
+          <div className={styles.inlineImagePreview}>
+            <CatalogImage mediaId={mediaId} token={token} demo={demo} eager priority={index === 0}/>
+            {index === 0 && <span>Primary</span>}
+            {editable && <i className={styles.inlineDragHandle} aria-hidden="true">⋮⋮</i>}
+          </div>
+          {editable && part && <div className={styles.inlineImageActions}>
+            <button type="button" onClick={() => reorderListingImage(part, index, -1)} disabled={busy || index === 0} aria-label={`Move image ${index + 1} left`}>←</button>
+            <button type="button" onClick={() => reorderListingImage(part, index, 1)} disabled={busy || index === media.length - 1} aria-label={`Move image ${index + 1} right`}>→</button>
+            {index > 0 && <button type="button" onClick={() => makeListingImagePrimary(part, mediaId)} disabled={busy}>Primary</button>}
+            <button type="button" className={styles.inlineRemoveImage} onClick={() => removeListingImage(part, mediaId)} disabled={busy}>Remove</button>
+          </div>}
+        </article>;
+      })}</div> : null}
       {editable && part && canUploadMedia && <label className={`${styles.inlineImageUpload} ${busy || media.length >= 24 ? styles.inlineImageUploadDisabled : ""}`}>
         <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={busy || media.length >= 24} onChange={(event) => { const input = event.currentTarget; void uploadManagedImages(part, input.files).finally(() => { input.value = ""; }); }}/>
         <span aria-hidden="true">＋</span>
         <b>{imageUploading ? "Uploading images…" : "Upload listing images"}</b>
         <small>JPEG, PNG, or WebP · {24 - media.length} slots available · files are also saved in Media Drive</small>
       </label>}
-      {imageUploadProgress && part?.id && <div className={styles.imageUploadProgress} role="status">
-        <div><b>Uploading {imageUploadProgress.completed + (imageUploadProgress.completed < imageUploadProgress.total ? 1 : 0)} of {imageUploadProgress.total}</b><span>{imageUploadProgress.filename}</span></div>
-        <progress value={imageUploadProgress.completed} max={imageUploadProgress.total}/>
-      </div>}
+      {imageUploadProgress && part?.id && (() => {
+        const currentCount = imageUploadProgress.completed + (imageUploadProgress.completed < imageUploadProgress.total ? 1 : 0);
+        const percent = Math.min(100, Math.round((currentCount / imageUploadProgress.total) * 100));
+        return (
+          <div className={styles.imageUploadProgress} role="status">
+            <div className={styles.uploadProgressTop}>
+              <div className={styles.uploadProgressTitle}>
+                <svg className={styles.uploadSpinner} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                </svg>
+                <b>Uploading {currentCount} of {imageUploadProgress.total}</b>
+              </div>
+              <span className={styles.uploadPercentBadge}>{percent}%</span>
+            </div>
+            <div className={styles.uploadProgressTrack}>
+              <div className={styles.uploadProgressFill} style={{ width: `${percent}%` }} />
+            </div>
+            <div className={styles.uploadProgressSub}>
+              <span className={styles.uploadFilename}>{imageUploadProgress.filename}</span>
+              <span className={styles.uploadSlotInfo}>{24 - media.length} slots remaining</span>
+            </div>
+          </div>
+        );
+      })()}
       {imageUploadError && <div className={styles.imageUploadError} role="alert">{imageUploadError}</div>}
       {editable && !canUploadMedia && <p className={styles.imagePermissionNote}>You need Media Drive upload permission to add new images.</p>}
     </section>;

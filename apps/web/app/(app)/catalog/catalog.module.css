@@ -3577,6 +3577,26 @@
   box-shadow: 0 0 0 2px rgba(37, 99, 235, .08);
 }
 
+.inlineListingImages .inlineDraggableImage {
+  cursor: grab;
+  user-select: none;
+  transition: border-color .15s ease, box-shadow .15s ease, opacity .15s ease, transform .15s ease;
+}
+
+.inlineListingImages .inlineDraggableImage:active {
+  cursor: grabbing;
+}
+
+.inlineListingImages .inlineDraggingImage {
+  opacity: .42;
+  transform: scale(.98);
+}
+
+.inlineListingImages .inlineImageDropTarget {
+  border-color: #155eef;
+  box-shadow: 0 0 0 3px rgba(21, 94, 239, .16);
+}
+
 .inlineImagePreview {
   position: relative;
   height: 112px;
@@ -3600,6 +3620,24 @@
   color: #fff;
   font-size: 8px;
   font-weight: 750;
+}
+
+.inlineDragHandle {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, .72);
+  border-radius: 6px;
+  background: rgba(15, 35, 66, .72);
+  color: #fff;
+  font: 800 12px/1 "Plus Jakarta Sans", sans-serif;
+  font-style: normal;
+  letter-spacing: -2px;
+  pointer-events: none;
 }
 
 .inlineImageActions {
@@ -3671,48 +3709,110 @@
   cursor: not-allowed;
 }
 
-.imageUploadProgress,
-.imageUploadError {
-  margin-top: 9px;
-  padding: 9px 11px;
-  border-radius: 8px;
-  font-size: 9.5px;
+.imageUploadProgress {
+  margin-top: 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid #bfdbfe;
+  background: linear-gradient(180deg, #f0f7ff 0%, #eff6ff 100%);
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.imageUploadProgress {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 170px;
+.uploadProgressTop {
+  display: flex;
+  justify-content: space-between;
   align-items: center;
   gap: 12px;
-  border: 1px solid #cfe0fb;
-  background: #f4f8ff;
-  color: #183b70;
 }
 
-.imageUploadProgress div,
-.imageUploadProgress span {
-  min-width: 0;
+.uploadProgressTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #1e40af;
+  font-size: 13px;
+  font-weight: 750;
 }
 
-.imageUploadProgress span {
-  display: block;
-  margin-top: 2px;
+.uploadSpinner {
+  animation: uploadSpin 1s linear infinite;
+  color: #2563eb;
+  flex-shrink: 0;
+}
+
+@keyframes uploadSpin {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.uploadPercentBadge {
+  font-size: 11.5px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  border: 1px solid #93c5fd;
+  line-height: 1;
+}
+
+.uploadProgressTrack {
+  height: 8px;
+  width: 100%;
+  background: #dbeafe;
+  border-radius: 999px;
   overflow: hidden;
-  color: #6d7f98;
+  position: relative;
+}
+
+.uploadProgressFill {
+  height: 100%;
+  background: linear-gradient(90deg, #2563eb 0%, #3b82f6 50%, #60a5fa 100%);
+  border-radius: 999px;
+  transition: width 250ms ease-in-out;
+  box-shadow: 0 0 10px rgba(37, 99, 235, 0.4);
+}
+
+.uploadProgressSub {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 11.5px;
+  color: #64748b;
+}
+
+.uploadFilename {
+  font-family: monospace;
+  background: #ffffff;
+  border: 1px solid #dbeafe;
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: #1e293b;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 65%;
 }
 
-.imageUploadProgress progress {
-  width: 100%;
-  height: 6px;
-  accent-color: #155eef;
+.uploadSlotInfo {
+  color: #64748b;
+  font-weight: 600;
+  font-size: 11px;
 }
 
 .imageUploadError {
+  margin-top: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
   border: 1px solid #ffc7c7;
   background: #fff1f1;
   color: #b42318;
+  font-size: 12.5px;
   font-weight: 650;
 }
 

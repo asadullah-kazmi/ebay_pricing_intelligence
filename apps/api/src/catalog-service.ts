@@ -456,9 +456,55 @@ export async function replaceCatalogPartMedia(
   await prisma.$transaction(async (tx) => {
     const part = await tx.part.findFirst({
       where: { id: partId, organizationId },
-      select: { id: true, status: true, partName: true, sku: true },
+      select: {
+        id: true,
+        status: true,
+        partName: true,
+        sku: true,
+        media: {
+          orderBy: { displayOrder: "asc" },
+          select: { mediaAssetId: true, approved: true, altText: true },
+        },
+      },
     });
     if (!part) throw new CatalogError("Catalog part not found", 404);
+
+    const existingIds = part.media.map((item) => item.mediaAssetId);
+    const reorderOnly = existingIds.length === uniqueIds.length
+      && existingIds.every((id) => uniqueIds.includes(id));
+
+    if (reorderOnly) {
+      if (existingIds.every((id, index) => id === uniqueIds[index])) return;
+      const existingById = new Map(part.media.map((item) => [item.mediaAssetId, item]));
+      // Reordering should be a small, deterministic database operation. It does not
+      // change draft readiness or the attached image set, so avoid the expensive
+      // listing-draft invalidation path used for additions and removals.
+      await tx.partMedia.deleteMany({ where: { organizationId, partId } });
+      await tx.partMedia.createMany({
+        data: uniqueIds.map((mediaAssetId, displayOrder) => {
+          const existing = existingById.get(mediaAssetId)!;
+          return {
+            organizationId,
+            partId,
+            mediaAssetId,
+            displayOrder,
+            approved: existing.approved,
+            altText: existing.altText,
+          };
+        }),
+      });
+      await recordAuditEvent(tx, {
+        organizationId,
+        actorUserId: userId,
+        action: "catalog.part_media.reordered",
+        resourceType: "Part",
+        resourceId: partId,
+        severity: "INFO",
+        summary: `Reordered ${uniqueIds.length} images for ${part.sku}`,
+        metadata: { mediaAssetIds: uniqueIds } as Prisma.InputJsonObject,
+      });
+      return;
+    }
 
     const assets = uniqueIds.length
       ? await tx.mediaAsset.findMany({
