@@ -40,6 +40,18 @@
   line-height: 1.45;
 }
 
+.syncMeta {
+  display: inline-flex;
+  margin-top: 9px;
+  padding: 5px 9px;
+  border: 1px solid #dbe7f7;
+  border-radius: 999px;
+  background: #fff;
+  color: #60718b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .actions,
 .rowActions,
 .pagination div,

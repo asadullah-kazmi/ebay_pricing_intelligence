@@ -366,6 +366,7 @@ model Organization {
   fitmentApplications         FitmentApplication[]
   fitmentApplicationRevisions FitmentApplicationRevision[]
   ebaySellerConnections       EbaySellerConnection[]
+  ebayInventoryCacheItems     EbayInventoryCacheItem[]
   ebayOAuthStates             EbayOAuthState[]
   idempotencyRecords          IdempotencyRecord[]
   outboxEvents                OutboxEvent[]
@@ -575,6 +576,7 @@ model EbaySellerConnection {
   connectedBy             User                 @relation("EbayConnectionCreator", fields: [connectedById], references: [id], onDelete: Restrict)
   sellerResources         EbaySellerResource[]
   listingDrafts           ListingDraft[]
+  inventoryCacheItems     EbayInventoryCacheItem[]
   createdAt               DateTime             @default(now())
   updatedAt               DateTime             @updatedAt
 
@@ -582,6 +584,39 @@ model EbaySellerConnection {
   @@index([organizationId, isDefault, status])
   @@index([status])
   @@index([ebayUserId])
+}
+
+model EbayInventoryCacheItem {
+  id                      String               @id @default(cuid())
+  organizationId          String
+  ebaySellerConnectionId  String
+  marketplace             String
+  sku                     String
+  title                   String?
+  condition               String?
+  quantity                Int?
+  price                   Decimal?             @db.Decimal(12, 2)
+  currency                String?
+  offerId                 String?
+  offerStatus             String?
+  listingId               String?
+  listingStatus           String?
+  listingOnHold           Boolean              @default(false)
+  categoryId              String?
+  imageUrl                String?
+  inventoryPayload        Json?
+  offerPayload            Json?
+  syncedAt                DateTime             @default(now())
+  organization            Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ebaySellerConnection    EbaySellerConnection @relation(fields: [ebaySellerConnectionId], references: [id], onDelete: Cascade)
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+
+  @@unique([ebaySellerConnectionId, marketplace, sku])
+  @@index([organizationId, ebaySellerConnectionId, syncedAt])
+  @@index([organizationId, listingStatus])
+  @@index([organizationId, offerStatus])
+  @@index([organizationId, sku])
 }
 
 model EbayOAuthState {

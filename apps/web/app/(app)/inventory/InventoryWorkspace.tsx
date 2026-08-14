@@ -37,7 +37,8 @@ type InventoryResponse = {
     outOfStock: number;
   };
   errors: Array<{ connectionId: string; username: string | null; message: string }>;
-  syncedAt: string;
+  syncedAt: string | null;
+  sync?: { started: boolean; running: boolean };
 };
 
 const emptyInventory: InventoryResponse = {
@@ -46,7 +47,7 @@ const emptyInventory: InventoryResponse = {
   pagination: { page: 1, pageSize: 50, total: 0, totalPages: 1 },
   summary: { total: 0, filtered: 0, connectedAccounts: 0, published: 0, unpublished: 0, lowStock: 0, outOfStock: 0 },
   errors: [],
-  syncedAt: "",
+  syncedAt: null,
 };
 
 function money(value: number | null, currency: string | null) {
@@ -66,10 +67,23 @@ function statusLabel(row: InventoryRow) {
   return status.replace(/_/g, " ").toLowerCase();
 }
 
+function lastSyncedLabel(value: string | null) {
+  if (!value) return "Not synced yet";
+  const syncedAt = new Date(value);
+  const seconds = Math.max(0, Math.floor((Date.now() - syncedAt.getTime()) / 1000));
+  if (seconds < 60) return "Synced just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `Synced ${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Synced ${hours} hr ago`;
+  return `Synced ${syncedAt.toLocaleDateString()}`;
+}
+
 export default function InventoryWorkspace() {
   const { status: authStatus, demo, apiFetch } = useAuth();
   const [inventory, setInventory] = useState<InventoryResponse>(emptyInventory);
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [savingKey, setSavingKey] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -95,7 +109,7 @@ export default function InventoryWorkspace() {
     try {
       setInventory((await apiFetch(`/api/ebay/store-inventory?${query}`)) as InventoryResponse);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to sync eBay inventory");
+      setError(caught instanceof Error ? caught.message : "Unable to load cached eBay inventory");
     } finally {
       setLoading(false);
     }
@@ -104,6 +118,28 @@ export default function InventoryWorkspace() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function syncStores() {
+    if (authStatus !== "ready" || demo) return;
+    setSyncing(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await apiFetch("/api/ebay/store-inventory/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ page, pageSize, stock, offerStatus, ...(search.trim() ? { q: search.trim() } : {}), ...(connectionId ? { connectionId } : {}) }),
+      }) as InventoryResponse;
+      setInventory(response);
+      setNotice(response.sync?.started ? "Inventory sync started in the background. Cached rows will update as eBay responds." : "Inventory sync is already running in the background.");
+      window.setTimeout(() => void load(), 4000);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to refresh eBay inventory");
+      await load();
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   async function saveInventory(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -185,10 +221,11 @@ export default function InventoryWorkspace() {
           <span className={styles.eyebrow}>EBAY STORE INVENTORY</span>
           <h1>Inventory</h1>
           <p>Sync stock and offer status from every connected eBay seller account.</p>
+          <span className={styles.syncMeta}>{lastSyncedLabel(inventory.syncedAt)}</span>
         </div>
         <div className={styles.actions}>
-          <button type="button" className={styles.secondaryBtn} onClick={() => void load()} disabled={loading}>
-            {loading ? "Syncing..." : "Sync all stores"}
+          <button type="button" className={styles.secondaryBtn} onClick={() => void syncStores()} disabled={syncing || loading}>
+            {syncing ? "Syncing..." : "Sync all stores"}
           </button>
           <Link className={styles.primaryBtn} href="/channels">Manage stores</Link>
         </div>
@@ -250,11 +287,11 @@ export default function InventoryWorkspace() {
         </div>
 
         {loading && inventory.items.length === 0 ? (
-          <div className={styles.emptyState}><b>Syncing eBay inventory...</b><span>This can take a moment when multiple stores are connected.</span></div>
+          <div className={styles.emptyState}><b>Loading cached inventory...</b><span>Use Sync all stores when you want fresh eBay data.</span></div>
         ) : inventory.items.length === 0 ? (
           <div className={styles.emptyState}>
             <b>No eBay inventory found</b>
-            <span>Connect a store, publish through PartPulse, or adjust your filters.</span>
+            <span>Click Sync all stores to build the cache, connect a store, or adjust your filters.</span>
           </div>
         ) : (
           <div className={styles.tableWrap}>

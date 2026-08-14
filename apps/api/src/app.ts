@@ -56,7 +56,7 @@ import { bulkAssignListingDraftPolicies, createListingDrafts, getListingDraft, L
 import { listCachedSellerResources, refreshCategoryMetadata, syncSellerResources } from "./ebay-resource-service.js";
 import { createInventoryPreparationJob, getInventoryPreparationJob, getLatestInventoryPreparation, InventoryPreparationError, startInventoryPreparationJob } from "./inventory-preparation-service.js";
 import { createEbayInventorySyncJob, EbayInventorySyncError, getEbayInventorySyncJob, getLatestEbayInventorySyncJob, startEbayInventorySyncJob } from "./ebay-inventory-sync-service.js";
-import { EbayInventoryManagementError, listEbayStoreInventory, updateEbayStoreInventoryItem, withdrawEbayStoreOffer } from "./ebay-inventory-management-service.js";
+import { EbayInventoryManagementError, listEbayStoreInventory, startEbayStoreInventoryCacheRefresh, updateEbayStoreInventoryItem, withdrawEbayStoreOffer } from "./ebay-inventory-management-service.js";
 import { createOfferPreparationJob, createOfferPublishJob, EbayOfferError, getOffer, getOfferByDraft, getOfferJob, startOfferJob } from "./ebay-offer-service.js";
 import { createReconciliationJob, createRevisionJob, createWithdrawalJob, EbayListingOperationError, getListingOperationJob, startListingOperationJob } from "./ebay-listing-operation-service.js";
 import { listAuditEvents } from "./audit-service.js";
@@ -883,10 +883,11 @@ app.get("/api/ebay/store-inventory", requireTenantContext, requireOrganizationPe
 
 app.post("/api/ebay/store-inventory/sync", requireTenantContext, requireOrganizationPermission("inventory.view"), async (req, res, next) => {
   try {
-    res.json(await listEbayStoreInventory({
-      organizationId: getTenantContext(res).organization.id,
-      ...ebayInventoryQuerySchema.parse(req.body ?? {}),
-    }));
+    const organizationId = getTenantContext(res).organization.id;
+    const input = ebayInventoryQuerySchema.parse(req.body ?? {});
+    const sync = startEbayStoreInventoryCacheRefresh({ organizationId, ...input });
+    const cached = await listEbayStoreInventory({ organizationId, ...input });
+    res.json({ ...cached, sync });
   } catch (error) { next(error); }
 });
 
