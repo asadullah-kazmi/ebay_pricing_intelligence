@@ -591,6 +591,7 @@ model EbayInventoryCacheItem {
   organizationId          String
   ebaySellerConnectionId  String
   marketplace             String
+  sourceKey               String               @default("")
   sku                     String
   title                   String?
   condition               String?
@@ -612,11 +613,12 @@ model EbayInventoryCacheItem {
   createdAt               DateTime             @default(now())
   updatedAt               DateTime             @updatedAt
 
-  @@unique([ebaySellerConnectionId, marketplace, sku])
+  @@unique([ebaySellerConnectionId, marketplace, sourceKey])
   @@index([organizationId, ebaySellerConnectionId, syncedAt])
   @@index([organizationId, listingStatus])
   @@index([organizationId, offerStatus])
   @@index([organizationId, sku])
+  @@index([organizationId, listingId])
 }
 
 model EbayOAuthState {

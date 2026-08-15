@@ -12,6 +12,7 @@ import {
   type EbayOfferSummary,
 } from "./providers/ebay-inventory.js";
 import { EbayApiError, findSellerBrowseListingSnapshot } from "./providers/ebay.js";
+import { getTradingSellerListPage, type EbayTradingActiveListing } from "./providers/ebay-trading.js";
 
 export class EbayInventoryManagementError extends Error {
   constructor(message: string, readonly statusCode: 400 | 404 | 409 | 502 = 400) {
@@ -35,6 +36,7 @@ export interface EbayInventoryCacheRefreshProgress {
   offersChecked: number;
   cacheSaved: number;
   errors: number;
+  errorMessages: string[];
   startedAt: string | null;
   finishedAt: string | null;
 }
@@ -60,6 +62,7 @@ function idleProgress(key: string): EbayInventoryCacheRefreshProgress {
     offersChecked: 0,
     cacheSaved: 0,
     errors: 0,
+    errorMessages: [],
     startedAt: null,
     finishedAt: null,
   };
@@ -337,6 +340,44 @@ function mergeRows(input: {
     });
   }
   return [...rows.values()];
+}
+
+function mergeTradingRows(input: {
+  account: EbayInventoryRow["account"];
+  listings: EbayTradingActiveListing[];
+  syncedAt?: Date;
+}) {
+  const syncedAt = (input.syncedAt ?? new Date()).toISOString();
+  return input.listings.map((listing) => {
+    const availableQuantity = listing.quantity == null
+      ? null
+      : Math.max(0, listing.quantity - (listing.quantitySold ?? 0));
+    const sku = listing.sku ?? listing.listingId;
+    return {
+      key: `${input.account.id}:${listing.sourceKey}`,
+      account: input.account,
+      sku,
+      title: listing.title,
+      condition: listing.condition,
+      quantity: availableQuantity,
+      price: listing.price,
+      currency: listing.currency,
+      offerId: null,
+      offerStatus: "PUBLISHED",
+      listingId: listing.listingId,
+      listingStatus: listing.listingStatus ?? "ACTIVE",
+      listingOnHold: false,
+      categoryId: listing.categoryId,
+      imageUrl: listing.imageUrl,
+      inventoryPayload: null,
+      offerPayload: {
+        source: "TRADING",
+        sourceKey: listing.sourceKey,
+        ...listing.payload,
+      },
+      syncedAt,
+    } satisfies EbayInventoryRow;
+  });
 }
 
 function toJson(value: Record<string, unknown> | null): Prisma.InputJsonValue | typeof Prisma.JsonNull {
@@ -727,6 +768,7 @@ export async function syncEbayStoreInventory(input: {
     offersChecked: 0,
     cacheSaved: 0,
     errors: 0,
+    errorMessages: [],
     startedAt: new Date().toISOString(),
     finishedAt: null,
   });
@@ -737,148 +779,106 @@ export async function syncEbayStoreInventory(input: {
     const account = { id: connection.id, username: connection.username, isDefault: connection.isDefault, marketplace };
     const syncStartedAt = new Date();
     try {
-      setProgress(key, {
-        percent: Math.max(4, Math.round((connectionIndex / Math.max(1, connections.length)) * 100)),
-        message: `Fetching inventory items from ${connection.username ?? "eBay account"}...`,
-        currentAccount: connection.username ?? "eBay account",
-      });
-      let inventoryItems = await collectPages(
-        (offset) => getInventoryItemsPage({ organizationId: input.organizationId, connectionId: connection.id, marketplace, limit: 100, offset }),
-        (page) => page.inventoryItems,
-      ) as EbayInventoryItemSummary[];
       const accountBase = (connectionIndex / Math.max(1, connections.length)) * 100;
       const accountSpan = 100 / Math.max(1, connections.length);
-      const missingImagesBeforeDetail = inventoryItems.filter((item) => !hasInventoryImage(item)).length;
-      if (missingImagesBeforeDetail > 0) {
-        let detailChecked = 0;
-        setProgress(key, {
-          percent: accountBase + accountSpan * 0.15,
-          message: `Loading image details for ${missingImagesBeforeDetail} SKU${missingImagesBeforeDetail === 1 ? "" : "s"}...`,
-        });
-        inventoryItems = await enrichInventoryItemsWithDetailImages({
+      setProgress(key, {
+        percent: Math.max(4, Math.round(accountBase)),
+        message: `Fetching active listings from ${connection.username ?? "eBay account"} with eBay Trading API...`,
+        currentAccount: connection.username ?? "eBay account",
+      });
+      const fetchedListings: EbayTradingActiveListing[] = [];
+      const entriesPerPage = 200;
+      let totalListings = 0;
+      let cacheSavedForAccount = 0;
+      const cacheSavedBeforeAccount = inventoryCacheRefreshProgress.get(key)?.cacheSaved ?? 0;
+      const endTimeFrom = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const endTimeTo = new Date(Date.now() + 120 * 24 * 60 * 60 * 1000);
+      for (let pageNumber = 1; pageNumber <= 1000; pageNumber += 1) {
+        const page = await getTradingSellerListPage({
           organizationId: input.organizationId,
           connectionId: connection.id,
           marketplace,
-          inventoryItems,
-          errors,
-          username: connection.username,
-          onBatchComplete: (count) => {
-            detailChecked += count;
-            setProgress(key, {
-              percent: accountBase + accountSpan * (0.15 + (detailChecked / Math.max(1, missingImagesBeforeDetail)) * 0.1),
-              message: `Checked ${Math.min(detailChecked, missingImagesBeforeDetail)}/${missingImagesBeforeDetail} inventory image details...`,
-              errors: errors.length,
-            });
-          },
+          entriesPerPage,
+          pageNumber,
+          endTimeFrom,
+          endTimeTo,
         });
-      }
-      let offersChecked = 0;
-      setProgress(key, {
-        percent: accountBase + accountSpan * 0.25,
-        message: `Checking eBay offers for ${inventoryItems.length} SKU${inventoryItems.length === 1 ? "" : "s"}...`,
-        totalSkus: (inventoryCacheRefreshProgress.get(key)?.totalSkus ?? 0) + inventoryItems.length,
-        inventorySynced: (inventoryCacheRefreshProgress.get(key)?.inventorySynced ?? 0) + inventoryItems.length,
-      });
-      const offers = await collectOffersForInventoryItems({
-        organizationId: input.organizationId,
-        connectionId: connection.id,
-        marketplace,
-        inventoryItems,
-        errors,
-        username: connection.username,
-        onBatchComplete: (count) => {
-          offersChecked += count;
-          const offerProgress = inventoryItems.length > 0 ? offersChecked / inventoryItems.length : 1;
+        if (pageNumber === 1) {
+          totalListings = page.total;
           setProgress(key, {
-            percent: accountBase + accountSpan * (0.25 + offerProgress * 0.45),
-            message: `Checked ${offersChecked}/${inventoryItems.length} offer records for ${connection.username ?? "eBay account"}...`,
-            offersChecked: (inventoryCacheRefreshProgress.get(key)?.offersChecked ?? 0) + count,
-            errors: errors.length,
-          });
-        },
-      });
-      let rows = mergeRows({ account, inventoryItems, offers, syncedAt: syncStartedAt });
-      const missingListingDataBeforeBrowse = rows.filter((row) => !row.imageUrl || row.price == null || !row.categoryId).length;
-      if (missingListingDataBeforeBrowse > 0) {
-        let browseChecked = 0;
-        setProgress(key, {
-          percent: accountBase + accountSpan * 0.7,
-          message: `Finding seller listing data for ${missingListingDataBeforeBrowse} remaining SKU${missingListingDataBeforeBrowse === 1 ? "" : "s"}...`,
-        });
-        rows = await enrichRowsWithSellerBrowseData({
-          rows,
-          marketplace,
-          sellerUsername: connection.username,
-          errors,
-          connectionId: connection.id,
-          onBatchComplete: (count) => {
-            browseChecked += count;
-            setProgress(key, {
-              percent: accountBase + accountSpan * (0.7 + (browseChecked / Math.max(1, missingListingDataBeforeBrowse)) * 0.08),
-              message: `Checked ${Math.min(browseChecked, missingListingDataBeforeBrowse)}/${missingListingDataBeforeBrowse} seller listing matches...`,
-              errors: errors.length,
-            });
-          },
-        });
-      }
-      const cacheSavedBeforeAccount = inventoryCacheRefreshProgress.get(key)?.cacheSaved ?? 0;
-      let cacheSavedForAccount = 0;
-      for (const [rowIndex, row] of rows.entries()) {
-        await prisma.ebayInventoryCacheItem.upsert({
-          where: {
-            ebaySellerConnectionId_marketplace_sku: {
-              ebaySellerConnectionId: connection.id,
-              marketplace,
-              sku: row.sku,
-            },
-          },
-          update: {
-            title: row.title,
-            condition: row.condition,
-            quantity: row.quantity,
-            price: row.price,
-            currency: row.currency,
-            offerId: row.offerId,
-            offerStatus: row.offerStatus,
-            listingId: row.listingId,
-            listingStatus: row.listingStatus,
-            listingOnHold: row.listingOnHold,
-            categoryId: row.categoryId,
-            imageUrl: row.imageUrl,
-            inventoryPayload: toJson(row.inventoryPayload),
-            offerPayload: toJson(row.offerPayload),
-            syncedAt: syncStartedAt,
-          },
-          create: {
-            organizationId: input.organizationId,
-            ebaySellerConnectionId: connection.id,
-            marketplace,
-            sku: row.sku,
-            title: row.title,
-            condition: row.condition,
-            quantity: row.quantity,
-            price: row.price,
-            currency: row.currency,
-            offerId: row.offerId,
-            offerStatus: row.offerStatus,
-            listingId: row.listingId,
-            listingStatus: row.listingStatus,
-            listingOnHold: row.listingOnHold,
-            categoryId: row.categoryId,
-            imageUrl: row.imageUrl,
-            inventoryPayload: toJson(row.inventoryPayload),
-            offerPayload: toJson(row.offerPayload),
-            syncedAt: syncStartedAt,
-          },
-        });
-        cacheSavedForAccount += 1;
-        if (rowIndex % 10 === 0 || rowIndex === rows.length - 1) {
-          setProgress(key, {
-            percent: accountBase + accountSpan * (0.72 + ((rowIndex + 1) / Math.max(1, rows.length)) * 0.2),
-            message: `Saving ${rowIndex + 1}/${rows.length} cached inventory rows...`,
-            cacheSaved: cacheSavedBeforeAccount + cacheSavedForAccount,
+            percent: accountBase + accountSpan * 0.08,
+            message: `Found ${totalListings} active listing${totalListings === 1 ? "" : "s"} for ${connection.username ?? "eBay account"}...`,
+            totalSkus: (inventoryCacheRefreshProgress.get(key)?.totalSkus ?? 0) + totalListings,
           });
         }
+        fetchedListings.push(...page.listings);
+        setProgress(key, {
+          percent: accountBase + accountSpan * Math.min(0.72, 0.08 + (fetchedListings.length / Math.max(1, totalListings || fetchedListings.length)) * 0.64),
+          message: `Fetched ${fetchedListings.length}/${totalListings || fetchedListings.length} active listing records...`,
+          inventorySynced: (inventoryCacheRefreshProgress.get(key)?.inventorySynced ?? 0) + page.listings.length,
+        });
+        const pageRows = mergeTradingRows({ account, listings: page.listings, syncedAt: syncStartedAt });
+        for (const [rowIndex, row] of pageRows.entries()) {
+          const sourceKey = typeof row.offerPayload?.sourceKey === "string" ? row.offerPayload.sourceKey : `TRADING:${row.listingId ?? row.sku}`;
+          await prisma.ebayInventoryCacheItem.upsert({
+            where: {
+              ebaySellerConnectionId_marketplace_sourceKey: {
+                ebaySellerConnectionId: connection.id,
+                marketplace,
+                sourceKey,
+              },
+            },
+            update: {
+              sourceKey,
+              title: row.title,
+              condition: row.condition,
+              quantity: row.quantity,
+              price: row.price,
+              currency: row.currency,
+              offerId: row.offerId,
+              offerStatus: row.offerStatus,
+              listingId: row.listingId,
+              listingStatus: row.listingStatus,
+              listingOnHold: row.listingOnHold,
+              categoryId: row.categoryId,
+              imageUrl: row.imageUrl,
+              inventoryPayload: toJson(row.inventoryPayload),
+              offerPayload: toJson(row.offerPayload),
+              syncedAt: syncStartedAt,
+            },
+            create: {
+              organizationId: input.organizationId,
+              ebaySellerConnectionId: connection.id,
+              marketplace,
+              sourceKey,
+              sku: row.sku,
+              title: row.title,
+              condition: row.condition,
+              quantity: row.quantity,
+              price: row.price,
+              currency: row.currency,
+              offerId: row.offerId,
+              offerStatus: row.offerStatus,
+              listingId: row.listingId,
+              listingStatus: row.listingStatus,
+              listingOnHold: row.listingOnHold,
+              categoryId: row.categoryId,
+              imageUrl: row.imageUrl,
+              inventoryPayload: toJson(row.inventoryPayload),
+              offerPayload: toJson(row.offerPayload),
+              syncedAt: syncStartedAt,
+            },
+          });
+          cacheSavedForAccount += 1;
+          if (rowIndex % 25 === 0 || rowIndex === pageRows.length - 1) {
+            setProgress(key, {
+              percent: accountBase + accountSpan * Math.min(0.95, 0.72 + (fetchedListings.length / Math.max(1, totalListings || fetchedListings.length)) * 0.23),
+              message: `Cached ${cacheSavedForAccount}/${totalListings || fetchedListings.length} active listing rows...`,
+              cacheSaved: cacheSavedBeforeAccount + cacheSavedForAccount,
+            });
+          }
+        }
+        if (!page.hasMore || fetchedListings.length >= page.total || page.listings.length === 0) break;
       }
       await prisma.ebayInventoryCacheItem.deleteMany({
         where: {
@@ -888,6 +888,7 @@ export async function syncEbayStoreInventory(input: {
           syncedAt: { lt: syncStartedAt },
         },
       });
+      const rows = mergeTradingRows({ account, listings: fetchedListings, syncedAt: syncStartedAt });
       refreshedRows.push(...rows);
       setProgress(key, {
         percent: accountBase + accountSpan * 0.95,
@@ -896,25 +897,30 @@ export async function syncEbayStoreInventory(input: {
         errors: errors.length,
       });
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to sync eBay inventory";
       errors.push({
         connectionId: connection.id,
         username: connection.username,
-        message: error instanceof Error ? error.message : "Unable to sync eBay inventory",
+        message,
       });
+      const current = inventoryCacheRefreshProgress.get(key) ?? idleProgress(key);
       setProgress(key, {
-        message: `Could not sync ${connection.username ?? "eBay account"}. Continuing where possible...`,
+        message: `${connection.username ?? "eBay account"} sync failed: ${message}`,
         accountsCompleted: connectionIndex + 1,
         errors: errors.length,
+        errorMessages: [...current.errorMessages, `${connection.username ?? "eBay account"}: ${message}`].slice(-5),
       });
     }
   }
+  const failed = errors.length === connections.length && connections.length > 0;
   setProgress(key, {
-    status: errors.length === connections.length && connections.length > 0 ? "FAILED" : "COMPLETED",
+    status: failed ? "FAILED" : "COMPLETED",
     percent: 100,
-    message: errors.length === connections.length && connections.length > 0 ? "Inventory sync failed." : "Inventory sync completed.",
+    message: failed ? errors[0]?.message ?? "Inventory sync failed." : "Inventory sync completed.",
     currentAccount: null,
     finishedAt: new Date().toISOString(),
     errors: errors.length,
+    errorMessages: errors.map((item) => `${item.username ?? "eBay account"}: ${item.message}`).slice(-5),
   });
   if (refreshedRows.length > 0) {
     return shapeInventoryResponse({ ...input, connections, rows: refreshedRows, errors });

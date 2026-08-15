@@ -329,8 +329,8 @@ export default function InventoryWorkspace() {
           </div>
           <div className={styles.syncProgressStats}>
             <span>{syncProgress.accountsCompleted}/{syncProgress.accountsTotal} accounts</span>
-            <span>{syncProgress.inventorySynced} SKUs found</span>
-            <span>{syncProgress.offersChecked}/{syncProgress.totalSkus} offers checked</span>
+            <span>{syncProgress.totalSkus} active listings found</span>
+            <span>{syncProgress.inventorySynced}/{syncProgress.totalSkus} listings fetched</span>
             <span>{syncProgress.cacheSaved} rows cached</span>
             {syncProgress.errors > 0 && <span>{syncProgress.errors} warnings</span>}
           </div>
@@ -345,8 +345,8 @@ export default function InventoryWorkspace() {
 
       <section className={styles.metrics}>
         <article><span>Accounts</span><b>{inventory.summary.connectedAccounts}</b></article>
-        <article><span>Synced SKUs</span><b>{inventory.summary.total}</b></article>
-        <article><span>Published offers</span><b>{inventory.summary.published}</b></article>
+        <article><span>Active listings</span><b>{inventory.summary.total}</b></article>
+        <article><span>Published listings</span><b>{inventory.summary.published}</b></article>
         <article><span>Low stock</span><b>{inventory.summary.lowStock}</b></article>
         <article><span>Out of stock</span><b>{inventory.summary.outOfStock}</b></article>
       </section>
@@ -511,4 +511,3 @@ export default function InventoryWorkspace() {
     </div>
   );
 }
-
