@@ -56,7 +56,7 @@ import { bulkAssignListingDraftPolicies, createListingDrafts, getListingDraft, L
 import { listCachedSellerResources, refreshCategoryMetadata, syncSellerResources } from "./ebay-resource-service.js";
 import { createInventoryPreparationJob, getInventoryPreparationJob, getLatestInventoryPreparation, InventoryPreparationError, startInventoryPreparationJob } from "./inventory-preparation-service.js";
 import { createEbayInventorySyncJob, EbayInventorySyncError, getEbayInventorySyncJob, getLatestEbayInventorySyncJob, startEbayInventorySyncJob } from "./ebay-inventory-sync-service.js";
-import { EbayInventoryManagementError, listEbayStoreInventory, startEbayStoreInventoryCacheRefresh, updateEbayStoreInventoryItem, withdrawEbayStoreOffer } from "./ebay-inventory-management-service.js";
+import { EbayInventoryManagementError, getEbayStoreInventoryCacheRefreshProgress, listEbayStoreInventory, startEbayStoreInventoryCacheRefresh, updateEbayStoreInventoryItem, withdrawEbayStoreOffer } from "./ebay-inventory-management-service.js";
 import { createOfferPreparationJob, createOfferPublishJob, EbayOfferError, getOffer, getOfferByDraft, getOfferJob, startOfferJob } from "./ebay-offer-service.js";
 import { createReconciliationJob, createRevisionJob, createWithdrawalJob, EbayListingOperationError, getListingOperationJob, startListingOperationJob } from "./ebay-listing-operation-service.js";
 import { listAuditEvents } from "./audit-service.js";
@@ -888,6 +888,14 @@ app.post("/api/ebay/store-inventory/sync", requireTenantContext, requireOrganiza
     const sync = startEbayStoreInventoryCacheRefresh({ organizationId, ...input });
     const cached = await listEbayStoreInventory({ organizationId, ...input });
     res.json({ ...cached, sync });
+  } catch (error) { next(error); }
+});
+
+app.get("/api/ebay/store-inventory/sync-status", requireTenantContext, requireOrganizationPermission("inventory.view"), async (req, res, next) => {
+  try {
+    const organizationId = getTenantContext(res).organization.id;
+    const { connectionId } = ebayInventoryQuerySchema.pick({ connectionId: true }).parse(req.query);
+    res.json(getEbayStoreInventoryCacheRefreshProgress({ organizationId, connectionId }));
   } catch (error) { next(error); }
 });
 

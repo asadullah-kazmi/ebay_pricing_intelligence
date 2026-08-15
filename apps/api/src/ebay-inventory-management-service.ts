@@ -18,7 +18,65 @@ export class EbayInventoryManagementError extends Error {
   }
 }
 
+export type EbayInventoryCacheRefreshStatus = "IDLE" | "RUNNING" | "COMPLETED" | "FAILED";
+
+export interface EbayInventoryCacheRefreshProgress {
+  key: string;
+  status: EbayInventoryCacheRefreshStatus;
+  percent: number;
+  message: string;
+  accountsTotal: number;
+  accountsCompleted: number;
+  currentAccount: string | null;
+  totalSkus: number;
+  inventorySynced: number;
+  offersChecked: number;
+  cacheSaved: number;
+  errors: number;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
 const runningInventoryCacheRefreshes = new Map<string, Promise<unknown>>();
+const inventoryCacheRefreshProgress = new Map<string, EbayInventoryCacheRefreshProgress>();
+
+function syncKey(input: { organizationId: string; connectionId?: string }) {
+  return `${input.organizationId}:${input.connectionId ?? "all"}`;
+}
+
+function idleProgress(key: string): EbayInventoryCacheRefreshProgress {
+  return {
+    key,
+    status: "IDLE",
+    percent: 0,
+    message: "Inventory sync is idle.",
+    accountsTotal: 0,
+    accountsCompleted: 0,
+    currentAccount: null,
+    totalSkus: 0,
+    inventorySynced: 0,
+    offersChecked: 0,
+    cacheSaved: 0,
+    errors: 0,
+    startedAt: null,
+    finishedAt: null,
+  };
+}
+
+function setProgress(key: string, patch: Partial<EbayInventoryCacheRefreshProgress>) {
+  const current = inventoryCacheRefreshProgress.get(key) ?? idleProgress(key);
+  const next = {
+    ...current,
+    ...patch,
+    percent: Math.max(0, Math.min(100, Math.round(patch.percent ?? current.percent))),
+  };
+  inventoryCacheRefreshProgress.set(key, next);
+  return next;
+}
+
+export function getEbayStoreInventoryCacheRefreshProgress(input: { organizationId: string; connectionId?: string }) {
+  return inventoryCacheRefreshProgress.get(syncKey(input)) ?? idleProgress(syncKey(input));
+}
 
 export type EbayInventoryStockFilter = "ALL" | "IN_STOCK" | "LOW_STOCK" | "OUT_OF_STOCK";
 export type EbayInventoryOfferFilter = "ALL" | "PUBLISHED" | "UNPUBLISHED" | "ENDED";
@@ -209,6 +267,7 @@ async function collectOffersForInventoryItems(input: {
   inventoryItems: EbayInventoryItemSummary[];
   errors: Array<{ connectionId: string; username: string | null; message: string }>;
   username: string | null;
+  onBatchComplete?: (count: number) => void;
 }) {
   const offers: EbayOfferSummary[] = [];
   const skus = [...new Set(input.inventoryItems.map((item) => item.sku).filter(Boolean))];
@@ -238,6 +297,7 @@ async function collectOffersForInventoryItems(input: {
         message: `Offer lookup skipped for ${sku}: ${result.reason instanceof Error ? result.reason.message : "Unable to load offer"}`,
       });
     });
+    input.onBatchComplete?.(batch.length);
   }
   return offers;
 }
@@ -351,18 +411,48 @@ export async function syncEbayStoreInventory(input: {
   page?: number;
   pageSize?: number;
 }) {
+  const key = syncKey(input);
   const connections = await listActiveConnections({ organizationId: input.organizationId, connectionId: input.connectionId });
+  setProgress(key, {
+    status: "RUNNING",
+    percent: 2,
+    message: "Preparing connected eBay accounts...",
+    accountsTotal: connections.length,
+    accountsCompleted: 0,
+    currentAccount: null,
+    totalSkus: 0,
+    inventorySynced: 0,
+    offersChecked: 0,
+    cacheSaved: 0,
+    errors: 0,
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+  });
   const errors: Array<{ connectionId: string; username: string | null; message: string }> = [];
   const refreshedRows: EbayInventoryRow[] = [];
-  for (const connection of connections) {
+  for (const [connectionIndex, connection] of connections.entries()) {
     const marketplace = asMarketplace(connection.defaultMarketplace);
     const account = { id: connection.id, username: connection.username, isDefault: connection.isDefault, marketplace };
     const syncStartedAt = new Date();
     try {
+      setProgress(key, {
+        percent: Math.max(4, Math.round((connectionIndex / Math.max(1, connections.length)) * 100)),
+        message: `Fetching inventory items from ${connection.username ?? "eBay account"}...`,
+        currentAccount: connection.username ?? "eBay account",
+      });
       const inventoryItems = await collectPages(
         (offset) => getInventoryItemsPage({ organizationId: input.organizationId, connectionId: connection.id, marketplace, limit: 100, offset }),
         (page) => page.inventoryItems,
       ) as EbayInventoryItemSummary[];
+      const accountBase = (connectionIndex / Math.max(1, connections.length)) * 100;
+      const accountSpan = 100 / Math.max(1, connections.length);
+      let offersChecked = 0;
+      setProgress(key, {
+        percent: accountBase + accountSpan * 0.25,
+        message: `Checking eBay offers for ${inventoryItems.length} SKU${inventoryItems.length === 1 ? "" : "s"}...`,
+        totalSkus: (inventoryCacheRefreshProgress.get(key)?.totalSkus ?? 0) + inventoryItems.length,
+        inventorySynced: (inventoryCacheRefreshProgress.get(key)?.inventorySynced ?? 0) + inventoryItems.length,
+      });
       const offers = await collectOffersForInventoryItems({
         organizationId: input.organizationId,
         connectionId: connection.id,
@@ -370,9 +460,21 @@ export async function syncEbayStoreInventory(input: {
         inventoryItems,
         errors,
         username: connection.username,
+        onBatchComplete: (count) => {
+          offersChecked += count;
+          const offerProgress = inventoryItems.length > 0 ? offersChecked / inventoryItems.length : 1;
+          setProgress(key, {
+            percent: accountBase + accountSpan * (0.25 + offerProgress * 0.45),
+            message: `Checked ${offersChecked}/${inventoryItems.length} offer records for ${connection.username ?? "eBay account"}...`,
+            offersChecked: (inventoryCacheRefreshProgress.get(key)?.offersChecked ?? 0) + count,
+            errors: errors.length,
+          });
+        },
       });
       const rows = mergeRows({ account, inventoryItems, offers, syncedAt: syncStartedAt });
-      for (const row of rows) {
+      const cacheSavedBeforeAccount = inventoryCacheRefreshProgress.get(key)?.cacheSaved ?? 0;
+      let cacheSavedForAccount = 0;
+      for (const [rowIndex, row] of rows.entries()) {
         await prisma.ebayInventoryCacheItem.upsert({
           where: {
             ebaySellerConnectionId_marketplace_sku: {
@@ -420,6 +522,14 @@ export async function syncEbayStoreInventory(input: {
             syncedAt: syncStartedAt,
           },
         });
+        cacheSavedForAccount += 1;
+        if (rowIndex % 10 === 0 || rowIndex === rows.length - 1) {
+          setProgress(key, {
+            percent: accountBase + accountSpan * (0.72 + ((rowIndex + 1) / Math.max(1, rows.length)) * 0.2),
+            message: `Saving ${rowIndex + 1}/${rows.length} cached inventory rows...`,
+            cacheSaved: cacheSavedBeforeAccount + cacheSavedForAccount,
+          });
+        }
       }
       await prisma.ebayInventoryCacheItem.deleteMany({
         where: {
@@ -430,14 +540,33 @@ export async function syncEbayStoreInventory(input: {
         },
       });
       refreshedRows.push(...rows);
+      setProgress(key, {
+        percent: accountBase + accountSpan * 0.95,
+        message: `Finished ${connection.username ?? "eBay account"}.`,
+        accountsCompleted: connectionIndex + 1,
+        errors: errors.length,
+      });
     } catch (error) {
       errors.push({
         connectionId: connection.id,
         username: connection.username,
         message: error instanceof Error ? error.message : "Unable to sync eBay inventory",
       });
+      setProgress(key, {
+        message: `Could not sync ${connection.username ?? "eBay account"}. Continuing where possible...`,
+        accountsCompleted: connectionIndex + 1,
+        errors: errors.length,
+      });
     }
   }
+  setProgress(key, {
+    status: errors.length === connections.length && connections.length > 0 ? "FAILED" : "COMPLETED",
+    percent: 100,
+    message: errors.length === connections.length && connections.length > 0 ? "Inventory sync failed." : "Inventory sync completed.",
+    currentAccount: null,
+    finishedAt: new Date().toISOString(),
+    errors: errors.length,
+  });
   if (refreshedRows.length > 0) {
     return shapeInventoryResponse({ ...input, connections, rows: refreshedRows, errors });
   }
@@ -452,9 +581,9 @@ export async function syncEbayStoreInventory(input: {
 }
 
 export function startEbayStoreInventoryCacheRefresh(input: Parameters<typeof syncEbayStoreInventory>[0]) {
-  const key = `${input.organizationId}:${input.connectionId ?? "all"}`;
+  const key = syncKey(input);
   const existing = runningInventoryCacheRefreshes.get(key);
-  if (existing) return { started: false, running: true };
+  if (existing) return { started: false, running: true, progress: getEbayStoreInventoryCacheRefreshProgress(input) };
   const task = syncEbayStoreInventory(input)
     .catch((error) => {
       console.error(JSON.stringify({
@@ -466,7 +595,7 @@ export function startEbayStoreInventoryCacheRefresh(input: Parameters<typeof syn
     })
     .finally(() => runningInventoryCacheRefreshes.delete(key));
   runningInventoryCacheRefreshes.set(key, task);
-  return { started: true, running: true };
+  return { started: true, running: true, progress: getEbayStoreInventoryCacheRefreshProgress(input) };
 }
 
 export async function updateEbayStoreInventoryItem(input: {

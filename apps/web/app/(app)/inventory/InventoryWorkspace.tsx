@@ -38,7 +38,23 @@ type InventoryResponse = {
   };
   errors: Array<{ connectionId: string; username: string | null; message: string }>;
   syncedAt: string | null;
-  sync?: { started: boolean; running: boolean };
+  sync?: { started: boolean; running: boolean; progress?: InventorySyncProgress };
+};
+
+type InventorySyncProgress = {
+  status: "IDLE" | "RUNNING" | "COMPLETED" | "FAILED";
+  percent: number;
+  message: string;
+  accountsTotal: number;
+  accountsCompleted: number;
+  currentAccount: string | null;
+  totalSkus: number;
+  inventorySynced: number;
+  offersChecked: number;
+  cacheSaved: number;
+  errors: number;
+  startedAt: string | null;
+  finishedAt: string | null;
 };
 
 const emptyInventory: InventoryResponse = {
@@ -84,6 +100,7 @@ export default function InventoryWorkspace() {
   const [inventory, setInventory] = useState<InventoryResponse>(emptyInventory);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<InventorySyncProgress | null>(null);
   const [savingKey, setSavingKey] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -119,6 +136,43 @@ export default function InventoryWorkspace() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (authStatus !== "ready" || demo) return;
+    const params = new URLSearchParams();
+    if (connectionId) params.set("connectionId", connectionId);
+    void apiFetch(`/api/ebay/store-inventory/sync-status${params.toString() ? `?${params.toString()}` : ""}`)
+      .then((progress) => {
+        const next = progress as InventorySyncProgress;
+        if (next.status === "RUNNING") {
+          setSyncProgress(next);
+          setSyncing(true);
+        }
+      })
+      .catch(() => undefined);
+  }, [apiFetch, authStatus, connectionId, demo]);
+
+  useEffect(() => {
+    if (authStatus !== "ready" || demo || syncProgress?.status !== "RUNNING") return undefined;
+    const params = new URLSearchParams();
+    if (connectionId) params.set("connectionId", connectionId);
+    const interval = window.setInterval(async () => {
+      try {
+        const progress = await apiFetch(`/api/ebay/store-inventory/sync-status${params.toString() ? `?${params.toString()}` : ""}`) as InventorySyncProgress;
+        setSyncProgress(progress);
+        setSyncing(progress.status === "RUNNING");
+        if (progress.status === "COMPLETED" || progress.status === "FAILED") {
+          window.clearInterval(interval);
+          await load();
+          if (progress.status === "COMPLETED") setNotice("Inventory cache refreshed from eBay.");
+          if (progress.status === "FAILED") setError("Inventory sync failed. Check API logs or try again.");
+        }
+      } catch {
+        // Keep the current progress visible; the next poll may recover.
+      }
+    }, 2000);
+    return () => window.clearInterval(interval);
+  }, [apiFetch, authStatus, connectionId, demo, load, syncProgress?.status]);
+
   async function syncStores() {
     if (authStatus !== "ready" || demo) return;
     setSyncing(true);
@@ -131,8 +185,8 @@ export default function InventoryWorkspace() {
         body: JSON.stringify({ page, pageSize, stock, offerStatus, ...(search.trim() ? { q: search.trim() } : {}), ...(connectionId ? { connectionId } : {}) }),
       }) as InventoryResponse;
       setInventory(response);
+      setSyncProgress(response.sync?.progress ?? null);
       setNotice(response.sync?.started ? "Inventory sync started in the background. Cached rows will update as eBay responds." : "Inventory sync is already running in the background.");
-      window.setTimeout(() => void load(), 4000);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to refresh eBay inventory");
       await load();
@@ -233,6 +287,27 @@ export default function InventoryWorkspace() {
 
       {notice && <div className={styles.notice}>{notice}</div>}
       {error && <div className={styles.error}>{error}</div>}
+      {syncProgress && syncProgress.status !== "IDLE" && (
+        <section className={styles.syncProgress}>
+          <div className={styles.syncProgressHeader}>
+            <div>
+              <b>{syncProgress.status === "RUNNING" ? "Syncing eBay inventory" : syncProgress.status === "COMPLETED" ? "Inventory sync completed" : "Inventory sync failed"}</b>
+              <span>{syncProgress.message}</span>
+            </div>
+            <strong>{syncProgress.percent}%</strong>
+          </div>
+          <div className={styles.progressTrack} aria-label="Inventory sync progress" aria-valuenow={syncProgress.percent} aria-valuemin={0} aria-valuemax={100} role="progressbar">
+            <span style={{ width: `${syncProgress.percent}%` }} />
+          </div>
+          <div className={styles.syncProgressStats}>
+            <span>{syncProgress.accountsCompleted}/{syncProgress.accountsTotal} accounts</span>
+            <span>{syncProgress.inventorySynced} SKUs found</span>
+            <span>{syncProgress.offersChecked}/{syncProgress.totalSkus} offers checked</span>
+            <span>{syncProgress.cacheSaved} rows cached</span>
+            {syncProgress.errors > 0 && <span>{syncProgress.errors} warnings</span>}
+          </div>
+        </section>
+      )}
       {inventory.errors.length > 0 && (
         <div className={styles.warning}>
           <b>{inventory.errors.length} sync warning{inventory.errors.length === 1 ? "" : "s"}</b>
