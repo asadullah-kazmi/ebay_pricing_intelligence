@@ -100,7 +100,7 @@ function stockLabel(quantity: number | null) {
 
 function statusLabel(row: InventoryRow) {
   const status = row.offerStatus ?? row.listingStatus ?? "Inventory item";
-  return status.replace(/_/g, " ").toLowerCase();
+  return status.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function InventoryImage({ src, alt }: { src: string | null; alt: string }) {
@@ -416,7 +416,7 @@ export default function InventoryWorkspace() {
               <thead>
                 <tr>
                   <th className={styles.colStore}>Store</th>
-                  <th className={styles.colSku}>SKU / Listing</th>
+                  <th className={styles.colSku}>SKU</th>
                   <th className={styles.colProduct}>Product</th>
                   <th className={styles.colQty}>Qty</th>
                   <th className={styles.colPrice}>Price</th>
@@ -430,11 +430,11 @@ export default function InventoryWorkspace() {
                   return (
                     <tr key={row.key}>
                       <td className={styles.colStore}>
-                        <b>{row.account.username ?? "eBay"}</b>
+                        <span className={styles.storeName}>{row.account.username ?? "eBay"}</span>
                         <span className={styles.muted}>{row.account.marketplace}{row.account.isDefault ? " · default" : ""}</span>
                       </td>
                       <td className={styles.colSku}>
-                        <code>{row.sku}</code>
+                        <span className={styles.skuText}>{row.sku}</span>
                         <span className={styles.muted}>{row.listingId ? `Listing ${row.listingId}` : row.offerId ? `Offer ${row.offerId}` : "Inventory item only"}</span>
                       </td>
                       <td className={styles.colProduct}>
@@ -448,13 +448,13 @@ export default function InventoryWorkspace() {
                       </td>
                       <td className={styles.colQty}>
                         <div className={styles.qtyBox}>
-                          <b>{row.quantity ?? "-"}</b>
-                          <span className={`${styles.pill} ${styles[stockState.tone]}`}>{stockState.text}</span>
+                          <span className={styles.qtyValue}>{row.quantity ?? "-"}</span>
+                          {stockState.tone !== "good" && <span className={`${styles.stockNote} ${styles[stockState.tone]}`}>{stockState.text}</span>}
                         </div>
                       </td>
-                      <td className={styles.colPrice}><b>{money(row.price, row.currency)}</b></td>
+                      <td className={styles.colPrice}><span className={styles.priceText}>{money(row.price, row.currency)}</span></td>
                       <td className={styles.colStatus}>
-                        <span className={styles.status}>{statusLabel(row)}</span>
+                        <span className={styles.statusText}>{statusLabel(row)}</span>
                         {row.listingOnHold && <span className={styles.muted}>On hold</span>}
                       </td>
                       <td className={styles.colActions}>
