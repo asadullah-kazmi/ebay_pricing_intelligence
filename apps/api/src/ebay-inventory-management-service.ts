@@ -586,6 +586,7 @@ function inventoryCacheWhere(input: {
   const offerStatus = input.offerStatus ?? "ALL";
   const where: Prisma.EbayInventoryCacheItemWhereInput = {
     organizationId: input.organizationId,
+    sourceKey: { startsWith: "TRADING:" },
     ...(input.connectionId ? { ebaySellerConnectionId: input.connectionId } : {}),
   };
   const and: Prisma.EbayInventoryCacheItemWhereInput[] = [];
@@ -637,6 +638,7 @@ async function shapeCachedInventoryResponse(input: {
   const pageSize = input.pageSize ?? 50;
   const whereBase: Prisma.EbayInventoryCacheItemWhereInput = {
     organizationId: input.organizationId,
+    sourceKey: { startsWith: "TRADING:" },
     ...(input.connectionId ? { ebaySellerConnectionId: input.connectionId } : {}),
   };
   const whereFiltered = inventoryCacheWhere(input);
@@ -885,7 +887,10 @@ export async function syncEbayStoreInventory(input: {
           organizationId: input.organizationId,
           ebaySellerConnectionId: connection.id,
           marketplace,
-          syncedAt: { lt: syncStartedAt },
+          OR: [
+            { syncedAt: { lt: syncStartedAt } },
+            { NOT: { sourceKey: { startsWith: "TRADING:" } } },
+          ],
         },
       });
       const rows = mergeTradingRows({ account, listings: fetchedListings, syncedAt: syncStartedAt });
