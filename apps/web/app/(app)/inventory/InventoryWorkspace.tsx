@@ -189,7 +189,7 @@ export default function InventoryWorkspace() {
         if (progress.status === "COMPLETED" || progress.status === "FAILED") {
           window.clearInterval(interval);
           await load();
-          if (progress.status === "COMPLETED") setNotice("Inventory cache refreshed from eBay.");
+          if (progress.status === "COMPLETED") setNotice("");
           if (progress.status === "FAILED") {
             setNotice("");
             setError(progress.message || progress.errorMessages?.[0] || "Inventory sync failed. Check API logs or try again.");
@@ -219,7 +219,7 @@ export default function InventoryWorkspace() {
       const progress = response.sync?.progress;
       setSyncProgress(progress && progress.status !== "IDLE" ? progress : optimisticProgress);
       setSyncing(response.sync?.running ?? true);
-      setNotice(response.sync?.started ? "Inventory sync started in the background. Cached rows will update as eBay responds." : "Inventory sync is already running in the background.");
+      setNotice("");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to refresh eBay inventory");
       setSyncProgress(null);
