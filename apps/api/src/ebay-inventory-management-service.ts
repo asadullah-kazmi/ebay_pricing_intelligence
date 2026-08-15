@@ -5,12 +5,13 @@ import {
   bulkUpdatePriceQuantity,
   getInventoryItemDetail,
   getInventoryItemsPage,
+  getOffersListPage,
   getOffersPage,
   withdrawOffer,
   type EbayInventoryItemSummary,
   type EbayOfferSummary,
 } from "./providers/ebay-inventory.js";
-import { EbayApiError, findSellerBrowseImage } from "./providers/ebay.js";
+import { EbayApiError, findSellerBrowseListingSnapshot } from "./providers/ebay.js";
 
 export class EbayInventoryManagementError extends Error {
   constructor(message: string, readonly statusCode: 400 | 404 | 409 | 502 = 400) {
@@ -217,7 +218,7 @@ async function enrichInventoryItemsWithDetailImages(input: {
   return input.inventoryItems.map((item) => bySku.get(item.sku) ?? item);
 }
 
-async function enrichRowsWithSellerBrowseImages(input: {
+async function enrichRowsWithSellerBrowseData(input: {
   rows: EbayInventoryRow[];
   marketplace: Marketplace;
   sellerUsername: string | null;
@@ -226,39 +227,59 @@ async function enrichRowsWithSellerBrowseImages(input: {
   onBatchComplete?: (count: number) => void;
 }) {
   if (!input.sellerUsername) return input.rows;
-  const missingRows = input.rows.filter((row) => !row.imageUrl && (row.title || row.sku));
-  const imageByKey = new Map<string, string | null>();
+  const missingRows = input.rows.filter((row) => (!row.imageUrl || row.price == null || !row.categoryId) && (row.title || row.sku));
+  const snapshotByKey = new Map<string, Awaited<ReturnType<typeof findSellerBrowseListingSnapshot>>>();
   const batchSize = 3;
   for (let index = 0; index < missingRows.length; index += batchSize) {
     const batch = missingRows.slice(index, index + batchSize);
-    const results = await Promise.allSettled(batch.map((row) =>
-      findSellerBrowseImage({
-        marketplace: input.marketplace,
-        sellerUsername: input.sellerUsername,
-        query: row.title?.trim() || row.sku,
-        limit: 10,
-      }),
-    ));
+    const results = await Promise.allSettled(batch.map(async (row) => {
+      const queries = [...new Set([row.sku, row.title].map((value) => value?.trim()).filter((value): value is string => Boolean(value)))];
+      for (const query of queries) {
+        const snapshot = await findSellerBrowseListingSnapshot({
+          marketplace: input.marketplace,
+          sellerUsername: input.sellerUsername,
+          query,
+          limit: 10,
+        });
+        if (snapshot) return snapshot;
+      }
+      return null;
+    }));
     results.forEach((result, resultIndex) => {
       const row = batch[resultIndex];
       if (!row) return;
       if (result.status === "fulfilled") {
-        imageByKey.set(row.key, result.value);
+        snapshotByKey.set(row.key, result.value);
         return;
       }
       if (result.reason instanceof EbayApiError && [403, 404].includes(result.reason.status)) return;
       input.errors.push({
         connectionId: input.connectionId,
         username: input.sellerUsername,
-        message: `Browse image lookup skipped for ${row.sku}: ${result.reason instanceof Error ? result.reason.message : "Unable to search eBay listing image"}`,
+        message: `Browse listing lookup skipped for ${row.sku}: ${result.reason instanceof Error ? result.reason.message : "Unable to search eBay seller listing"}`,
       });
     });
     input.onBatchComplete?.(batch.length);
   }
-  return input.rows.map((row) => ({
-    ...row,
-    imageUrl: row.imageUrl ?? imageByKey.get(row.key) ?? null,
-  }));
+  return input.rows.map((row) => {
+    const snapshot = snapshotByKey.get(row.key);
+    if (!snapshot) return row;
+    const offerPayload = {
+      ...(row.offerPayload ?? {}),
+      browseListing: snapshot,
+    };
+    return {
+      ...row,
+      title: row.title ?? snapshot.title,
+      condition: row.condition ?? snapshot.condition,
+      price: row.price ?? snapshot.price,
+      currency: row.currency ?? snapshot.currency,
+      listingStatus: row.listingStatus ?? (snapshot.itemId ? "ACTIVE" : null),
+      categoryId: row.categoryId ?? snapshot.categoryId,
+      imageUrl: row.imageUrl ?? snapshot.imageUrl,
+      offerPayload,
+    };
+  });
 }
 
 function mergeRows(input: {
@@ -402,6 +423,27 @@ async function collectOffersForInventoryItems(input: {
   username: string | null;
   onBatchComplete?: (count: number) => void;
 }) {
+  try {
+    const pagedOffers = await collectPages(
+      (offset) => getOffersListPage({
+        organizationId: input.organizationId,
+        connectionId: input.connectionId,
+        marketplace: input.marketplace,
+        limit: 100,
+        offset,
+      }),
+      (page) => page.offers,
+    ) as EbayOfferSummary[];
+    input.onBatchComplete?.(input.inventoryItems.length);
+    return pagedOffers;
+  } catch (error) {
+    if (!(error instanceof EbayApiError) || ![400, 403, 404].includes(error.status)) throw error;
+    input.errors.push({
+      connectionId: input.connectionId,
+      username: input.username,
+      message: `Offer list fallback enabled: ${error.message}`,
+    });
+  }
   const offers: EbayOfferSummary[] = [];
   const skus = [...new Set(input.inventoryItems.map((item) => item.sku).filter(Boolean))];
   const batchSize = 5;
@@ -629,14 +671,14 @@ export async function syncEbayStoreInventory(input: {
         },
       });
       let rows = mergeRows({ account, inventoryItems, offers, syncedAt: syncStartedAt });
-      const missingImagesBeforeBrowse = rows.filter((row) => !row.imageUrl).length;
-      if (missingImagesBeforeBrowse > 0) {
+      const missingListingDataBeforeBrowse = rows.filter((row) => !row.imageUrl || row.price == null || !row.categoryId).length;
+      if (missingListingDataBeforeBrowse > 0) {
         let browseChecked = 0;
         setProgress(key, {
           percent: accountBase + accountSpan * 0.7,
-          message: `Finding listing images for ${missingImagesBeforeBrowse} remaining SKU${missingImagesBeforeBrowse === 1 ? "" : "s"}...`,
+          message: `Finding seller listing data for ${missingListingDataBeforeBrowse} remaining SKU${missingListingDataBeforeBrowse === 1 ? "" : "s"}...`,
         });
-        rows = await enrichRowsWithSellerBrowseImages({
+        rows = await enrichRowsWithSellerBrowseData({
           rows,
           marketplace,
           sellerUsername: connection.username,
@@ -645,8 +687,8 @@ export async function syncEbayStoreInventory(input: {
           onBatchComplete: (count) => {
             browseChecked += count;
             setProgress(key, {
-              percent: accountBase + accountSpan * (0.7 + (browseChecked / Math.max(1, missingImagesBeforeBrowse)) * 0.08),
-              message: `Checked ${Math.min(browseChecked, missingImagesBeforeBrowse)}/${missingImagesBeforeBrowse} seller listing image matches...`,
+              percent: accountBase + accountSpan * (0.7 + (browseChecked / Math.max(1, missingListingDataBeforeBrowse)) * 0.08),
+              message: `Checked ${Math.min(browseChecked, missingListingDataBeforeBrowse)}/${missingListingDataBeforeBrowse} seller listing matches...`,
               errors: errors.length,
             });
           },

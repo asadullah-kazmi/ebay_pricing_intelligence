@@ -293,6 +293,38 @@ export async function getOffersPage(input: {
   return { offers };
 }
 
+export async function getOffersListPage(input: {
+  organizationId: string;
+  marketplace: Marketplace;
+  connectionId: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ offers: EbayOfferSummary[]; total: number; size: number; limit: number; offset: number }> {
+  const limit = input.limit ?? 100;
+  const offset = input.offset ?? 0;
+  const response = await inventoryApiRequest<Record<string, unknown>>({
+    organizationId: input.organizationId,
+    marketplace: input.marketplace,
+    connectionId: input.connectionId,
+    method: "GET",
+    path: `/offer?limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}&marketplace_id=${encodeURIComponent(input.marketplace)}`,
+    operation: "eBay offer list",
+  });
+  const offers = Array.isArray(response.offers)
+    ? response.offers
+      .filter((offer): offer is Record<string, unknown> => typeof offer === "object" && offer !== null)
+      .map(normalizeOfferSummary)
+      .filter((offer): offer is EbayOfferSummary => Boolean(offer))
+    : [];
+  return {
+    offers,
+    total: numeric(response.total) ?? offers.length,
+    size: numeric(response.size) ?? offers.length,
+    limit,
+    offset,
+  };
+}
+
 export async function bulkUpdatePriceQuantity(
   organizationId: string,
   marketplace: Marketplace,

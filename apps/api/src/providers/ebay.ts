@@ -175,6 +175,48 @@ export async function findSellerBrowseImage(input: {
   sellerUsername?: string | null;
   limit?: number;
 }): Promise<string | null> {
+  return (await findSellerBrowseListingSnapshot(input))?.imageUrl ?? null;
+}
+
+export interface SellerBrowseListingSnapshot {
+  itemId: string | null;
+  title: string | null;
+  imageUrl: string | null;
+  price: number | null;
+  currency: string | null;
+  condition: string | null;
+  itemWebUrl: string | null;
+  categoryId: string | null;
+}
+
+function firstBrowseImage(item: Record<string, unknown>): string | null {
+  const primary = (item.image as { imageUrl?: unknown } | undefined)?.imageUrl;
+  if (typeof primary === "string" && primary.startsWith("https://")) return primary;
+  const thumbnail = Array.isArray(item.thumbnailImages) ? item.thumbnailImages[0] as { imageUrl?: unknown } | undefined : undefined;
+  if (typeof thumbnail?.imageUrl === "string" && thumbnail.imageUrl.startsWith("https://")) return thumbnail.imageUrl;
+  return null;
+}
+
+function browseCategoryId(item: Record<string, unknown>): string | null {
+  const leaf = item.leafCategoryIds;
+  if (Array.isArray(leaf) && typeof leaf[0] === "string" && leaf[0].trim()) return leaf[0];
+  const categories = item.categories;
+  if (Array.isArray(categories)) {
+    for (const category of categories) {
+      if (typeof category !== "object" || category === null) continue;
+      const categoryId = (category as Record<string, unknown>).categoryId;
+      if (typeof categoryId === "string" && categoryId.trim()) return categoryId;
+    }
+  }
+  return null;
+}
+
+export async function findSellerBrowseListingSnapshot(input: {
+  marketplace: Marketplace;
+  query: string;
+  sellerUsername?: string | null;
+  limit?: number;
+}): Promise<SellerBrowseListingSnapshot | null> {
   if (!input.query.trim()) return null;
   const query = new URLSearchParams({
     q: input.query.trim(),
@@ -190,10 +232,22 @@ export async function findSellerBrowseImage(input: {
   for (const item of data.itemSummaries ?? []) {
     const itemSeller = String((item.seller as { username?: string } | undefined)?.username ?? "").trim().toLowerCase();
     if (seller && itemSeller && itemSeller !== seller) continue;
-    const primary = (item.image as { imageUrl?: unknown } | undefined)?.imageUrl;
-    if (typeof primary === "string" && primary.startsWith("https://")) return primary;
-    const thumbnail = Array.isArray(item.thumbnailImages) ? item.thumbnailImages[0] as { imageUrl?: unknown } | undefined : undefined;
-    if (typeof thumbnail?.imageUrl === "string" && thumbnail.imageUrl.startsWith("https://")) return thumbnail.imageUrl;
+    const price = item.price as { value?: unknown; currency?: unknown } | undefined;
+    const priceValue = typeof price?.value === "number"
+      ? price.value
+      : typeof price?.value === "string" && Number.isFinite(Number(price.value))
+        ? Number(price.value)
+        : null;
+    return {
+      itemId: typeof item.itemId === "string" ? item.itemId : null,
+      title: typeof item.title === "string" ? item.title : null,
+      imageUrl: firstBrowseImage(item),
+      price: priceValue,
+      currency: typeof price?.currency === "string" ? price.currency : marketplaceCurrency[input.marketplace],
+      condition: typeof item.condition === "string" ? item.condition : null,
+      itemWebUrl: typeof item.itemWebUrl === "string" ? item.itemWebUrl : null,
+      categoryId: browseCategoryId(item),
+    };
   }
   return null;
 }
