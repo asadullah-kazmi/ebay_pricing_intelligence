@@ -24,7 +24,7 @@
     "ebay:catalog:check": "tsx src/scripts/check-ebay-catalog.ts",
     "smoke:production": "tsx src/scripts/smoke-production.ts",
     "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev"
+    "db:migrate": "tsx src/scripts/run-prisma-migrate.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1090.0",
