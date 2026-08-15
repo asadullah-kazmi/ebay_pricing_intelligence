@@ -397,6 +397,10 @@ function mergeTradingRows(input: {
   });
 }
 
+function inventoryRowSourceKey(row: EbayInventoryRow): string {
+  return typeof row.offerPayload?.sourceKey === "string" ? row.offerPayload.sourceKey : `TRADING:${row.listingId ?? row.sku}`;
+}
+
 function toJson(value: Record<string, unknown> | null): Prisma.InputJsonValue | typeof Prisma.JsonNull {
   return value ? value as Prisma.InputJsonValue : Prisma.JsonNull;
 }
@@ -796,6 +800,9 @@ export async function syncEbayStoreInventory(input: {
   });
   const errors: Array<{ connectionId: string; username: string | null; message: string }> = [];
   const refreshedRows: EbayInventoryRow[] = [];
+  const expectedListingsByConnection = new Map<string, number>();
+  const fetchedSourceKeys = new Set<string>();
+  const cachedSourceKeys = new Set<string>();
   let successfulSiteSyncs = 0;
   for (const [taskIndex, task] of syncTasks.entries()) {
     const { connection, marketplace } = task;
@@ -813,8 +820,6 @@ export async function syncEbayStoreInventory(input: {
       const fetchedListings: EbayTradingActiveListing[] = [];
       const entriesPerPage = 200;
       let totalListings = 0;
-      let cacheSavedForAccount = 0;
-      const cacheSavedBeforeAccount = inventoryCacheRefreshProgress.get(key)?.cacheSaved ?? 0;
       const endTimeFrom = new Date();
       const endTimeTo = new Date(Date.now() + 119 * 24 * 60 * 60 * 1000);
       for (let pageNumber = 1; pageNumber <= 1000; pageNumber += 1) {
@@ -829,26 +834,39 @@ export async function syncEbayStoreInventory(input: {
         });
         if (pageNumber === 1) {
           totalListings = page.total;
+          const previousExpected = expectedListingsByConnection.get(connection.id) ?? 0;
+          expectedListingsByConnection.set(connection.id, Math.max(previousExpected, totalListings));
+          const estimatedUniqueTotal = Math.max(
+            fetchedSourceKeys.size,
+            [...expectedListingsByConnection.values()].reduce((sum, value) => sum + value, 0),
+          );
           setProgress(key, {
             percent: accountBase + accountSpan * 0.08,
             message: `Found ${totalListings} ${marketplace} active listing${totalListings === 1 ? "" : "s"} for ${connection.username ?? "eBay account"}...`,
-            totalSkus: (inventoryCacheRefreshProgress.get(key)?.totalSkus ?? 0) + totalListings,
+            totalSkus: estimatedUniqueTotal,
           });
         }
         fetchedListings.push(...page.listings);
+        const pageRows = mergeTradingRows({ account, listings: page.listings, syncedAt: syncStartedAt });
+        for (const row of pageRows) {
+          fetchedSourceKeys.add(`${connection.id}:${inventoryRowSourceKey(row)}`);
+        }
+        const estimatedUniqueTotal = Math.max(
+          fetchedSourceKeys.size,
+          [...expectedListingsByConnection.values()].reduce((sum, value) => sum + value, 0),
+        );
         setProgress(key, {
           percent: accountBase + accountSpan * Math.min(0.72, 0.08 + (fetchedListings.length / Math.max(1, totalListings || fetchedListings.length)) * 0.64),
-          message: `Fetched ${fetchedListings.length}/${totalListings || fetchedListings.length} ${marketplace} active listing records...`,
-          inventorySynced: (inventoryCacheRefreshProgress.get(key)?.inventorySynced ?? 0) + page.listings.length,
+          message: `Fetched ${fetchedSourceKeys.size}/${estimatedUniqueTotal || fetchedSourceKeys.size} unique active listing records...`,
+          totalSkus: estimatedUniqueTotal,
+          inventorySynced: fetchedSourceKeys.size,
         });
-        const pageRows = mergeTradingRows({ account, listings: page.listings, syncedAt: syncStartedAt });
         for (const [rowIndex, row] of pageRows.entries()) {
-          const sourceKey = typeof row.offerPayload?.sourceKey === "string" ? row.offerPayload.sourceKey : `TRADING:${row.listingId ?? row.sku}`;
+          const sourceKey = inventoryRowSourceKey(row);
           await prisma.ebayInventoryCacheItem.upsert({
             where: {
-              ebaySellerConnectionId_marketplace_sourceKey: {
+              ebaySellerConnectionId_sourceKey: {
                 ebaySellerConnectionId: connection.id,
-                marketplace,
                 sourceKey,
               },
             },
@@ -893,12 +911,13 @@ export async function syncEbayStoreInventory(input: {
               syncedAt: syncStartedAt,
             },
           });
-          cacheSavedForAccount += 1;
+          cachedSourceKeys.add(`${connection.id}:${sourceKey}`);
           if (rowIndex % 25 === 0 || rowIndex === pageRows.length - 1) {
             setProgress(key, {
               percent: accountBase + accountSpan * Math.min(0.95, 0.72 + (fetchedListings.length / Math.max(1, totalListings || fetchedListings.length)) * 0.23),
-              message: `Cached ${cacheSavedForAccount}/${totalListings || fetchedListings.length} ${marketplace} active listing rows...`,
-              cacheSaved: cacheSavedBeforeAccount + cacheSavedForAccount,
+              message: `Cached ${cachedSourceKeys.size}/${estimatedUniqueTotal || cachedSourceKeys.size} unique active listing rows...`,
+              totalSkus: estimatedUniqueTotal,
+              cacheSaved: cachedSourceKeys.size,
             });
           }
         }
