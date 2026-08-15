@@ -70,10 +70,14 @@ function idleProgress(key: string): EbayInventoryCacheRefreshProgress {
 
 function setProgress(key: string, patch: Partial<EbayInventoryCacheRefreshProgress>) {
   const current = inventoryCacheRefreshProgress.get(key) ?? idleProgress(key);
+  const merged = { ...current, ...patch };
+  const rowProgress =
+    merged.status === "RUNNING" && merged.totalSkus > 0
+      ? Math.min(99, Math.max(2, Math.round((Math.max(merged.inventorySynced, merged.cacheSaved) / merged.totalSkus) * 100)))
+      : null;
   const next = {
-    ...current,
-    ...patch,
-    percent: Math.max(0, Math.min(100, Math.round(patch.percent ?? current.percent))),
+    ...merged,
+    percent: Math.max(0, Math.min(100, rowProgress ?? Math.round(patch.percent ?? current.percent))),
   };
   inventoryCacheRefreshProgress.set(key, next);
   return next;
