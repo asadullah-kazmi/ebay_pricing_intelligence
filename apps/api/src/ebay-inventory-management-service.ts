@@ -791,8 +791,8 @@ export async function syncEbayStoreInventory(input: {
       let totalListings = 0;
       let cacheSavedForAccount = 0;
       const cacheSavedBeforeAccount = inventoryCacheRefreshProgress.get(key)?.cacheSaved ?? 0;
-      const endTimeFrom = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const endTimeTo = new Date(Date.now() + 120 * 24 * 60 * 60 * 1000);
+      const endTimeFrom = new Date();
+      const endTimeTo = new Date(Date.now() + 119 * 24 * 60 * 60 * 1000);
       for (let pageNumber = 1; pageNumber <= 1000; pageNumber += 1) {
         const page = await getTradingSellerListPage({
           organizationId: input.organizationId,

@@ -53,6 +53,7 @@ type InventorySyncProgress = {
   offersChecked: number;
   cacheSaved: number;
   errors: number;
+  errorMessages?: string[];
   startedAt: string | null;
   finishedAt: string | null;
 };
@@ -79,6 +80,7 @@ function startingSyncProgress(): InventorySyncProgress {
     offersChecked: 0,
     cacheSaved: 0,
     errors: 0,
+    errorMessages: [],
     startedAt: new Date().toISOString(),
     finishedAt: null,
   };
@@ -188,7 +190,10 @@ export default function InventoryWorkspace() {
           window.clearInterval(interval);
           await load();
           if (progress.status === "COMPLETED") setNotice("Inventory cache refreshed from eBay.");
-          if (progress.status === "FAILED") setError("Inventory sync failed. Check API logs or try again.");
+          if (progress.status === "FAILED") {
+            setNotice("");
+            setError(progress.message || progress.errorMessages?.[0] || "Inventory sync failed. Check API logs or try again.");
+          }
         }
       } catch {
         // Keep current progress
@@ -334,6 +339,13 @@ export default function InventoryWorkspace() {
             <span>{syncProgress.cacheSaved} rows cached</span>
             {syncProgress.errors > 0 && <span>{syncProgress.errors} warnings</span>}
           </div>
+          {syncProgress.errorMessages && syncProgress.errorMessages.length > 0 && (
+            <div className={styles.syncProgressErrors}>
+              {syncProgress.errorMessages.slice(0, 3).map((message) => (
+                <span key={message}>{message}</span>
+              ))}
+            </div>
+          )}
         </section>
       )}
       {inventory.errors.length > 0 && (
