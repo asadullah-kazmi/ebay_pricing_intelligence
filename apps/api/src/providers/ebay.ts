@@ -168,3 +168,32 @@ export async function searchEbay(oem: string, marketplace: Marketplace, conditio
   });
   return detailedItems.map((item) => toListing(item, marketplace));
 }
+
+export async function findSellerBrowseImage(input: {
+  marketplace: Marketplace;
+  query: string;
+  sellerUsername?: string | null;
+  limit?: number;
+}): Promise<string | null> {
+  if (!input.query.trim()) return null;
+  const query = new URLSearchParams({
+    q: input.query.trim(),
+    limit: String(Math.max(1, Math.min(input.limit ?? 10, 20))),
+  });
+  if (input.sellerUsername?.trim()) query.set("filter", `sellers:{${input.sellerUsername.trim()}}`);
+  const data = await ebayGet<{ itemSummaries?: Array<Record<string, unknown>> }>(
+    `/buy/browse/v1/item_summary/search?${query}`,
+    input.marketplace,
+    "eBay seller listing image search",
+  );
+  const seller = input.sellerUsername?.trim().toLowerCase();
+  for (const item of data.itemSummaries ?? []) {
+    const itemSeller = String((item.seller as { username?: string } | undefined)?.username ?? "").trim().toLowerCase();
+    if (seller && itemSeller && itemSeller !== seller) continue;
+    const primary = (item.image as { imageUrl?: unknown } | undefined)?.imageUrl;
+    if (typeof primary === "string" && primary.startsWith("https://")) return primary;
+    const thumbnail = Array.isArray(item.thumbnailImages) ? item.thumbnailImages[0] as { imageUrl?: unknown } | undefined : undefined;
+    if (typeof thumbnail?.imageUrl === "string" && thumbnail.imageUrl.startsWith("https://")) return thumbnail.imageUrl;
+  }
+  return null;
+}

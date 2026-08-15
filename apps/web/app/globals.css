@@ -216,7 +216,7 @@ label {
   display: grid;
   grid-template-columns: 1fr 1.15fr;
   gap: 6vw;
-  align-items: end;
+  align-items: flex-end;
   background:
     radial-gradient(circle at 12% 20%, #dbeafe88, transparent 42%),
     linear-gradient(180deg, #fff, var(--pf-canvas));

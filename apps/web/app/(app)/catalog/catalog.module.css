@@ -439,7 +439,7 @@
   grid-template-columns: minmax(240px, 1.8fr) repeat(4, minmax(120px, 1fr)) auto;
   gap: 12px;
   border-bottom: 1px solid #e2e8f0;
-  align-items: end;
+  align-items: flex-end;
 }
 
 .toolbar {
@@ -1494,7 +1494,7 @@
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
-  align-items: end;
+  align-items: flex-end;
   padding: 18px 20px;
 }
 
@@ -4734,7 +4734,7 @@
 .readinessStatusDraft { background: #eef3f8; color: #53647b; }
 .readinessWarnings { background: #fff7e5; color: #9b6200; }
 
-.readinessRowMeta { display: grid; grid-template-columns: minmax(135px, auto) 74px 118px; min-width: 0; align-items: center; justify-content: end; gap: 10px; }
+.readinessRowMeta { display: grid; grid-template-columns: minmax(135px, auto) 74px 118px; min-width: 0; align-items: center; justify-content: flex-end; gap: 10px; }
 .readinessIssueCounts { display: flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; }
 .readinessRowMeta > b { min-width: 82px; text-align: right; color: #102442; font-size: 12px; }
 .readinessRowMeta button {

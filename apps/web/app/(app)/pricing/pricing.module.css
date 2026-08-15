@@ -382,7 +382,7 @@
   display: grid;
   grid-template-columns: 1fr 1fr auto;
   gap: 12px;
-  align-items: end;
+  align-items: flex-end;
 }
 
 .bulkHero .searchRow {
@@ -617,7 +617,7 @@
 .formulaBuilderActions {
   display: grid;
   grid-template-columns: 1fr 150px 175px;
-  align-items: end;
+  align-items: flex-end;
   gap: 10px;
   padding: 12px 14px;
   background: #fff;

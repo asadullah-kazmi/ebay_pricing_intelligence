@@ -394,7 +394,7 @@
   grid-template-columns: repeat(5, minmax(120px, 1fr)) auto;
   gap: 12px;
   padding: 22px 26px;
-  align-items: end;
+  align-items: flex-end;
   border-bottom: 1px solid #e2e8f0;
   background: #ffffff;
 }

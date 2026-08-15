@@ -253,6 +253,23 @@ export async function getInventoryItemsPage(input: {
   };
 }
 
+export async function getInventoryItemDetail(input: {
+  organizationId: string;
+  marketplace: Marketplace;
+  connectionId: string;
+  sku: string;
+}): Promise<EbayInventoryItemSummary | null> {
+  const response = await inventoryApiRequest<Record<string, unknown>>({
+    organizationId: input.organizationId,
+    marketplace: input.marketplace,
+    connectionId: input.connectionId,
+    method: "GET",
+    path: `/inventory_item/${encodeURIComponent(input.sku)}`,
+    operation: "eBay inventory item detail",
+  });
+  return normalizeInventoryItemSummary({ ...response, sku: response.sku ?? input.sku });
+}
+
 export async function getOffersPage(input: {
   organizationId: string;
   marketplace: Marketplace;
