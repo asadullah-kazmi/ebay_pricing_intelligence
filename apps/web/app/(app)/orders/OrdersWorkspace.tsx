@@ -5,393 +5,387 @@ import Link from "next/link";
 import { useAuth } from "../../components/AuthProvider";
 import styles from "./orders.module.css";
 
-type EbayConnection = {
-  connected: boolean;
-  status: string;
-  username?: string | null;
-  ebayUserId?: string | null;
-};
-
-type OrderStatus = "AWAITING_PAYMENT" | "PAID" | "READY_TO_SHIP" | "SHIPPED" | "DELIVERED" | "CANCELLED" | "RETURN";
-
 type OrderRow = {
-  id: string;
-  orderNumber: string;
-  buyer: string;
-  marketplace: "EBAY_US" | "EBAY_GB" | "EBAY_DE";
-  sku: string;
-  title: string;
-  qty: number;
-  total: number;
-  currency: string;
-  status: OrderStatus;
-  placedAt: string;
+  key: string;
+  account: { id: string; username: string | null; isDefault: boolean; marketplace: string };
+  orderId: string;
+  legacyOrderId: string | null;
+  buyerUsername: string | null;
+  buyerEmail: string | null;
+  buyerName: string | null;
+  orderStatus: string | null;
+  checkoutStatus: string | null;
+  paymentStatus: string | null;
+  fulfillmentStatus: string | null;
+  paidTime: string | null;
+  createdTime: string | null;
+  shippedTime: string | null;
+  totalValue: number | null;
+  totalCurrency: string | null;
+  quantity: number | null;
+  itemCount: number | null;
+  firstSku: string | null;
+  firstTitle: string | null;
+  shippingService: string | null;
+  shippingValue: number | null;
+  shippingCurrency: string | null;
+  shippingAddress: Record<string, unknown> | null;
+  transactions: Array<Record<string, unknown>>;
+  syncedAt: string;
 };
 
-const demoOrders: OrderRow[] = [
-  {
-    id: "o1",
-    orderNumber: "14-12847-39201",
-    buyer: "mike.auto.parts",
-    marketplace: "EBAY_US",
-    sku: "GM-84178783-A",
-    title: "HVAC Blower Motor Control Module",
-    qty: 1,
-    total: 129.99,
-    currency: "USD",
-    status: "READY_TO_SHIP",
-    placedAt: new Date(Date.now() - 2 * 3600_000).toISOString(),
-  },
-  {
-    id: "o2",
-    orderNumber: "14-12846-88112",
-    buyer: "northside_yard",
-    marketplace: "EBAY_US",
-    sku: "AUD-8K0615301M",
-    title: "Rear Brake Caliper Assembly",
-    qty: 2,
-    total: 214.5,
-    currency: "USD",
-    status: "PAID",
-    placedAt: new Date(Date.now() - 5 * 3600_000).toISOString(),
-  },
-  {
-    id: "o3",
-    orderNumber: "03-99211-44002",
-    buyer: "uk.parts.hub",
-    marketplace: "EBAY_GB",
-    sku: "BMW-64119355981",
-    title: "Air Conditioning Control Panel",
-    qty: 1,
-    total: 89.0,
-    currency: "GBP",
-    status: "SHIPPED",
-    placedAt: new Date(Date.now() - 26 * 3600_000).toISOString(),
-  },
-  {
-    id: "o4",
-    orderNumber: "14-12840-10088",
-    buyer: "silverado_fix",
-    marketplace: "EBAY_US",
-    sku: "FRD-FL3Z13008A",
-    title: "2015 F-150 Right Headlight Assembly",
-    qty: 1,
-    total: 189.99,
-    currency: "USD",
-    status: "AWAITING_PAYMENT",
-    placedAt: new Date(Date.now() - 30 * 3600_000).toISOString(),
-  },
-  {
-    id: "o5",
-    orderNumber: "14-12822-77331",
-    buyer: "midwest.salvage",
-    marketplace: "EBAY_US",
-    sku: "TYT-85212-0R030",
-    title: "Camry Front Bumper Cover",
-    qty: 1,
-    total: 245.0,
-    currency: "USD",
-    status: "RETURN",
-    placedAt: new Date(Date.now() - 72 * 3600_000).toISOString(),
-  },
-  {
-    id: "o6",
-    orderNumber: "14-12790-55210",
-    buyer: "coastal.motors",
-    marketplace: "EBAY_US",
-    sku: "HON-33100-T2A",
-    title: "Accord Left Headlight",
-    qty: 1,
-    total: 156.25,
-    currency: "USD",
-    status: "DELIVERED",
-    placedAt: new Date(Date.now() - 96 * 3600_000).toISOString(),
-  },
-];
+type OrdersSyncProgress = {
+  status: "IDLE" | "RUNNING" | "COMPLETED" | "FAILED";
+  percent: number;
+  message: string;
+  accountsTotal: number;
+  accountsCompleted: number;
+  currentAccount: string | null;
+  totalOrders: number;
+  ordersFetched: number;
+  cacheSaved: number;
+  errors: number;
+  errorMessages?: string[];
+  startedAt: string | null;
+  finishedAt: string | null;
+};
 
-function money(value: number, currency: string) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(value);
+type OrdersResponse = {
+  accounts: Array<{ id: string; username: string | null; isDefault: boolean; marketplace: string }>;
+  items: OrderRow[];
+  pagination: { page: number; pageSize: number; total: number; totalPages: number };
+  summary: {
+    total: number;
+    filtered: number;
+    connectedAccounts: number;
+    awaitingShipment: number;
+    shipped: number;
+    cancelled: number;
+    revenue: number;
+  };
+  errors: Array<{ connectionId: string; username: string | null; message: string }>;
+  syncedAt: string | null;
+  sync?: { started: boolean; running: boolean; progress?: OrdersSyncProgress };
+};
+
+const emptyOrders: OrdersResponse = {
+  accounts: [],
+  items: [],
+  pagination: { page: 1, pageSize: 50, total: 0, totalPages: 1 },
+  summary: { total: 0, filtered: 0, connectedAccounts: 0, awaitingShipment: 0, shipped: 0, cancelled: 0, revenue: 0 },
+  errors: [],
+  syncedAt: null,
+};
+
+function startingSyncProgress(): OrdersSyncProgress {
+  return {
+    status: "RUNNING",
+    percent: 1,
+    message: "Starting order sync...",
+    accountsTotal: 0,
+    accountsCompleted: 0,
+    currentAccount: null,
+    totalOrders: 0,
+    ordersFetched: 0,
+    cacheSaved: 0,
+    errors: 0,
+    errorMessages: [],
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+  };
 }
 
-function humanStatus(status: OrderStatus) {
-  return status.toLowerCase().replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+function money(value: number | null, currency: string | null) {
+  if (value == null) return "—";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: currency || "USD" }).format(value);
 }
 
-function marketplaceLabel(value: OrderRow["marketplace"]) {
-  if (value === "EBAY_GB") return "eBay UK";
-  if (value === "EBAY_DE") return "eBay DE";
-  return "eBay US";
+function shortDate(value: string | null) {
+  if (!value) return "—";
+  return new Date(value).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
-function statusClass(status: OrderStatus) {
-  if (status === "READY_TO_SHIP" || status === "PAID") return styles.statusReady;
-  if (status === "SHIPPED" || status === "DELIVERED") return styles.statusShipped;
-  if (status === "AWAITING_PAYMENT") return styles.statusWait;
-  if (status === "RETURN" || status === "CANCELLED") return styles.statusIssue;
-  return styles.statusWait;
+function lastSyncedLabel(value: string | null) {
+  if (!value) return "Not synced yet";
+  const syncedAt = new Date(value);
+  const seconds = Math.max(0, Math.floor((Date.now() - syncedAt.getTime()) / 1000));
+  if (seconds < 60) return "Synced just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `Synced ${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Synced ${hours} hr ago`;
+  return `Synced ${syncedAt.toLocaleDateString()}`;
+}
+
+function label(value: string | null | undefined) {
+  if (!value) return "—";
+  return value.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function statusTone(row: OrderRow) {
+  const status = `${row.orderStatus ?? ""} ${row.fulfillmentStatus ?? ""}`.toUpperCase();
+  if (status.includes("CANCEL")) return "bad";
+  if (status.includes("SHIPPED")) return "good";
+  if (status.includes("AWAITING")) return "warn";
+  return "info";
 }
 
 export default function OrdersWorkspace() {
   const { status: authStatus, demo, apiFetch } = useAuth();
-  const [ebay, setEbay] = useState<EbayConnection | null>(null);
+  const [orders, setOrders] = useState<OrdersResponse>(emptyOrders);
+  const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<OrdersSyncProgress | null>(null);
   const [error, setError] = useState("");
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [marketplaceFilter, setMarketplaceFilter] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [orders] = useState<OrderRow[]>(demoOrders);
   const [notice, setNotice] = useState("");
+  const [search, setSearch] = useState("");
+  const [connectionId, setConnectionId] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [viewing, setViewing] = useState<OrderRow | null>(null);
+
+  const query = useMemo(() => {
+    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), status: statusFilter });
+    if (search.trim()) params.set("q", search.trim());
+    if (connectionId) params.set("connectionId", connectionId);
+    return params.toString();
+  }, [connectionId, page, pageSize, search, statusFilter]);
 
   const load = useCallback(async () => {
-    setEbay((await apiFetch("/api/ebay/connection")) as EbayConnection);
-  }, [apiFetch]);
+    if (authStatus !== "ready" || demo) return;
+    setLoading(true);
+    setError("");
+    try {
+      setOrders((await apiFetch(`/api/ebay/store-orders?${query}`)) as OrdersResponse);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to load cached eBay orders");
+    } finally {
+      setLoading(false);
+    }
+  }, [apiFetch, authStatus, demo, query]);
 
   useEffect(() => {
-    if (authStatus !== "ready") return;
-    void load().catch((caught) => setError(caught instanceof Error ? caught.message : "Unable to load store connection"));
-  }, [authStatus, load]);
+    void load();
+  }, [load]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return orders.filter((order) => {
-      if (statusFilter && order.status !== statusFilter) return false;
-      if (marketplaceFilter && order.marketplace !== marketplaceFilter) return false;
-      if (!q) return true;
-      return (
-        order.orderNumber.toLowerCase().includes(q) ||
-        order.buyer.toLowerCase().includes(q) ||
-        order.sku.toLowerCase().includes(q) ||
-        order.title.toLowerCase().includes(q)
-      );
-    });
-  }, [marketplaceFilter, orders, search, statusFilter]);
+  useEffect(() => {
+    if (authStatus !== "ready" || demo) return;
+    const params = new URLSearchParams();
+    if (connectionId) params.set("connectionId", connectionId);
+    void apiFetch(`/api/ebay/store-orders/sync-status${params.toString() ? `?${params.toString()}` : ""}`)
+      .then((progress) => {
+        const next = progress as OrdersSyncProgress;
+        if (next.status === "RUNNING") {
+          setSyncProgress(next);
+          setSyncing(true);
+        }
+      })
+      .catch(() => undefined);
+  }, [apiFetch, authStatus, connectionId, demo]);
 
-  const metrics = useMemo(() => {
-    const open = orders.filter((order) => !["DELIVERED", "CANCELLED"].includes(order.status)).length;
-    const awaiting = orders.filter((order) => ["PAID", "READY_TO_SHIP"].includes(order.status)).length;
-    const shippedToday = orders.filter((order) => order.status === "SHIPPED").length;
-    const issues = orders.filter((order) => ["RETURN", "CANCELLED"].includes(order.status)).length;
-    return { open, awaiting, shippedToday, issues };
-  }, [orders]);
+  useEffect(() => {
+    if (authStatus !== "ready" || demo || syncProgress?.status !== "RUNNING") return undefined;
+    const params = new URLSearchParams();
+    if (connectionId) params.set("connectionId", connectionId);
+    const interval = window.setInterval(async () => {
+      try {
+        const progress = await apiFetch(`/api/ebay/store-orders/sync-status${params.toString() ? `?${params.toString()}` : ""}`) as OrdersSyncProgress;
+        setSyncProgress(progress);
+        setSyncing(progress.status === "RUNNING");
+        if (progress.status === "COMPLETED" || progress.status === "FAILED") {
+          window.clearInterval(interval);
+          await load();
+          if (progress.status === "COMPLETED") setNotice("Order cache updated.");
+          if (progress.status === "FAILED") setError(progress.message || progress.errorMessages?.[0] || "Order sync failed. Check API logs or try again.");
+        }
+      } catch {
+        // Keep the current progress visible.
+      }
+    }, 2000);
+    return () => window.clearInterval(interval);
+  }, [apiFetch, authStatus, connectionId, demo, load, syncProgress?.status]);
 
-  const allSelected = filtered.length > 0 && filtered.every((order) => selected.has(order.id));
-
-  function toggleAll() {
-    setSelected(allSelected ? new Set() : new Set(filtered.map((order) => order.id)));
-  }
-
-  function toggleOne(id: string) {
-    setSelected((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function syncOrders() {
-    setNotice(ebay?.connected
-      ? "Order sync is queued. Live eBay order import will populate this inbox next."
-      : "Connect your primary eBay account in Channels to enable live order sync.");
+  async function syncOrders() {
+    if (authStatus !== "ready" || demo) return;
+    const optimisticProgress = startingSyncProgress();
+    setSyncing(true);
+    setSyncProgress(optimisticProgress);
+    setError("");
+    setNotice("");
+    try {
+      const response = await apiFetch("/api/ebay/store-orders/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ page, pageSize, status: statusFilter, ...(search.trim() ? { q: search.trim() } : {}), ...(connectionId ? { connectionId } : {}) }),
+      }) as OrdersResponse;
+      setOrders(response);
+      const progress = response.sync?.progress;
+      setSyncProgress(progress && progress.status !== "IDLE" ? progress : optimisticProgress);
+      setSyncing(response.sync?.running ?? true);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to start eBay order sync");
+      setSyncProgress(null);
+      setSyncing(false);
+      await load();
+    }
   }
 
   if (authStatus !== "ready") return null;
 
+  if (demo) {
+    return (
+      <div className={styles.page}>
+        <section className={styles.emptyState}>
+          <b>Orders need a connected eBay account</b>
+          <span>Demo mode does not load seller orders.</span>
+          <Link className={styles.primaryBtn} href="/channels">Open channels</Link>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.page}>
-      <header className={styles.topbar}>
+      <header className={styles.header}>
         <div>
-          <span className={styles.eyebrow}>MARKETPLACE ORDER &amp; FULFILLMENT</span>
-          <h1>Orders &amp; Dispatch</h1>
-          <p>Track customer payments, print pick lists, and manage order fulfillment across connected sales channels.</p>
+          <span className={styles.eyebrow}>EBAY STORE ORDERS</span>
+          <h1>Orders</h1>
+          <p>Sync buyer orders from every connected eBay seller account and marketplace site.</p>
+          <span className={styles.syncMeta}>{lastSyncedLabel(orders.syncedAt)}</span>
         </div>
-        <div className={styles.topActions}>
-          <button type="button" className={styles.iconBtn} onClick={() => void load()} aria-label="Refresh Orders" title="Refresh Orders">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+        <div className={styles.actions}>
+          <button type="button" className={styles.secondaryBtn} onClick={() => void syncOrders()} disabled={syncing || loading}>
+            {syncing ? "Syncing..." : "Sync all stores"}
           </button>
-          <button type="button" className={styles.ghostBtn}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Export orders
-          </button>
-          <Link className={styles.ghostBtn} href="/channels">Manage stores</Link>
-          <button type="button" className={styles.primary} onClick={syncOrders} disabled={!ebay?.connected && !demo}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-            Sync orders
-          </button>
+          <Link className={styles.primaryBtn} href="/channels">Manage stores</Link>
         </div>
       </header>
 
-      {error && (
-        <div className={styles.error}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-          {error}
-        </div>
+      {notice && <div className={styles.notice}>{notice}</div>}
+      {error && <div className={styles.error}>{error}</div>}
+      {syncProgress && syncProgress.status !== "IDLE" && (
+        <section className={styles.syncProgress}>
+          <div className={styles.syncProgressHeader}>
+            <div>
+              <b>{syncProgress.status === "RUNNING" ? "Syncing eBay orders" : syncProgress.status === "COMPLETED" ? "Order sync completed" : "Order sync failed"}</b>
+              <span>{syncProgress.message}</span>
+            </div>
+            <strong>{syncProgress.percent}%</strong>
+          </div>
+          <div className={styles.progressTrack} aria-label="Order sync progress" aria-valuenow={syncProgress.percent} aria-valuemin={0} aria-valuemax={100} role="progressbar">
+            <span style={{ width: `${syncProgress.percent}%` }} />
+          </div>
+          <div className={styles.syncProgressStats}>
+            <span>{syncProgress.accountsCompleted}/{syncProgress.accountsTotal} site checks</span>
+            <span>{syncProgress.totalOrders} orders found</span>
+            <span>{syncProgress.ordersFetched}/{syncProgress.totalOrders} orders fetched</span>
+            <span>{syncProgress.cacheSaved} rows cached</span>
+            {syncProgress.errors > 0 && <span>{syncProgress.errors} warnings</span>}
+          </div>
+          {syncProgress.errorMessages && syncProgress.errorMessages.length > 0 && (
+            <div className={styles.syncProgressErrors}>
+              {syncProgress.errorMessages.slice(0, 3).map((message) => <span key={message}>{message}</span>)}
+            </div>
+          )}
+        </section>
       )}
-      {notice && (
-        <div className={styles.notice}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          {notice}
+      {orders.errors.length > 0 && (
+        <div className={styles.warning}>
+          <b>{orders.errors.length} sync warning{orders.errors.length === 1 ? "" : "s"}</b>
+          <span>{orders.errors.slice(0, 3).map((item) => `${item.username ?? "eBay account"}: ${item.message}`).join(" · ")}</span>
         </div>
       )}
 
-      {/* Connected Channel Stores Strip */}
-      <section className={styles.storeRow}>
-        <article className={styles.storeCard}>
-          <div className={styles.storeHeader}>
-            <span className={ebay?.connected ? styles.onlineDot : styles.offlineDot} />
-            <b>eBay US</b>
-          </div>
-          <span>
-            {ebay?.connected
-              ? `Connected · ${ebay.username || ebay.ebayUserId || "Primary Account"}`
-              : "Connected · Ready to stream orders"}
-          </span>
-          <em className={styles.badgeReady}>STREAMING</em>
-        </article>
-        <article className={`${styles.storeCard} ${styles.soon}`}>
-          <div className={styles.storeHeader}>
-            <span className={styles.offlineDot} />
-            <b>Shopify Store</b>
-          </div>
-          <span>Catalog &amp; order fulfillment sync</span>
-          <em className={styles.badgeSoon}>SOON</em>
-        </article>
-        <article className={`${styles.storeCard} ${styles.soon}`}>
-          <div className={styles.storeHeader}>
-            <span className={styles.offlineDot} />
-            <b>Amazon FBA</b>
-          </div>
-          <span>Merchant &amp; FBA order processing</span>
-          <em className={styles.badgeSoon}>SOON</em>
-        </article>
-      </section>
-
-      {/* Summary Metrics */}
       <section className={styles.metrics}>
-        <article className={styles.metricCard}>
-          <div className={styles.metricHeader}>
-            <span>OPEN ORDERS</span>
-            <span className={styles.metricBadgeTotal}>ACTIVE</span>
-          </div>
-          <b>{metrics.open}</b>
-          <small>Active unfulfilled orders</small>
-        </article>
-        <article className={styles.metricCard}>
-          <div className={styles.metricHeader}>
-            <span>AWAITING SHIPMENT</span>
-            <span className={styles.metricBadgeWarn}>ACTION</span>
-          </div>
-          <b className={styles.metricWarn}>{metrics.awaiting}</b>
-          <small>Paid &amp; ready for pick list</small>
-        </article>
-        <article className={styles.metricCard}>
-          <div className={styles.metricHeader}>
-            <span>SHIPPED IN TRANSIT</span>
-            <span className={styles.metricBadgeGood}>TRANSIT</span>
-          </div>
-          <b className={styles.metricGood}>{metrics.shippedToday}</b>
-          <small>Carrier tracking active</small>
-        </article>
-        <article className={styles.metricCard}>
-          <div className={styles.metricHeader}>
-            <span>RETURNS &amp; ISSUES</span>
-            <span className={styles.metricBadgeBad}>ATTENTION</span>
-          </div>
-          <b className={styles.metricBad}>{metrics.issues}</b>
-          <small>Returns or cancellations</small>
-        </article>
+        <article><span>Accounts</span><b>{orders.summary.connectedAccounts}</b></article>
+        <article><span>Orders cached</span><b>{orders.summary.total}</b></article>
+        <article><span>Awaiting shipment</span><b>{orders.summary.awaitingShipment}</b></article>
+        <article><span>Shipped</span><b>{orders.summary.shipped}</b></article>
+        <article><span>Revenue</span><b>{money(orders.summary.revenue, "USD")}</b></article>
       </section>
 
-      {/* Main Orders Table Panel */}
       <section className={styles.panel}>
         <div className={styles.toolbar}>
-          <label className={styles.searchBox}>
-            <span className={styles.srOnly}>Search orders</span>
-            <svg className={styles.searchIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Filter orders by order #, buyer username, SKU, or part title..."/>
-            <span className={styles.kbdHint}>⌘K</span>
+          <label className={styles.search}>
+            <span>Search</span>
+            <input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Order ID, buyer, SKU, title, seller account" />
           </label>
-          <div className={styles.filterRow}>
-            <label className={styles.filterField}>
-              <span>ORDER STATUS</span>
-              <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-                <option value="">All Order Statuses</option>
-                <option value="AWAITING_PAYMENT">Awaiting Payment</option>
-                <option value="PAID">Paid</option>
-                <option value="READY_TO_SHIP">Ready to Ship</option>
-                <option value="SHIPPED">Shipped</option>
-                <option value="DELIVERED">Delivered</option>
-                <option value="RETURN">Return</option>
-                <option value="CANCELLED">Cancelled</option>
-              </select>
-            </label>
-            <label className={styles.filterField}>
-              <span>MARKETPLACE</span>
-              <select value={marketplaceFilter} onChange={(event) => setMarketplaceFilter(event.target.value)}>
-                <option value="">All Marketplaces</option>
-                <option value="EBAY_US">eBay US</option>
-                <option value="EBAY_GB">eBay UK</option>
-                <option value="EBAY_DE">eBay DE</option>
-              </select>
-            </label>
-          </div>
+          <label>
+            <span>Store</span>
+            <select value={connectionId} onChange={(event) => { setConnectionId(event.target.value); setPage(1); }}>
+              <option value="">All connected stores</option>
+              {orders.accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.username ?? "eBay account"}{account.isDefault ? " (default)" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Status</span>
+            <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }}>
+              <option value="ALL">All orders</option>
+              <option value="PAID">Paid</option>
+              <option value="AWAITING_SHIPMENT">Awaiting shipment</option>
+              <option value="SHIPPED">Shipped</option>
+              <option value="CANCELLED">Cancelled</option>
+            </select>
+          </label>
+          <div className={styles.filterCount}>{orders.summary.filtered} shown</div>
         </div>
 
-        {selected.size > 0 && (
-          <div className={styles.bulkBar}>
-            <b>{selected.size} order{selected.size === 1 ? "" : "s"} selected</b>
-            <div className={styles.bulkActions}>
-              <button type="button" className={styles.bulkBtn}>Print packing slips</button>
-              <button type="button" className={styles.bulkBtnPrimary}>Mark shipped &amp; add tracking</button>
-              <button type="button" className={styles.bulkClose} onClick={() => setSelected(new Set())} aria-label="Clear selection">×</button>
-            </div>
-          </div>
-        )}
-
-        {filtered.length === 0 ? (
-          <div className={styles.empty}>
-            <b>No orders match your search filters</b>
-            <span>Adjust status or marketplace dropdowns to inspect order history.</span>
+        {loading && orders.items.length === 0 ? (
+          <div className={styles.loadingContainer}><div className={styles.spinner} /></div>
+        ) : orders.items.length === 0 ? (
+          <div className={styles.emptyState}>
+            <b>No synced order records</b>
+            <span>Click <strong>Sync all stores</strong> to pull recent orders directly from all connected eBay seller accounts.</span>
           </div>
         ) : (
           <div className={styles.tableWrap}>
             <table>
               <thead>
                 <tr>
-                  <th style={{ width: 40 }}><input type="checkbox" aria-label="Select all" checked={allSelected} onChange={toggleAll}/></th>
-                  <th>ORDER #</th>
-                  <th>BUYER</th>
-                  <th>PART ITEM</th>
-                  <th>QTY</th>
-                  <th>ORDER TOTAL</th>
-                  <th>MARKETPLACE</th>
-                  <th>PLACED DATE</th>
-                  <th>STATUS</th>
+                  <th className={styles.colStore}>Store</th>
+                  <th className={styles.colOrder}>Order</th>
+                  <th className={styles.colBuyer}>Buyer</th>
+                  <th className={styles.colProduct}>Item</th>
+                  <th className={styles.colQty}>Qty</th>
+                  <th className={styles.colTotal}>Total</th>
+                  <th className={styles.colDate}>Created</th>
+                  <th className={styles.colStatus}>Status</th>
+                  <th className={styles.colActions}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((order) => (
-                  <tr key={order.id}>
-                    <td><input type="checkbox" aria-label={`Select ${order.orderNumber}`} checked={selected.has(order.id)} onChange={() => toggleOne(order.id)}/></td>
-                    <td>
-                      <button type="button" className={styles.orderLink}>
-                        <code>{order.orderNumber}</code>
-                      </button>
+                {orders.items.map((row) => (
+                  <tr key={row.key}>
+                    <td className={styles.colStore}>
+                      <span className={styles.storeName}>{row.account.username ?? "eBay"}</span>
+                      <span className={styles.muted}>{row.account.marketplace}{row.account.isDefault ? " · default" : ""}</span>
                     </td>
-                    <td>
-                      <b className={styles.buyerName}>{order.buyer}</b>
+                    <td className={styles.colOrder}>
+                      <span className={styles.orderCode}>{row.orderId}</span>
+                      {row.legacyOrderId && <span className={styles.muted}>{row.legacyOrderId}</span>}
                     </td>
-                    <td>
-                      <b className={styles.titleCell}>{order.title}</b>
-                      <span className={styles.subtle}>{order.sku}</span>
+                    <td className={styles.colBuyer}>
+                      <b>{row.buyerUsername || row.buyerName || "Buyer"}</b>
+                      {row.buyerEmail && <span className={styles.muted}>{row.buyerEmail}</span>}
                     </td>
-                    <td><b className={styles.qtyNum}>{order.qty}</b></td>
-                    <td><b className={styles.totalNum}>{money(order.total, order.currency)}</b></td>
-                    <td>
-                      <span className={styles.marketTag}>{marketplaceLabel(order.marketplace)}</span>
+                    <td className={styles.colProduct}>
+                      <b>{row.firstTitle || "Order item"}</b>
+                      <span className={styles.muted}>{row.firstSku || `${row.itemCount ?? 0} line item${row.itemCount === 1 ? "" : "s"}`}</span>
                     </td>
-                    <td className={styles.dateCell}>{new Date(order.placedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</td>
-                    <td><span className={`${styles.statusPill} ${statusClass(order.status)}`}>{humanStatus(order.status)}</span></td>
+                    <td className={styles.colQty}>{row.quantity ?? "—"}</td>
+                    <td className={styles.colTotal}><b>{money(row.totalValue, row.totalCurrency)}</b></td>
+                    <td className={styles.colDate}>{shortDate(row.createdTime)}</td>
+                    <td className={styles.colStatus}>
+                      <span className={`${styles.statusText} ${styles[statusTone(row)]}`}>{label(row.fulfillmentStatus ?? row.orderStatus)}</span>
+                    </td>
+                    <td className={styles.colActions}>
+                      <button type="button" onClick={() => setViewing(row)}>View</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -399,15 +393,52 @@ export default function OrdersWorkspace() {
           </div>
         )}
 
-        <div className={styles.pagination}>
-          <span>Showing <b>{filtered.length ? 1 : 0}</b> to <b>{filtered.length}</b> of <b>{filtered.length}</b> orders</span>
-          <div className={styles.pageSize}>
-            <span>Rows per page</span>
-            <strong>25</strong>
-            <em className={styles.pageCurrent}>1</em>
+        <footer className={styles.pagination}>
+          <span>Page {orders.pagination.page} of {orders.pagination.totalPages} · {orders.pagination.total} records</span>
+          <div>
+            <select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }}>
+              <option value={25}>25 rows</option>
+              <option value={50}>50 rows</option>
+              <option value={100}>100 rows</option>
+            </select>
+            <button type="button" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>Previous</button>
+            <button type="button" disabled={page >= orders.pagination.totalPages} onClick={() => setPage((value) => value + 1)}>Next</button>
           </div>
-        </div>
+        </footer>
       </section>
+
+      {viewing && (
+        <div className={styles.modalBackdrop} role="presentation">
+          <section className={styles.modal} role="dialog" aria-modal="true" aria-label="Order details">
+            <header>
+              <div>
+                <span className={styles.eyebrow}>ORDER DETAILS</span>
+                <h2>{viewing.orderId}</h2>
+                <p>{viewing.account.username ?? "eBay"} · {viewing.account.marketplace} · {shortDate(viewing.createdTime)}</p>
+              </div>
+              <button type="button" onClick={() => setViewing(null)} aria-label="Close">×</button>
+            </header>
+            <div className={styles.detailGrid}>
+              <article><span>Buyer</span><b>{viewing.buyerUsername || viewing.buyerName || "—"}</b></article>
+              <article><span>Total</span><b>{money(viewing.totalValue, viewing.totalCurrency)}</b></article>
+              <article><span>Status</span><b>{label(viewing.fulfillmentStatus ?? viewing.orderStatus)}</b></article>
+              <article><span>Shipping</span><b>{viewing.shippingService || "—"}</b></article>
+            </div>
+            <div className={styles.lines}>
+              <h3>Line items</h3>
+              {(viewing.transactions.length ? viewing.transactions : [{ title: viewing.firstTitle, sku: viewing.firstSku, quantityPurchased: viewing.quantity }]).map((line, index) => (
+                <div className={styles.lineItem} key={`${String(line.orderLineItemId ?? line.transactionId ?? index)}`}>
+                  <div>
+                    <b>{String(line.title ?? "Order item")}</b>
+                    <span>{String(line.sku ?? "No SKU")}</span>
+                  </div>
+                  <strong>Qty {String(line.quantityPurchased ?? 1)}</strong>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

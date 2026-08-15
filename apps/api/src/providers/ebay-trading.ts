@@ -165,6 +165,45 @@ export interface EbayTradingActiveListing {
   payload: Record<string, unknown>;
 }
 
+export interface EbayTradingOrderLine {
+  itemId: string | null;
+  transactionId: string | null;
+  orderLineItemId: string | null;
+  sku: string | null;
+  title: string | null;
+  quantityPurchased: number | null;
+  transactionPrice: number | null;
+  transactionCurrency: string | null;
+}
+
+export interface EbayTradingOrderSummary {
+  sourceKey: string;
+  orderId: string;
+  legacyOrderId: string | null;
+  buyerUsername: string | null;
+  buyerEmail: string | null;
+  buyerName: string | null;
+  orderStatus: string | null;
+  checkoutStatus: string | null;
+  paymentStatus: string | null;
+  fulfillmentStatus: string | null;
+  paidTime: string | null;
+  createdTime: string | null;
+  shippedTime: string | null;
+  totalValue: number | null;
+  totalCurrency: string | null;
+  quantity: number | null;
+  itemCount: number;
+  firstSku: string | null;
+  firstTitle: string | null;
+  shippingService: string | null;
+  shippingValue: number | null;
+  shippingCurrency: string | null;
+  shippingAddress: Record<string, unknown> | null;
+  transactions: EbayTradingOrderLine[];
+  payload: Record<string, unknown>;
+}
+
 function parseTradingItem(block: string): EbayTradingActiveListing | null {
   const itemId = text(firstTag(block, "ItemID"));
   if (!itemId) return null;
@@ -288,4 +327,154 @@ export async function getTradingSellerListPage(input: {
     .map(parseTradingItem)
     .filter((item): item is EbayTradingActiveListing => Boolean(item));
   return { listings, total, pageNumber, entriesPerPage, hasMore };
+}
+
+function parseAddress(block: string): Record<string, unknown> | null {
+  if (!block) return null;
+  const address = {
+    name: text(firstTag(block, "Name")),
+    street1: text(firstTag(block, "Street1")),
+    street2: text(firstTag(block, "Street2")),
+    city: text(firstTag(block, "CityName")),
+    stateOrProvince: text(firstTag(block, "StateOrProvince")),
+    country: text(firstTag(block, "Country")),
+    countryName: text(firstTag(block, "CountryName")),
+    postalCode: text(firstTag(block, "PostalCode")),
+    phone: text(firstTag(block, "Phone")),
+  };
+  return Object.values(address).some(Boolean) ? address : null;
+}
+
+function parseTradingOrderLine(block: string): EbayTradingOrderLine {
+  const itemBlock = firstTag(block, "Item") ?? "";
+  const transactionPrice = priceTag(block, "TransactionPrice");
+  return {
+    itemId: text(firstTag(itemBlock, "ItemID")),
+    transactionId: text(firstTag(block, "TransactionID")),
+    orderLineItemId: text(firstTag(block, "OrderLineItemID")),
+    sku: text(firstTag(itemBlock, "SKU")) ?? text(firstTag(block, "SKU")),
+    title: text(firstTag(itemBlock, "Title")),
+    quantityPurchased: numeric(firstTag(block, "QuantityPurchased")),
+    transactionPrice: transactionPrice.value,
+    transactionCurrency: transactionPrice.currency,
+  };
+}
+
+function parseTradingOrder(block: string): EbayTradingOrderSummary | null {
+  const orderId = text(firstTag(block, "OrderID"));
+  if (!orderId) return null;
+  const checkoutStatusBlock = firstTag(block, "CheckoutStatus") ?? "";
+  const shippingServiceBlock = firstTag(block, "ShippingServiceSelected") ?? "";
+  const shippingAddressBlock = firstTag(block, "ShippingAddress") ?? "";
+  const total = priceTag(block, "Total");
+  const amountPaid = priceTag(block, "AmountPaid");
+  const shipping = priceTag(shippingServiceBlock, "ShippingServiceCost");
+  const transactionArray = firstTag(block, "TransactionArray") ?? "";
+  const transactions = tagBlocks(transactionArray, "Transaction").map(parseTradingOrderLine);
+  const quantity = transactions.reduce((sum, line) => sum + (line.quantityPurchased ?? 0), 0);
+  const firstLine = transactions.find((line) => line.title || line.sku) ?? null;
+  const createdTime = text(firstTag(block, "CreatedTime"));
+  const paidTime = text(firstTag(block, "PaidTime"));
+  const shippedTime = text(firstTag(block, "ShippedTime"));
+  const orderStatus = text(firstTag(block, "OrderStatus"));
+  const checkoutStatus = text(firstTag(checkoutStatusBlock, "Status"));
+  const paymentStatus = text(firstTag(checkoutStatusBlock, "eBayPaymentStatus"));
+  const fulfillmentStatus = shippedTime ? "SHIPPED" : paidTime || paymentStatus === "NoPaymentFailure" ? "AWAITING_SHIPMENT" : checkoutStatus;
+  return {
+    sourceKey: `TRADING_ORDER:${orderId}`,
+    orderId,
+    legacyOrderId: text(firstTag(block, "ExtendedOrderID")),
+    buyerUsername: text(firstTag(block, "BuyerUserID")),
+    buyerEmail: text(firstTag(block, "BuyerEmail")),
+    buyerName: text(firstTag(shippingAddressBlock, "Name")),
+    orderStatus,
+    checkoutStatus,
+    paymentStatus,
+    fulfillmentStatus,
+    paidTime,
+    createdTime,
+    shippedTime,
+    totalValue: total.value ?? amountPaid.value,
+    totalCurrency: total.currency ?? amountPaid.currency,
+    quantity: quantity || null,
+    itemCount: transactions.length,
+    firstSku: firstLine?.sku ?? null,
+    firstTitle: firstLine?.title ?? null,
+    shippingService: text(firstTag(shippingServiceBlock, "ShippingService")),
+    shippingValue: shipping.value,
+    shippingCurrency: shipping.currency,
+    shippingAddress: parseAddress(shippingAddressBlock),
+    transactions,
+    payload: {
+      orderId,
+      legacyOrderId: text(firstTag(block, "ExtendedOrderID")),
+      createdTime,
+      paidTime,
+      shippedTime,
+      orderStatus,
+      checkoutStatus,
+      paymentStatus,
+      shippingService: text(firstTag(shippingServiceBlock, "ShippingService")),
+      total: { value: total.value ?? amountPaid.value, currency: total.currency ?? amountPaid.currency },
+    },
+  };
+}
+
+export async function getTradingOrdersPage(input: {
+  organizationId: string;
+  connectionId: string;
+  marketplace: string;
+  pageNumber?: number;
+  entriesPerPage?: number;
+  createTimeFrom: Date;
+  createTimeTo: Date;
+}): Promise<{ orders: EbayTradingOrderSummary[]; total: number; pageNumber: number; entriesPerPage: number; hasMore: boolean }> {
+  const pageNumber = input.pageNumber ?? 1;
+  const entriesPerPage = input.entriesPerPage ?? 100;
+  const xml = await tradingRequest({
+    organizationId: input.organizationId,
+    connectionId: input.connectionId,
+    marketplace: input.marketplace,
+    callName: "GetOrders",
+    body: `
+  <DetailLevel>ReturnAll</DetailLevel>
+  <OrderRole>Seller</OrderRole>
+  <OrderStatus>All</OrderStatus>
+  <CreateTimeFrom>${escapeXml(input.createTimeFrom.toISOString())}</CreateTimeFrom>
+  <CreateTimeTo>${escapeXml(input.createTimeTo.toISOString())}</CreateTimeTo>
+  <Pagination>
+    <EntriesPerPage>${entriesPerPage}</EntriesPerPage>
+    <PageNumber>${pageNumber}</PageNumber>
+  </Pagination>
+  <OutputSelector>HasMoreOrders</OutputSelector>
+  <OutputSelector>PaginationResult</OutputSelector>
+  <OutputSelector>OrderArray.Order.OrderID</OutputSelector>
+  <OutputSelector>OrderArray.Order.ExtendedOrderID</OutputSelector>
+  <OutputSelector>OrderArray.Order.BuyerUserID</OutputSelector>
+  <OutputSelector>OrderArray.Order.BuyerEmail</OutputSelector>
+  <OutputSelector>OrderArray.Order.OrderStatus</OutputSelector>
+  <OutputSelector>OrderArray.Order.CheckoutStatus</OutputSelector>
+  <OutputSelector>OrderArray.Order.CreatedTime</OutputSelector>
+  <OutputSelector>OrderArray.Order.PaidTime</OutputSelector>
+  <OutputSelector>OrderArray.Order.ShippedTime</OutputSelector>
+  <OutputSelector>OrderArray.Order.Total</OutputSelector>
+  <OutputSelector>OrderArray.Order.AmountPaid</OutputSelector>
+  <OutputSelector>OrderArray.Order.ShippingServiceSelected</OutputSelector>
+  <OutputSelector>OrderArray.Order.ShippingAddress</OutputSelector>
+  <OutputSelector>OrderArray.Order.TransactionArray.Transaction.Item.ItemID</OutputSelector>
+  <OutputSelector>OrderArray.Order.TransactionArray.Transaction.Item.SKU</OutputSelector>
+  <OutputSelector>OrderArray.Order.TransactionArray.Transaction.Item.Title</OutputSelector>
+  <OutputSelector>OrderArray.Order.TransactionArray.Transaction.TransactionID</OutputSelector>
+  <OutputSelector>OrderArray.Order.TransactionArray.Transaction.OrderLineItemID</OutputSelector>
+  <OutputSelector>OrderArray.Order.TransactionArray.Transaction.QuantityPurchased</OutputSelector>
+  <OutputSelector>OrderArray.Order.TransactionArray.Transaction.TransactionPrice</OutputSelector>`,
+  });
+  const pagination = firstTag(xml, "PaginationResult") ?? "";
+  const total = numeric(firstTag(pagination, "TotalNumberOfEntries")) ?? 0;
+  const hasMore = firstTag(xml, "HasMoreOrders") === "true";
+  const orderArray = firstTag(xml, "OrderArray") ?? "";
+  const orders = tagBlocks(orderArray, "Order")
+    .map(parseTradingOrder)
+    .filter((order): order is EbayTradingOrderSummary => Boolean(order));
+  return { orders, total, pageNumber, entriesPerPage, hasMore };
 }

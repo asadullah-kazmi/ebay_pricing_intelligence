@@ -57,6 +57,7 @@ import { listCachedSellerResources, refreshCategoryMetadata, syncSellerResources
 import { createInventoryPreparationJob, getInventoryPreparationJob, getLatestInventoryPreparation, InventoryPreparationError, startInventoryPreparationJob } from "./inventory-preparation-service.js";
 import { createEbayInventorySyncJob, EbayInventorySyncError, getEbayInventorySyncJob, getLatestEbayInventorySyncJob, startEbayInventorySyncJob } from "./ebay-inventory-sync-service.js";
 import { EbayInventoryManagementError, getEbayStoreInventoryCacheRefreshProgress, listEbayStoreInventory, startEbayStoreInventoryCacheRefresh, updateEbayStoreInventoryItem, withdrawEbayStoreOffer } from "./ebay-inventory-management-service.js";
+import { getEbayStoreOrderCacheRefreshProgress, listEbayStoreOrders, startEbayStoreOrderCacheRefresh } from "./ebay-order-management-service.js";
 import { createOfferPreparationJob, createOfferPublishJob, EbayOfferError, getOffer, getOfferByDraft, getOfferJob, startOfferJob } from "./ebay-offer-service.js";
 import { createReconciliationJob, createRevisionJob, createWithdrawalJob, EbayListingOperationError, getListingOperationJob, startListingOperationJob } from "./ebay-listing-operation-service.js";
 import { listAuditEvents } from "./audit-service.js";
@@ -136,6 +137,13 @@ const ebayInventoryQuerySchema = z.object({
   q: z.string().trim().max(120).optional(),
   stock: z.enum(["ALL", "IN_STOCK", "LOW_STOCK", "OUT_OF_STOCK"]).default("ALL"),
   offerStatus: z.enum(["ALL", "PUBLISHED", "UNPUBLISHED", "ENDED"]).default("ALL"),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(50),
+});
+const ebayOrdersQuerySchema = z.object({
+  connectionId: z.string().min(1).optional(),
+  q: z.string().trim().max(120).optional(),
+  status: z.enum(["ALL", "PAID", "AWAITING_SHIPMENT", "SHIPPED", "CANCELLED"]).default("ALL"),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(50),
 });
@@ -916,6 +924,33 @@ app.post("/api/ebay/store-inventory/withdraw", writeRateLimit, requireTenantCont
       organizationId: getTenantContext(res).organization.id,
       ...ebayInventoryWithdrawSchema.parse(req.body),
     }));
+  } catch (error) { next(error); }
+});
+
+app.get("/api/ebay/store-orders", requireTenantContext, requireOrganizationPermission("orders.view"), async (req, res, next) => {
+  try {
+    res.json(await listEbayStoreOrders({
+      organizationId: getTenantContext(res).organization.id,
+      ...ebayOrdersQuerySchema.parse(req.query),
+    }));
+  } catch (error) { next(error); }
+});
+
+app.post("/api/ebay/store-orders/sync", requireTenantContext, requireOrganizationPermission("orders.view"), async (req, res, next) => {
+  try {
+    const organizationId = getTenantContext(res).organization.id;
+    const input = ebayOrdersQuerySchema.parse(req.body ?? {});
+    const sync = startEbayStoreOrderCacheRefresh({ organizationId, ...input });
+    const cached = await listEbayStoreOrders({ organizationId, ...input });
+    res.json({ ...cached, sync });
+  } catch (error) { next(error); }
+});
+
+app.get("/api/ebay/store-orders/sync-status", requireTenantContext, requireOrganizationPermission("orders.view"), async (req, res, next) => {
+  try {
+    const organizationId = getTenantContext(res).organization.id;
+    const { connectionId } = ebayOrdersQuerySchema.pick({ connectionId: true }).parse(req.query);
+    res.json(getEbayStoreOrderCacheRefreshProgress({ organizationId, connectionId }));
   } catch (error) { next(error); }
 });
 
