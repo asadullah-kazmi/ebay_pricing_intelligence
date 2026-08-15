@@ -12,7 +12,7 @@ import {
   type EbayOfferSummary,
 } from "./providers/ebay-inventory.js";
 import { EbayApiError, findSellerBrowseListingSnapshot } from "./providers/ebay.js";
-import { getTradingSellerListPage, type EbayTradingActiveListing } from "./providers/ebay-trading.js";
+import { EBAY_TRADING_SYNC_MARKETPLACES, getTradingSellerListPage, type EbayTradingActiveListing } from "./providers/ebay-trading.js";
 
 export class EbayInventoryManagementError extends Error {
   constructor(message: string, readonly statusCode: 400 | 404 | 409 | 502 = 400) {
@@ -92,7 +92,7 @@ export interface EbayInventoryRow {
     id: string;
     username: string | null;
     isDefault: boolean;
-    marketplace: Marketplace;
+    marketplace: string;
   };
   sku: string;
   title: string | null;
@@ -122,6 +122,19 @@ type ActiveConnection = {
 function asMarketplace(value: string | null | undefined): Marketplace {
   if (value === "EBAY_GB" || value === "EBAY_DE") return value;
   return "EBAY_US";
+}
+
+function asInventoryMarketplace(value: string | null | undefined): string {
+  const trimmed = value?.trim();
+  return trimmed || "EBAY_US";
+}
+
+function syncMarketplacesForConnection(connection: ActiveConnection): string[] {
+  const defaultMarketplace = asInventoryMarketplace(connection.defaultMarketplace);
+  return [
+    defaultMarketplace,
+    ...EBAY_TRADING_SYNC_MARKETPLACES.filter((marketplace) => marketplace !== defaultMarketplace),
+  ];
 }
 
 function firstImage(product: Record<string, unknown>): string | null {
@@ -295,7 +308,7 @@ function mergeRows(input: {
   const syncedAt = (input.syncedAt ?? new Date()).toISOString();
   for (const item of input.inventoryItems) {
     rows.set(item.sku, {
-      key: `${input.account.id}:${item.sku}`,
+      key: `${input.account.id}:${input.account.marketplace}:${item.sku}`,
       account: input.account,
       sku: item.sku,
       title: item.title,
@@ -319,7 +332,7 @@ function mergeRows(input: {
     const sku = offer.sku ?? offer.offerId;
     const existing = rows.get(sku);
     rows.set(sku, {
-      key: `${input.account.id}:${sku}:${offer.offerId}`,
+      key: `${input.account.id}:${input.account.marketplace}:${sku}:${offer.offerId}`,
       account: input.account,
       sku,
       title: existing?.title ?? null,
@@ -354,7 +367,7 @@ function mergeTradingRows(input: {
       : Math.max(0, listing.quantity - (listing.quantitySold ?? 0));
     const sku = listing.sku ?? listing.listingId;
     return {
-      key: `${input.account.id}:${listing.sourceKey}`,
+      key: `${input.account.id}:${input.account.marketplace}:${listing.sourceKey}`,
       account: input.account,
       sku,
       title: listing.title,
@@ -412,7 +425,7 @@ function cachedRowToInventoryRow(row: {
       id: row.ebaySellerConnection.id,
       username: row.ebaySellerConnection.username,
       isDefault: row.ebaySellerConnection.isDefault,
-      marketplace: asMarketplace(row.marketplace || row.ebaySellerConnection.defaultMarketplace),
+      marketplace: asInventoryMarketplace(row.marketplace || row.ebaySellerConnection.defaultMarketplace),
     },
     sku: row.sku,
     title: row.title,
@@ -679,7 +692,7 @@ async function shapeCachedInventoryResponse(input: {
       id: connection.id,
       username: connection.username,
       isDefault: connection.isDefault,
-      marketplace: asMarketplace(connection.defaultMarketplace),
+      marketplace: asInventoryMarketplace(connection.defaultMarketplace),
     })),
     items: rows.map(cachedRowToInventoryRow),
     pagination: { page, pageSize, total: filtered, totalPages: Math.max(1, Math.ceil(filtered / pageSize)) },
@@ -724,7 +737,7 @@ function shapeInventoryResponse(input: {
       id: connection.id,
       username: connection.username,
       isDefault: connection.isDefault,
-      marketplace: asMarketplace(connection.defaultMarketplace),
+      marketplace: asInventoryMarketplace(connection.defaultMarketplace),
     })),
     items: pageRows,
     pagination: { page, pageSize, total: filtered.length, totalPages: Math.max(1, Math.ceil(filtered.length / pageSize)) },
@@ -758,11 +771,14 @@ export async function syncEbayStoreInventory(input: {
 }) {
   const key = syncKey(input);
   const connections = await listActiveConnections({ organizationId: input.organizationId, connectionId: input.connectionId });
+  const syncTasks = connections.flatMap((connection) =>
+    syncMarketplacesForConnection(connection).map((marketplace) => ({ connection, marketplace })),
+  );
   setProgress(key, {
     status: "RUNNING",
     percent: 2,
-    message: "Preparing connected eBay accounts...",
-    accountsTotal: connections.length,
+    message: "Preparing connected eBay accounts and marketplaces...",
+    accountsTotal: syncTasks.length,
     accountsCompleted: 0,
     currentAccount: null,
     totalSkus: 0,
@@ -776,17 +792,19 @@ export async function syncEbayStoreInventory(input: {
   });
   const errors: Array<{ connectionId: string; username: string | null; message: string }> = [];
   const refreshedRows: EbayInventoryRow[] = [];
-  for (const [connectionIndex, connection] of connections.entries()) {
-    const marketplace = asMarketplace(connection.defaultMarketplace);
+  let successfulSiteSyncs = 0;
+  for (const [taskIndex, task] of syncTasks.entries()) {
+    const { connection, marketplace } = task;
     const account = { id: connection.id, username: connection.username, isDefault: connection.isDefault, marketplace };
     const syncStartedAt = new Date();
     try {
-      const accountBase = (connectionIndex / Math.max(1, connections.length)) * 100;
-      const accountSpan = 100 / Math.max(1, connections.length);
+      const accountBase = (taskIndex / Math.max(1, syncTasks.length)) * 100;
+      const accountSpan = 100 / Math.max(1, syncTasks.length);
+      const accountLabel = `${connection.username ?? "eBay account"} - ${marketplace}`;
       setProgress(key, {
         percent: Math.max(4, Math.round(accountBase)),
-        message: `Fetching active listings from ${connection.username ?? "eBay account"} with eBay Trading API...`,
-        currentAccount: connection.username ?? "eBay account",
+        message: `Fetching ${marketplace} active listings from ${connection.username ?? "eBay account"} with eBay Trading API...`,
+        currentAccount: accountLabel,
       });
       const fetchedListings: EbayTradingActiveListing[] = [];
       const entriesPerPage = 200;
@@ -809,14 +827,14 @@ export async function syncEbayStoreInventory(input: {
           totalListings = page.total;
           setProgress(key, {
             percent: accountBase + accountSpan * 0.08,
-            message: `Found ${totalListings} active listing${totalListings === 1 ? "" : "s"} for ${connection.username ?? "eBay account"}...`,
+            message: `Found ${totalListings} ${marketplace} active listing${totalListings === 1 ? "" : "s"} for ${connection.username ?? "eBay account"}...`,
             totalSkus: (inventoryCacheRefreshProgress.get(key)?.totalSkus ?? 0) + totalListings,
           });
         }
         fetchedListings.push(...page.listings);
         setProgress(key, {
           percent: accountBase + accountSpan * Math.min(0.72, 0.08 + (fetchedListings.length / Math.max(1, totalListings || fetchedListings.length)) * 0.64),
-          message: `Fetched ${fetchedListings.length}/${totalListings || fetchedListings.length} active listing records...`,
+          message: `Fetched ${fetchedListings.length}/${totalListings || fetchedListings.length} ${marketplace} active listing records...`,
           inventorySynced: (inventoryCacheRefreshProgress.get(key)?.inventorySynced ?? 0) + page.listings.length,
         });
         const pageRows = mergeTradingRows({ account, listings: page.listings, syncedAt: syncStartedAt });
@@ -875,7 +893,7 @@ export async function syncEbayStoreInventory(input: {
           if (rowIndex % 25 === 0 || rowIndex === pageRows.length - 1) {
             setProgress(key, {
               percent: accountBase + accountSpan * Math.min(0.95, 0.72 + (fetchedListings.length / Math.max(1, totalListings || fetchedListings.length)) * 0.23),
-              message: `Cached ${cacheSavedForAccount}/${totalListings || fetchedListings.length} active listing rows...`,
+              message: `Cached ${cacheSavedForAccount}/${totalListings || fetchedListings.length} ${marketplace} active listing rows...`,
               cacheSaved: cacheSavedBeforeAccount + cacheSavedForAccount,
             });
           }
@@ -895,10 +913,11 @@ export async function syncEbayStoreInventory(input: {
       });
       const rows = mergeTradingRows({ account, listings: fetchedListings, syncedAt: syncStartedAt });
       refreshedRows.push(...rows);
+      successfulSiteSyncs += 1;
       setProgress(key, {
         percent: accountBase + accountSpan * 0.95,
-        message: `Finished ${connection.username ?? "eBay account"}.`,
-        accountsCompleted: connectionIndex + 1,
+        message: `Finished ${connection.username ?? "eBay account"} on ${marketplace}.`,
+        accountsCompleted: taskIndex + 1,
         errors: errors.length,
       });
     } catch (error) {
@@ -906,18 +925,18 @@ export async function syncEbayStoreInventory(input: {
       errors.push({
         connectionId: connection.id,
         username: connection.username,
-        message,
+        message: `${marketplace}: ${message}`,
       });
       const current = inventoryCacheRefreshProgress.get(key) ?? idleProgress(key);
       setProgress(key, {
-        message: `${connection.username ?? "eBay account"} sync failed: ${message}`,
-        accountsCompleted: connectionIndex + 1,
+        message: `${connection.username ?? "eBay account"} ${marketplace} sync failed: ${message}`,
+        accountsCompleted: taskIndex + 1,
         errors: errors.length,
-        errorMessages: [...current.errorMessages, `${connection.username ?? "eBay account"}: ${message}`].slice(-5),
+        errorMessages: [...current.errorMessages, `${connection.username ?? "eBay account"} ${marketplace}: ${message}`].slice(-5),
       });
     }
   }
-  const failed = errors.length === connections.length && connections.length > 0;
+  const failed = successfulSiteSyncs === 0 && syncTasks.length > 0;
   setProgress(key, {
     status: failed ? "FAILED" : "COMPLETED",
     percent: 100,

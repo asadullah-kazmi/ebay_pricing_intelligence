@@ -1,18 +1,65 @@
 import { getConfig } from "../config.js";
 import { getEbaySellerAccessToken } from "../ebay-seller-oauth.js";
-import type { Marketplace } from "../types.js";
 import { EbayApiError } from "./ebay.js";
 
 const compatibilityLevel = "1231";
+
+export const EBAY_TRADING_SYNC_MARKETPLACES = [
+  "EBAY_US",
+  "EBAY_MOTORS_US",
+  "EBAY_CA",
+  "EBAY_GB",
+  "EBAY_AU",
+  "EBAY_AT",
+  "EBAY_BE_FR",
+  "EBAY_FR",
+  "EBAY_DE",
+  "EBAY_IT",
+  "EBAY_BE_NL",
+  "EBAY_NL",
+  "EBAY_ES",
+  "EBAY_CH",
+  "EBAY_HK",
+  "EBAY_IN",
+  "EBAY_IE",
+  "EBAY_MY",
+  "EBAY_CA_FR",
+  "EBAY_PH",
+  "EBAY_PL",
+  "EBAY_SG",
+] as const;
+
+const tradingSiteIds: Record<string, string> = {
+  EBAY_US: "0",
+  EBAY_MOTORS_US: "100",
+  EBAY_CA: "2",
+  EBAY_GB: "3",
+  EBAY_AU: "15",
+  EBAY_AT: "16",
+  EBAY_BE_FR: "23",
+  EBAY_FR: "71",
+  EBAY_DE: "77",
+  EBAY_IT: "101",
+  EBAY_BE_NL: "123",
+  EBAY_NL: "146",
+  EBAY_ES: "186",
+  EBAY_CH: "193",
+  EBAY_HK: "201",
+  EBAY_IN: "203",
+  EBAY_IE: "205",
+  EBAY_MY: "207",
+  EBAY_CA_FR: "210",
+  EBAY_PH: "211",
+  EBAY_PL: "212",
+  EBAY_SG: "216",
+};
 
 function tradingBase(): string {
   return getConfig().ebay.environment === "production" ? "https://api.ebay.com/ws/api.dll" : "https://api.sandbox.ebay.com/ws/api.dll";
 }
 
-function siteId(marketplace: Marketplace): string {
-  if (marketplace === "EBAY_GB") return "3";
-  if (marketplace === "EBAY_DE") return "77";
-  return "0";
+export function tradingSiteId(marketplace: string): string {
+  return tradingSiteIds[marketplace] ?? "0";
 }
 
 function escapeXml(value: string): string {
@@ -68,7 +115,7 @@ function parseErrors(xml: string): string {
 async function tradingRequest(input: {
   organizationId: string;
   connectionId: string;
-  marketplace: Marketplace;
+  marketplace: string;
   callName: string;
   body: string;
 }): Promise<string> {
@@ -89,7 +136,7 @@ async function tradingRequest(input: {
       "Content-Type": "text/xml",
       "X-EBAY-API-COMPATIBILITY-LEVEL": compatibilityLevel,
       "X-EBAY-API-CALL-NAME": input.callName,
-      "X-EBAY-API-SITEID": siteId(input.marketplace),
+      "X-EBAY-API-SITEID": tradingSiteId(input.marketplace),
     },
     body: envelope,
   });
@@ -158,7 +205,7 @@ function parseTradingItem(block: string): EbayTradingActiveListing | null {
 export async function getTradingActiveListingsPage(input: {
   organizationId: string;
   connectionId: string;
-  marketplace: Marketplace;
+  marketplace: string;
   pageNumber?: number;
   entriesPerPage?: number;
 }): Promise<{ listings: EbayTradingActiveListing[]; total: number; pageNumber: number; entriesPerPage: number; hasMore: boolean }> {
@@ -193,7 +240,7 @@ export async function getTradingActiveListingsPage(input: {
 export async function getTradingSellerListPage(input: {
   organizationId: string;
   connectionId: string;
-  marketplace: Marketplace;
+  marketplace: string;
   pageNumber?: number;
   entriesPerPage?: number;
   endTimeFrom: Date;

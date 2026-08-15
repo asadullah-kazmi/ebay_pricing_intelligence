@@ -7,7 +7,7 @@ import styles from "./inventory.module.css";
 
 type InventoryRow = {
   key: string;
-  account: { id: string; username: string | null; isDefault: boolean; marketplace: "EBAY_US" | "EBAY_GB" | "EBAY_DE" };
+  account: { id: string; username: string | null; isDefault: boolean; marketplace: string };
   sku: string;
   title: string | null;
   condition: string | null;
@@ -333,7 +333,7 @@ export default function InventoryWorkspace() {
             <span style={{ width: `${syncProgress.percent}%` }} />
           </div>
           <div className={styles.syncProgressStats}>
-            <span>{syncProgress.accountsCompleted}/{syncProgress.accountsTotal} accounts</span>
+            <span>{syncProgress.accountsCompleted}/{syncProgress.accountsTotal} site checks</span>
             <span>{syncProgress.totalSkus} active listings found</span>
             <span>{syncProgress.inventorySynced}/{syncProgress.totalSkus} listings fetched</span>
             <span>{syncProgress.cacheSaved} rows cached</span>
