@@ -66,6 +66,24 @@ const emptyInventory: InventoryResponse = {
   syncedAt: null,
 };
 
+function startingSyncProgress(): InventorySyncProgress {
+  return {
+    status: "RUNNING",
+    percent: 1,
+    message: "Starting inventory sync...",
+    accountsTotal: 0,
+    accountsCompleted: 0,
+    currentAccount: null,
+    totalSkus: 0,
+    inventorySynced: 0,
+    offersChecked: 0,
+    cacheSaved: 0,
+    errors: 0,
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+  };
+}
+
 function money(value: number | null, currency: string | null) {
   if (value == null) return "-";
   return new Intl.NumberFormat("en-US", { style: "currency", currency: currency || "USD" }).format(value);
@@ -181,7 +199,9 @@ export default function InventoryWorkspace() {
 
   async function syncStores() {
     if (authStatus !== "ready" || demo) return;
+    const optimisticProgress = startingSyncProgress();
     setSyncing(true);
+    setSyncProgress(optimisticProgress);
     setError("");
     setNotice("");
     try {
@@ -191,13 +211,15 @@ export default function InventoryWorkspace() {
         body: JSON.stringify({ page, pageSize, stock, offerStatus, ...(search.trim() ? { q: search.trim() } : {}), ...(connectionId ? { connectionId } : {}) }),
       }) as InventoryResponse;
       setInventory(response);
-      setSyncProgress(response.sync?.progress ?? null);
+      const progress = response.sync?.progress;
+      setSyncProgress(progress && progress.status !== "IDLE" ? progress : optimisticProgress);
+      setSyncing(response.sync?.running ?? true);
       setNotice(response.sync?.started ? "Inventory sync started in the background. Cached rows will update as eBay responds." : "Inventory sync is already running in the background.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to refresh eBay inventory");
-      await load();
-    } finally {
+      setSyncProgress(null);
       setSyncing(false);
+      await load();
     }
   }
 
