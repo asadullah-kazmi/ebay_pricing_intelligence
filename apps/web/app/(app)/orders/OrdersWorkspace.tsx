@@ -297,12 +297,12 @@ export default function OrdersWorkspace() {
         </div>
       )}
 
-      <section className={styles.metrics}>
-        <article><span>Accounts</span><b>{orders.summary.connectedAccounts}</b></article>
-        <article><span>Orders cached</span><b>{orders.summary.total}</b></article>
-        <article><span>Awaiting shipment</span><b>{orders.summary.awaitingShipment}</b></article>
-        <article><span>Shipped</span><b>{orders.summary.shipped}</b></article>
-        <article><span>Revenue</span><b>{money(orders.summary.revenue, "USD")}</b></article>
+      <section className={styles.metrics} aria-label="Order summary">
+        <span><b>{orders.summary.connectedAccounts}</b> accounts</span>
+        <span><b>{orders.summary.total}</b> orders</span>
+        <span><b>{orders.summary.awaitingShipment}</b> awaiting shipment</span>
+        <span><b>{orders.summary.shipped}</b> shipped</span>
+        <span><b>{money(orders.summary.revenue, "USD")}</b> revenue</span>
       </section>
 
       <section className={styles.panel}>
