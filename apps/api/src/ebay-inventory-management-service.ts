@@ -120,14 +120,47 @@ function asMarketplace(value: string | null | undefined): Marketplace {
 }
 
 function firstImage(product: Record<string, unknown>): string | null {
+  const normalizeImageUrl = (value: unknown): string | null => {
+    if (typeof value !== "string") return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const withProtocol = trimmed.startsWith("//") ? `https:${trimmed}` : trimmed;
+    if (!/^https?:\/\//i.test(withProtocol)) return null;
+    try {
+      const url = new URL(withProtocol);
+      url.pathname = url.pathname.split("/").map((part) => encodeURIComponent(decodeURIComponent(part))).join("/");
+      return url.toString();
+    } catch {
+      return null;
+    }
+  };
+  const imageUrl = normalizeImageUrl(product.imageUrl);
+  if (imageUrl) return imageUrl;
   const imageUrls = product.imageUrls;
   if (Array.isArray(imageUrls)) {
-    const first = imageUrls.find((value) => typeof value === "string" && value.trim());
-    if (typeof first === "string") return first;
+    for (const value of imageUrls) {
+      const url = normalizeImageUrl(value);
+      if (url) return url;
+    }
   }
   const image = product.image;
   if (typeof image === "object" && image !== null && typeof (image as Record<string, unknown>).imageUrl === "string") {
-    return (image as { imageUrl: string }).imageUrl;
+    const url = normalizeImageUrl((image as { imageUrl: string }).imageUrl);
+    if (url) return url;
+  }
+  const additionalImages = product.additionalImages;
+  if (Array.isArray(additionalImages)) {
+    for (const candidate of additionalImages) {
+      if (typeof candidate === "string") {
+        const url = normalizeImageUrl(candidate);
+        if (url) return url;
+      }
+      if (typeof candidate === "object" && candidate !== null) {
+        const row = candidate as Record<string, unknown>;
+        const url = normalizeImageUrl(row.imageUrl ?? row.url);
+        if (url) return url;
+      }
+    }
   }
   return null;
 }
@@ -235,7 +268,11 @@ function cachedRowToInventoryRow(row: {
     listingStatus: row.listingStatus,
     listingOnHold: row.listingOnHold,
     categoryId: row.categoryId,
-    imageUrl: row.imageUrl,
+    imageUrl: row.imageUrl ?? (typeof row.inventoryPayload === "object" && row.inventoryPayload !== null && !Array.isArray(row.inventoryPayload)
+      ? firstImage(typeof (row.inventoryPayload as Record<string, unknown>).product === "object" && (row.inventoryPayload as Record<string, unknown>).product !== null
+        ? (row.inventoryPayload as Record<string, unknown>).product as Record<string, unknown>
+        : {})
+      : null),
     inventoryPayload: typeof row.inventoryPayload === "object" && row.inventoryPayload !== null && !Array.isArray(row.inventoryPayload)
       ? row.inventoryPayload as Record<string, unknown>
       : null,

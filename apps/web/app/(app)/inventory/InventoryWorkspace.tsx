@@ -83,6 +83,12 @@ function statusLabel(row: InventoryRow) {
   return status.replace(/_/g, " ").toLowerCase();
 }
 
+function InventoryImage({ src, alt }: { src: string | null; alt: string }) {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) return <span className={styles.noImage}>No image</span>;
+  return <img src={src} alt={alt} loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} />;
+}
+
 function lastSyncedLabel(value: string | null) {
   if (!value) return "Not synced yet";
   const syncedAt = new Date(value);
@@ -397,7 +403,7 @@ export default function InventoryWorkspace() {
                         <span className={styles.muted}>{row.listingId ? `Listing ${row.listingId}` : row.offerId ? `Offer ${row.offerId}` : "Inventory item only"}</span>
                       </td>
                       <td className={styles.productCell}>
-                        {row.imageUrl ? <img src={row.imageUrl} alt="" /> : <span className={styles.noImage}>No image</span>}
+                        <InventoryImage src={row.imageUrl} alt={row.title ?? row.sku} />
                         <div>
                           <b>{row.title || "Untitled inventory item"}</b>
                           <span className={styles.muted}>{row.condition || "Condition not set"}</span>
