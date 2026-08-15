@@ -85,7 +85,7 @@ function startingSyncProgress(): InventorySyncProgress {
 }
 
 function money(value: number | null, currency: string | null) {
-  if (value == null) return "-";
+  if (value == null) return "—";
   return new Intl.NumberFormat("en-US", { style: "currency", currency: currency || "USD" }).format(value);
 }
 
@@ -191,7 +191,7 @@ export default function InventoryWorkspace() {
           if (progress.status === "FAILED") setError("Inventory sync failed. Check API logs or try again.");
         }
       } catch {
-        // Keep the current progress visible; the next poll may recover.
+        // Keep current progress
       }
     }, 2000);
     return () => window.clearInterval(interval);
@@ -354,11 +354,11 @@ export default function InventoryWorkspace() {
       <section className={styles.panel}>
         <div className={styles.toolbar}>
           <label className={styles.search}>
-            <span>Search</span>
+            <span>SEARCH</span>
             <input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="SKU, title, listing ID, seller account" />
           </label>
           <label>
-            <span>Store</span>
+            <span>STORE</span>
             <select value={connectionId} onChange={(event) => { setConnectionId(event.target.value); setPage(1); }}>
               <option value="">All connected stores</option>
               {inventory.accounts.map((account) => (
@@ -369,7 +369,7 @@ export default function InventoryWorkspace() {
             </select>
           </label>
           <label>
-            <span>Stock</span>
+            <span>STOCK</span>
             <select value={stock} onChange={(event) => { setStock(event.target.value); setPage(1); }}>
               <option value="ALL">All stock</option>
               <option value="IN_STOCK">In stock</option>
@@ -378,7 +378,7 @@ export default function InventoryWorkspace() {
             </select>
           </label>
           <label>
-            <span>Offer status</span>
+            <span>OFFER STATUS</span>
             <select value={offerStatus} onChange={(event) => { setOfferStatus(event.target.value); setPage(1); }}>
               <option value="ALL">All offers</option>
               <option value="PUBLISHED">Published</option>
@@ -390,25 +390,26 @@ export default function InventoryWorkspace() {
         </div>
 
         {loading && inventory.items.length === 0 ? (
-          <div className={styles.emptyState}><b>Loading cached inventory...</b><span>Use Sync all stores when you want fresh eBay data.</span></div>
+          <div className={styles.loadingContainer}>
+            <div className={styles.spinner} />
+          </div>
         ) : inventory.items.length === 0 ? (
           <div className={styles.emptyState}>
-            <b>No eBay inventory found</b>
-            <span>Click Sync all stores to build the cache, connect a store, or adjust your filters.</span>
+            <b>No synced inventory records</b>
+            <span>Click <strong>Sync all stores</strong> above to pull listings and stock quantities directly from your connected eBay seller accounts.</span>
           </div>
         ) : (
           <div className={styles.tableWrap}>
             <table>
               <thead>
                 <tr>
-                  <th>Store</th>
-                  <th>SKU and listing</th>
-                  <th>Product</th>
-                  <th>Qty</th>
-                  <th>Price</th>
-                  <th>Status</th>
-                  <th>Category</th>
-                  <th>Actions</th>
+                  <th className={styles.colStore}>Store</th>
+                  <th className={styles.colSku}>SKU / Listing</th>
+                  <th className={styles.colProduct}>Product</th>
+                  <th className={styles.colQty}>Qty</th>
+                  <th className={styles.colPrice}>Price</th>
+                  <th className={styles.colStatus}>Status</th>
+                  <th className={styles.colActions}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -416,37 +417,42 @@ export default function InventoryWorkspace() {
                   const stockState = stockLabel(row.quantity);
                   return (
                     <tr key={row.key}>
-                      <td>
+                      <td className={styles.colStore}>
                         <b>{row.account.username ?? "eBay"}</b>
                         <span className={styles.muted}>{row.account.marketplace}{row.account.isDefault ? " · default" : ""}</span>
                       </td>
-                      <td>
+                      <td className={styles.colSku}>
                         <code>{row.sku}</code>
                         <span className={styles.muted}>{row.listingId ? `Listing ${row.listingId}` : row.offerId ? `Offer ${row.offerId}` : "Inventory item only"}</span>
                       </td>
-                      <td className={styles.productCell}>
-                        <InventoryImage src={row.imageUrl} alt={row.title ?? row.sku} />
-                        <div>
-                          <b>{row.title || "Untitled inventory item"}</b>
-                          <span className={styles.muted}>{row.condition || "Condition not set"}</span>
+                      <td className={styles.colProduct}>
+                        <div className={styles.productCell}>
+                          <InventoryImage src={row.imageUrl} alt={row.title ?? row.sku} />
+                          <div className={styles.productCopy}>
+                            <b>{row.title || "Untitled inventory item"}</b>
+                            <span className={styles.muted}>{row.condition || "Condition not set"}</span>
+                          </div>
                         </div>
                       </td>
-                      <td>
-                        <b>{row.quantity ?? "-"}</b>
-                        <span className={`${styles.pill} ${styles[stockState.tone]}`}>{stockState.text}</span>
+                      <td className={styles.colQty}>
+                        <div className={styles.qtyBox}>
+                          <b>{row.quantity ?? "-"}</b>
+                          <span className={`${styles.pill} ${styles[stockState.tone]}`}>{stockState.text}</span>
+                        </div>
                       </td>
-                      <td><b>{money(row.price, row.currency)}</b></td>
-                      <td>
+                      <td className={styles.colPrice}><b>{money(row.price, row.currency)}</b></td>
+                      <td className={styles.colStatus}>
                         <span className={styles.status}>{statusLabel(row)}</span>
                         {row.listingOnHold && <span className={styles.muted}>On hold</span>}
                       </td>
-                      <td>{row.categoryId ?? "-"}</td>
-                      <td>
+                      <td className={styles.colActions}>
                         <div className={styles.rowActions}>
                           <button type="button" onClick={() => setEditing(row)} disabled={Boolean(savingKey)}>Edit</button>
-                          <button type="button" className={styles.dangerBtn} onClick={() => void withdraw(row)} disabled={!row.offerId || Boolean(savingKey)}>
-                            {savingKey === row.key ? "Working..." : "Withdraw"}
-                          </button>
+                          {row.offerId && (
+                            <button type="button" className={styles.dangerBtn} onClick={() => void withdraw(row)} disabled={Boolean(savingKey)}>
+                              {savingKey === row.key ? "..." : "Withdraw"}
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -505,3 +511,4 @@ export default function InventoryWorkspace() {
     </div>
   );
 }
+
