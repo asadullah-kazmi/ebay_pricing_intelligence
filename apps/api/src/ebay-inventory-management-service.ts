@@ -360,8 +360,8 @@ function cachedRowToInventoryRow(row: {
   listingOnHold: boolean;
   categoryId: string | null;
   imageUrl: string | null;
-  inventoryPayload: Prisma.JsonValue | null;
-  offerPayload: Prisma.JsonValue | null;
+  inventoryPayload?: Prisma.JsonValue | null;
+  offerPayload?: Prisma.JsonValue | null;
   syncedAt: Date;
   ebaySellerConnection: { id: string; username: string | null; isDefault: boolean; defaultMarketplace: string };
 }): EbayInventoryRow {
@@ -399,6 +399,27 @@ function cachedRowToInventoryRow(row: {
     syncedAt: row.syncedAt.toISOString(),
   };
 }
+
+const inventoryCacheRowSelect = {
+  id: true,
+  ebaySellerConnectionId: true,
+  marketplace: true,
+  sku: true,
+  title: true,
+  condition: true,
+  quantity: true,
+  price: true,
+  currency: true,
+  offerId: true,
+  offerStatus: true,
+  listingId: true,
+  listingStatus: true,
+  listingOnHold: true,
+  categoryId: true,
+  imageUrl: true,
+  syncedAt: true,
+  ebaySellerConnection: { select: { id: true, username: true, isDefault: true, defaultMarketplace: true } },
+} satisfies Prisma.EbayInventoryCacheItemSelect;
 
 async function collectPages<T>(fetchPage: (offset: number) => Promise<{ total: number; size: number; limit: number } & T>, pick: (page: T) => unknown[]) {
   const limit = 100;
@@ -512,6 +533,119 @@ function applyInventoryFilters(rows: EbayInventoryRow[], input: {
   });
 }
 
+function inventoryCacheWhere(input: {
+  organizationId: string;
+  connectionId?: string;
+  q?: string;
+  stock?: EbayInventoryStockFilter;
+  offerStatus?: EbayInventoryOfferFilter;
+}): Prisma.EbayInventoryCacheItemWhereInput {
+  const query = input.q?.trim();
+  const stock = input.stock ?? "ALL";
+  const offerStatus = input.offerStatus ?? "ALL";
+  const where: Prisma.EbayInventoryCacheItemWhereInput = {
+    organizationId: input.organizationId,
+    ...(input.connectionId ? { ebaySellerConnectionId: input.connectionId } : {}),
+  };
+  const and: Prisma.EbayInventoryCacheItemWhereInput[] = [];
+  if (query) {
+    and.push({
+      OR: [
+        { sku: { contains: query, mode: "insensitive" } },
+        { title: { contains: query, mode: "insensitive" } },
+        { condition: { contains: query, mode: "insensitive" } },
+        { listingId: { contains: query, mode: "insensitive" } },
+        { ebaySellerConnection: { username: { contains: query, mode: "insensitive" } } },
+      ],
+    });
+  }
+  if (stock === "IN_STOCK") and.push({ quantity: { gt: 5 } });
+  if (stock === "LOW_STOCK") and.push({ quantity: { gt: 0, lte: 5 } });
+  if (stock === "OUT_OF_STOCK") and.push({ OR: [{ quantity: { lte: 0 } }, { quantity: null }] });
+  if (offerStatus === "PUBLISHED") {
+    and.push({ OR: [{ offerStatus: { in: ["PUBLISHED", "ACTIVE"] } }, { listingStatus: { in: ["PUBLISHED", "ACTIVE"] } }] });
+  }
+  if (offerStatus === "UNPUBLISHED") {
+    and.push({
+      OR: [
+        { offerStatus: { in: ["UNPUBLISHED", "DRAFT"] } },
+        { listingStatus: { in: ["UNPUBLISHED", "DRAFT"] } },
+        { AND: [{ offerStatus: null }, { listingStatus: null }] },
+      ],
+    });
+  }
+  if (offerStatus === "ENDED") {
+    and.push({ OR: [{ offerStatus: { in: ["ENDED", "WITHDRAWN"] } }, { listingStatus: { in: ["ENDED", "WITHDRAWN"] } }] });
+  }
+  if (and.length > 0) where.AND = and;
+  return where;
+}
+
+async function shapeCachedInventoryResponse(input: {
+  organizationId: string;
+  connectionId?: string;
+  connections: ActiveConnection[];
+  errors?: Array<{ connectionId: string; username: string | null; message: string }>;
+  page?: number;
+  pageSize?: number;
+  q?: string;
+  stock?: EbayInventoryStockFilter;
+  offerStatus?: EbayInventoryOfferFilter;
+}) {
+  const page = input.page ?? 1;
+  const pageSize = input.pageSize ?? 50;
+  const whereBase: Prisma.EbayInventoryCacheItemWhereInput = {
+    organizationId: input.organizationId,
+    ...(input.connectionId ? { ebaySellerConnectionId: input.connectionId } : {}),
+  };
+  const whereFiltered = inventoryCacheWhere(input);
+  const publishedWhere: Prisma.EbayInventoryCacheItemWhereInput = {
+    ...whereBase,
+    OR: [{ offerStatus: { in: ["PUBLISHED", "ACTIVE"] } }, { listingStatus: { in: ["PUBLISHED", "ACTIVE"] } }],
+  };
+  const lowStockWhere: Prisma.EbayInventoryCacheItemWhereInput = { ...whereBase, quantity: { gt: 0, lte: 5 } };
+  const outOfStockWhere: Prisma.EbayInventoryCacheItemWhereInput = { ...whereBase, OR: [{ quantity: { lte: 0 } }, { quantity: null }] };
+
+  const [rows, total, filtered, published, lowStock, outOfStock, lastSynced] = await Promise.all([
+    prisma.ebayInventoryCacheItem.findMany({
+      where: whereFiltered,
+      select: inventoryCacheRowSelect,
+      orderBy: [{ listingId: "desc" }, { sku: "asc" }],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.ebayInventoryCacheItem.count({ where: whereBase }),
+    prisma.ebayInventoryCacheItem.count({ where: whereFiltered }),
+    prisma.ebayInventoryCacheItem.count({ where: publishedWhere }),
+    prisma.ebayInventoryCacheItem.count({ where: lowStockWhere }),
+    prisma.ebayInventoryCacheItem.count({ where: outOfStockWhere }),
+    prisma.ebayInventoryCacheItem.aggregate({ where: whereBase, _max: { syncedAt: true } }),
+  ]);
+
+  const summary = {
+    total,
+    filtered,
+    connectedAccounts: input.connections.length,
+    published,
+    unpublished: Math.max(0, total - published),
+    lowStock,
+    outOfStock,
+  };
+  return {
+    accounts: input.connections.map((connection) => ({
+      id: connection.id,
+      username: connection.username,
+      isDefault: connection.isDefault,
+      marketplace: asMarketplace(connection.defaultMarketplace),
+    })),
+    items: rows.map(cachedRowToInventoryRow),
+    pagination: { page, pageSize, total: filtered, totalPages: Math.max(1, Math.ceil(filtered / pageSize)) },
+    summary,
+    errors: input.errors ?? [],
+    syncedAt: lastSynced._max.syncedAt?.toISOString() ?? null,
+  };
+}
+
 function shapeInventoryResponse(input: {
   connections: ActiveConnection[];
   rows: EbayInventoryRow[];
@@ -567,14 +701,7 @@ export async function listEbayStoreInventory(input: {
   pageSize?: number;
 }) {
   const connections = await listActiveConnections({ organizationId: input.organizationId, connectionId: input.connectionId });
-  const cached = await prisma.ebayInventoryCacheItem.findMany({
-    where: {
-      organizationId: input.organizationId,
-      ...(input.connectionId ? { ebaySellerConnectionId: input.connectionId } : {}),
-    },
-    include: { ebaySellerConnection: { select: { id: true, username: true, isDefault: true, defaultMarketplace: true } } },
-  });
-  return shapeInventoryResponse({ ...input, connections, rows: cached.map(cachedRowToInventoryRow) });
+  return shapeCachedInventoryResponse({ ...input, connections });
 }
 
 export async function syncEbayStoreInventory(input: {
@@ -792,14 +919,7 @@ export async function syncEbayStoreInventory(input: {
   if (refreshedRows.length > 0) {
     return shapeInventoryResponse({ ...input, connections, rows: refreshedRows, errors });
   }
-  const cached = await prisma.ebayInventoryCacheItem.findMany({
-    where: {
-      organizationId: input.organizationId,
-      ...(input.connectionId ? { ebaySellerConnectionId: input.connectionId } : {}),
-    },
-    include: { ebaySellerConnection: { select: { id: true, username: true, isDefault: true, defaultMarketplace: true } } },
-  });
-  return shapeInventoryResponse({ ...input, connections, rows: cached.map(cachedRowToInventoryRow), errors });
+  return shapeCachedInventoryResponse({ ...input, connections, errors });
 }
 
 export function startEbayStoreInventoryCacheRefresh(input: Parameters<typeof syncEbayStoreInventory>[0]) {
