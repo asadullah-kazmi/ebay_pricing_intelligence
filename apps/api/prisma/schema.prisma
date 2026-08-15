@@ -659,7 +659,7 @@ model EbaySellerConnection {
     createdAt              DateTime             @default(now())
     updatedAt              DateTime             @updatedAt
 
-    @@unique([ebaySellerConnectionId, marketplace, sourceKey])
+    @@unique([ebaySellerConnectionId, sourceKey])
     @@index([organizationId, ebaySellerConnectionId, syncedAt])
     @@index([organizationId, orderStatus])
     @@index([organizationId, paymentStatus])

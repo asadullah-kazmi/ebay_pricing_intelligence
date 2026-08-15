@@ -453,13 +453,13 @@ export async function syncEbayStoreOrders(input: {
         for (const [orderIndex, order] of page.orders.entries()) {
           await prisma.ebayOrderCacheItem.upsert({
             where: {
-              ebaySellerConnectionId_marketplace_sourceKey: {
+              ebaySellerConnectionId_sourceKey: {
                 ebaySellerConnectionId: connection.id,
-                marketplace,
                 sourceKey: order.sourceKey,
               },
             },
             update: {
+              organizationId: input.organizationId,
               orderId: order.orderId,
               legacyOrderId: order.legacyOrderId,
               buyerUsername: order.buyerUsername,
