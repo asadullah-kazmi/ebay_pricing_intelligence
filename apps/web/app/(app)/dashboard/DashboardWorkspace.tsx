@@ -256,6 +256,28 @@ export default function DashboardWorkspace() {
     { label: "CPO", key: "cpo", icon: "⌑", accent: false },
   ] : [];
 
+  const visibleMetricCards = [
+    ...metricCards,
+    { label: "Low stock", key: "lowStock", icon: "#", accent: false },
+    { label: "Out of stock", key: "outOfStock", icon: "#", accent: false },
+    { label: "Ready drafts", key: "readyDrafts", icon: "#", accent: false },
+    { label: "Blocked drafts", key: "blockedDrafts", icon: "#", accent: false },
+    { label: "Net margin", key: "netMargin", icon: "%", accent: false },
+  ].filter((card) => {
+    if (activeTab === "Executive summary") return ["grossGmv", "totalOrders", "aov", "unitsSold", "activeListings", "readyDrafts"].includes(card.key);
+    if (activeTab === "Operations") return ["totalOrders", "unitsSold", "activeListings", "lowStock", "outOfStock", "blockedDrafts"].includes(card.key);
+    if (activeTab === "Sales analytics") return ["grossGmv", "totalOrders", "aov", "unitsSold", "returnRate", "cancellationRate"].includes(card.key);
+    if (activeTab === "Profit analysis") return ["grossGmv", "netProfit", "netMargin", "aov", "totalOrders", "unitsSold"].includes(card.key);
+    if (activeTab === "Marketing / Ads") return ["roas", "adSpend", "adRevenue", "cpo"].includes(card.key);
+    return false;
+  });
+  const showFilters = activeTab !== "Product research";
+  const showExecutive = activeTab === "Executive summary";
+  const showOperations = activeTab === "Operations";
+  const showSales = activeTab === "Sales analytics";
+  const showProfit = activeTab === "Profit analysis";
+  const showMarketing = activeTab === "Marketing / Ads";
+
   if (status !== "ready") {
     return null;
   }
@@ -293,7 +315,7 @@ export default function DashboardWorkspace() {
         ))}
       </nav>
 
-      <section className={styles.researchGrid}>
+      {activeTab === "Product research" ? <section className={styles.researchGrid}>
         <article className={styles.researchCard}>
           <div className={styles.panelHead}>
             <div>
@@ -333,9 +355,9 @@ export default function DashboardWorkspace() {
           </div>
           <Link href="/channels">Add account</Link>
         </article>
-      </section>
+      </section> : null}
 
-      <section className={styles.filterBar}>
+      {showFilters ? <section className={styles.filterBar}>
         <select value={range} onChange={(event) => setRange(event.target.value as RangeValue)} aria-label="Date range">
           <option value="7d">Last 7 days</option>
           <option value="30d">Last 30 days</option>
@@ -373,14 +395,14 @@ export default function DashboardWorkspace() {
             </button>
           ))}
         </div>
-      </section>
+      </section> : null}
 
       {!analytics ? (
         <section className={styles.panel}><EmptyPanel>Loading dashboard analytics...</EmptyPanel></section>
       ) : (
         <>
-          <section className={styles.metricGrid}>
-            {metricCards.map((card) => {
+          {visibleMetricCards.length ? <section className={styles.metricGrid}>
+            {visibleMetricCards.map((card) => {
               const metricValue = analytics.metrics[card.key];
               const change = formatChange(metricValue);
               return (
@@ -395,13 +417,13 @@ export default function DashboardWorkspace() {
                 </article>
               );
             })}
-          </section>
+          </section> : null}
 
-          <section className={styles.analyticsGrid}>
+          {showExecutive || showSales || showOperations ? <section className={styles.analyticsGrid}>
             <article className={styles.panel}>
               <div className={styles.panelHead}>
                 <div>
-                  <h2>GMV trend</h2>
+                  <h2>{showOperations ? "Order and unit trend" : "GMV trend"}</h2>
                   <p>{analytics.range.label} · real cached eBay order data</p>
                 </div>
                 <div className={styles.segmented}>
@@ -432,9 +454,9 @@ export default function DashboardWorkspace() {
                 </ul>
               </div>
             </article>
-          </section>
+          </section> : null}
 
-          <section className={styles.splitGrid}>
+          {showExecutive || showSales ? <section className={styles.splitGrid}>
             <article className={styles.panel}>
               <div className={styles.panelHead}>
                 <div>
@@ -479,9 +501,9 @@ export default function DashboardWorkspace() {
                 </div>
               ) : <EmptyPanel>No category data in synced inventory yet.</EmptyPanel>}
             </article>
-          </section>
+          </section> : null}
 
-          <section className={styles.splitGrid}>
+          {showExecutive || showProfit ? <section className={styles.splitGrid}>
             <article className={`${styles.panel} ${styles.bridgePanel}`}>
               <div className={styles.panelHead}>
                 <div>
@@ -521,9 +543,9 @@ export default function DashboardWorkspace() {
                 </div>
               ) : <EmptyPanel>No product sales found for this period.</EmptyPanel>}
             </article>
-          </section>
+          </section> : null}
 
-          <section className={styles.panel}>
+          {showMarketing ? <section className={styles.panel}>
             <div className={styles.panelHead}>
               <div>
                 <h2>Marketing / Ads</h2>
@@ -542,9 +564,9 @@ export default function DashboardWorkspace() {
                 </tbody>
               </table>
             </div>
-          </section>
+          </section> : null}
 
-          <section className={styles.opsFooter}>
+          {showExecutive || showOperations ? <section className={styles.opsFooter}>
             <article className={styles.panel}>
               <h2>Catalog readiness</h2>
               <div className={styles.productList}>
@@ -565,7 +587,7 @@ export default function DashboardWorkspace() {
                 {analytics.jobs.bulkPricing.length === 0 ? <EmptyPanel>No recent bulk pricing jobs.</EmptyPanel> : null}
               </div>
             </article>
-          </section>
+          </section> : null}
         </>
       )}
     </main>
