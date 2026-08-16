@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useAuth } from "../../components/AuthProvider";
 import styles from "./inventory.module.css";
@@ -105,6 +105,10 @@ function statusLabel(row: InventoryRow) {
   return status.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function normalizeSite(value: string | null | undefined) {
+  return value?.trim().toUpperCase() ?? "";
+}
+
 function InventoryImage({ src, alt }: { src: string | null; alt: string }) {
   const [failed, setFailed] = useState(false);
   if (!src || failed) return <span className={styles.noImage}>No image</span>;
@@ -125,6 +129,7 @@ function lastSyncedLabel(value: string | null) {
 
 export default function InventoryWorkspace() {
   const { status: authStatus, demo, apiFetch } = useAuth();
+  const latestLoadId = useRef(0);
   const [inventory, setInventory] = useState<InventoryResponse>(emptyInventory);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -153,17 +158,32 @@ export default function InventoryWorkspace() {
     () => Array.from(new Set([...(inventory.sites ?? []), ...(marketplace ? [marketplace] : [])])).sort((a, b) => a.localeCompare(b)),
     [inventory.sites, marketplace],
   );
+  const selectedMarketplace = normalizeSite(marketplace);
+  const visibleItems = useMemo(
+    () => selectedMarketplace
+      ? inventory.items.filter((row) => normalizeSite(row.account.marketplace) === selectedMarketplace)
+      : inventory.items,
+    [inventory.items, selectedMarketplace],
+  );
+  const responseMatchesSelectedSite = !selectedMarketplace || visibleItems.length === inventory.items.length;
+  const visibleFilteredCount = responseMatchesSelectedSite ? inventory.summary.filtered : visibleItems.length;
+  const visiblePaginationTotal = responseMatchesSelectedSite ? inventory.pagination.total : visibleItems.length;
 
   const load = useCallback(async () => {
     if (authStatus !== "ready" || demo) return;
+    const loadId = latestLoadId.current + 1;
+    latestLoadId.current = loadId;
     setLoading(true);
     setError("");
     try {
-      setInventory((await apiFetch(`/api/ebay/store-inventory?${query}`)) as InventoryResponse);
+      const nextInventory = (await apiFetch(`/api/ebay/store-inventory?${query}`)) as InventoryResponse;
+      if (loadId === latestLoadId.current) setInventory(nextInventory);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to load cached eBay inventory");
+      if (loadId === latestLoadId.current) {
+        setError(caught instanceof Error ? caught.message : "Unable to load cached eBay inventory");
+      }
     } finally {
-      setLoading(false);
+      if (loadId === latestLoadId.current) setLoading(false);
     }
   }, [apiFetch, authStatus, demo, query]);
 
@@ -424,14 +444,14 @@ export default function InventoryWorkspace() {
               <option value="ENDED">Ended</option>
             </select>
           </label>
-          <div className={styles.filterCount}>{inventory.summary.filtered} shown</div>
+          <div className={styles.filterCount}>{visibleFilteredCount} shown</div>
         </div>
 
-        {loading && inventory.items.length === 0 ? (
+        {loading && visibleItems.length === 0 ? (
           <div className={styles.loadingContainer}>
             <div className={styles.spinner} />
           </div>
-        ) : inventory.items.length === 0 ? (
+        ) : visibleItems.length === 0 ? (
           <div className={styles.emptyState}>
             <b>No synced inventory records</b>
             <span>Click <strong>Sync all stores</strong> above to pull listings and stock quantities directly from your connected eBay seller accounts.</span>
@@ -451,7 +471,7 @@ export default function InventoryWorkspace() {
                 </tr>
               </thead>
               <tbody>
-                {inventory.items.map((row) => {
+                {visibleItems.map((row) => {
                   const stockState = stockLabel(row.quantity);
                   return (
                     <tr key={row.key}>
@@ -503,7 +523,7 @@ export default function InventoryWorkspace() {
 
         <footer className={styles.pagination}>
           <span>
-            Page {inventory.pagination.page} of {inventory.pagination.totalPages} · {inventory.pagination.total} records
+            Page {inventory.pagination.page} of {inventory.pagination.totalPages} · {visiblePaginationTotal} records
           </span>
           <div>
             <select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }}>

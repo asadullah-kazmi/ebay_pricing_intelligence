@@ -412,7 +412,17 @@ function mergeTradingRows(input: {
 }
 
 function inventoryRowSourceKey(row: EbayInventoryRow): string {
-  return typeof row.offerPayload?.sourceKey === "string" ? row.offerPayload.sourceKey : `TRADING:${row.listingId ?? row.sku}`;
+  const rawSourceKey = typeof row.offerPayload?.sourceKey === "string" && row.offerPayload.sourceKey.trim()
+    ? row.offerPayload.sourceKey.trim()
+    : `TRADING:${row.listingId ?? row.sku}`;
+  const marketplace = asInventoryMarketplace(row.account.marketplace);
+  const sourceWithoutTradingPrefix = rawSourceKey.startsWith("TRADING:")
+    ? rawSourceKey.slice("TRADING:".length)
+    : rawSourceKey;
+  const sourceWithoutMarketplacePrefix = sourceWithoutTradingPrefix.startsWith(`${marketplace}:`)
+    ? sourceWithoutTradingPrefix.slice(marketplace.length + 1)
+    : sourceWithoutTradingPrefix;
+  return `TRADING:${marketplace}:${sourceWithoutMarketplacePrefix}`;
 }
 
 function toJson(value: Record<string, unknown> | null): Prisma.InputJsonValue | typeof Prisma.JsonNull {
