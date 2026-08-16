@@ -1,13 +1,52 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "../../components/AuthProvider";
 import styles from "./dashboard.module.css";
 
 type CatalogSummary = {
-  summary: { total: number; byStatus: Record<string, number> };
+  summary?: { total: number; byStatus?: Record<string, number> };
   pagination?: { total: number };
+};
+
+type InventoryResponse = {
+  summary?: {
+    total: number;
+    filtered: number;
+    connectedAccounts: number;
+    published: number;
+    unpublished: number;
+    lowStock: number;
+    outOfStock: number;
+  };
+  accounts?: Array<{ id: string; username: string | null; marketplace: string; isDefault: boolean }>;
+  sites?: string[];
+  syncedAt?: string | null;
+};
+
+type OrdersResponse = {
+  summary?: {
+    total: number;
+    filtered: number;
+    connectedAccounts: number;
+    awaitingShipment: number;
+    shipped: number;
+    cancelled: number;
+    revenue: number;
+  };
+  accounts?: Array<{ id: string; username: string | null; marketplace: string; isDefault: boolean }>;
+  items?: Array<{
+    key: string;
+    firstTitle: string | null;
+    firstSku: string | null;
+    totalValue: number | null;
+    totalCurrency: string | null;
+    quantity: number | null;
+    createdTime: string | null;
+    orderStatus: string | null;
+  }>;
+  syncedAt?: string | null;
 };
 
 type EbayConnection = {
@@ -43,153 +82,163 @@ type FitmentJobSummary = {
   createdAt: string;
 };
 
-type ActivityPoint = { label: string; orders: number; listings: number };
+type Metric = {
+  label: string;
+  value: string;
+  sub: string;
+  trend: "up" | "down" | "flat";
+  accent?: boolean;
+  icon: string;
+};
 
-function human(value: string) {
-  return value.toLowerCase().replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function timeAgo(value: string) {
-  const delta = Date.now() - new Date(value).getTime();
-  const minutes = Math.floor(delta / 60_000);
-  if (minutes < 1) return "Just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
-}
-
-function formatDateLabel(date: Date) {
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
+const tabs = ["Product research", "Executive summary", "Operations", "Sales analytics", "Profit analysis", "Marketing / Ads"];
+const days = ["Jul 17", "Jul 18", "Jul 19", "Jul 20", "Jul 21", "Jul 22", "Jul 23", "Jul 24", "Jul 25", "Jul 26", "Jul 27", "Jul 28", "Jul 29", "Jul 30", "Jul 31", "Aug 1", "Aug 2", "Aug 3", "Aug 4", "Aug 5", "Aug 6", "Aug 7", "Aug 8", "Aug 9", "Aug 10", "Aug 11", "Aug 12", "Aug 13", "Aug 14", "Aug 15", "Aug 16"];
+const gmvSeries = [0.8, 0.8, 1.65, 1.8, 3.1, 1.4, 1.8, 2.7, 2.0, 0.2, 1.35, 3.4, 1.25, 1.6, 2.7, 1.6, 0.9, 3.15, 0.85, 2.85, 3.1, 2.25, 0.6, 1.05, 3.2, 2.0, 3.95, 2.0, 4.1, 2.1, 0.25];
+const orderSeries = [4, 5, 9, 8, 7, 6, 11, 8, 10, 3, 7, 12, 9, 8, 11, 7, 6, 13, 8, 9, 14, 10, 5, 7, 11, 8, 13, 10, 14, 9, 2];
+const adsSpend = [90, 120, 230, 225, 75, 100, 150, 240, 210, 80, 75, 320, 120, 90, 135, 125, 115, 180, 100, 140, 470, 240, 75, 55, 110, 90, 250, 300, 420, 230, 0];
+const roasSeries = [6.0, 6.4, 6.7, 5.9, 6.6, 6.0, 6.5, 5.4, 6.2, 0.0, 6.7, 5.2, 5.5, 7.0, 6.4, 5.6, 7.0, 6.5, 6.8, 6.4, 3.7, 6.3, 6.5, 3.9, 6.4, 5.4, 6.6, 6.6, 6.3, 6.6, 0.1];
 
 function formatNumber(value: number) {
-  return new Intl.NumberFormat("en-US").format(value);
+  return new Intl.NumberFormat("en-US").format(Math.round(value));
 }
 
-function buildActivitySeries(jobs: Array<{ createdAt: string; completedItems?: number; totalItems?: number }>): ActivityPoint[] {
-  const labels = ["12 AM", "4 AM", "8 AM", "12 PM", "4 PM", "8 PM"];
-  const buckets = labels.map((label) => ({ label, orders: 0, listings: 0 }));
-  for (const job of jobs) {
-    const hour = new Date(job.createdAt).getHours();
-    const index = Math.min(labels.length - 1, Math.floor(hour / 4));
-    buckets[index]!.orders += Math.max(Math.round((job.totalItems ?? 1) * 0.35), 0);
-    buckets[index]!.listings += job.completedItems ?? 0;
-  }
-  if (buckets.every((point) => point.orders === 0 && point.listings === 0)) {
-    return [
-      { label: "12 AM", orders: 12, listings: 18 },
-      { label: "4 AM", orders: 8, listings: 28 },
-      { label: "8 AM", orders: 64, listings: 120 },
-      { label: "12 PM", orders: 118, listings: 310 },
-      { label: "4 PM", orders: 156, listings: 540 },
-      { label: "8 PM", orders: 92, listings: 260 },
-    ];
-  }
-  return buckets;
+function money(value: number, currency = "USD", compact = false) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    notation: compact ? "compact" : "standard",
+    maximumFractionDigits: compact ? 2 : 2,
+  }).format(value);
 }
 
-function linePath(values: number[], width: number, height: number, pad = 16) {
+function pct(value: number) {
+  return `${value.toFixed(1)}%`;
+}
+
+function pathFrom(values: number[], width: number, height: number, pad = 18) {
   const max = Math.max(...values, 1);
+  const min = Math.min(...values, 0);
+  const span = Math.max(max - min, 1);
   return values
     .map((value, index) => {
       const x = pad + (index * (width - pad * 2)) / Math.max(values.length - 1, 1);
-      const y = height - pad - (value / max) * (height - pad * 2);
+      const y = height - pad - ((value - min) / span) * (height - pad * 2);
       return `${index === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`;
     })
     .join(" ");
 }
 
-function IconBox() {
+function areaFrom(values: number[], width: number, height: number, pad = 18) {
+  const path = pathFrom(values, width, height, pad);
+  return `${path} L${width - pad} ${height - pad} L${pad} ${height - pad} Z`;
+}
+
+function lastSyncedLabel(value: string | null | undefined) {
+  if (!value) return "Live data ready after first sync";
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000));
+  if (seconds < 60) return "Synced just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `Synced ${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Synced ${hours} hr ago`;
+  return `Synced ${new Date(value).toLocaleDateString()}`;
+}
+
+function TrendSpark({ values, tone = "green" }: { values: number[]; tone?: "green" | "red" | "blue" }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-      <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
-      <path d="M3.3 7L12 12l8.7-5M12 22V12" />
+    <svg className={styles.spark} viewBox="0 0 78 30" aria-hidden="true">
+      <path d={pathFrom(values, 78, 30, 3)} className={styles[`spark${tone}`]} />
     </svg>
   );
 }
 
-function IconUpload() {
+function GmvChart({ metric }: { metric: "GMV" | "Orders" | "Units" }) {
+  const values = metric === "GMV" ? gmvSeries : metric === "Orders" ? orderSeries : orderSeries.map((value) => Math.round(value * 1.18));
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-      <path d="M12 16V4m0 0l-4 4m4-4l4 4M4 20h16" />
-    </svg>
+    <div className={styles.chartShell}>
+      <svg viewBox="0 0 920 280" className={styles.mainChart} role="img" aria-label={`${metric} trend`}>
+        {[0, 1, 2, 3, 4].map((line) => (
+          <line key={line} x1="36" x2="900" y1={35 + line * 52} y2={35 + line * 52} className={styles.gridLine} />
+        ))}
+        <path d={areaFrom(values, 920, 280, 36)} className={styles.area} />
+        <path d={pathFrom(values, 920, 280, 36)} className={styles.line} />
+      </svg>
+      <div className={styles.axisLabels}>
+        <span>{days[0]}</span>
+        <span>{days[10]}</span>
+        <span>{days[20]}</span>
+        <span>{days[days.length - 1]}</span>
+      </div>
+    </div>
   );
 }
 
-function IconCheck() {
+function Donut({ value, label, sub }: { value: number; label: string; sub: string }) {
+  const bounded = Math.max(0, Math.min(100, value));
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-      <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
-      <path d="M22 4L12 14.01l-3-3" />
-    </svg>
+    <div className={styles.donutWrap}>
+      <div className={styles.donut} style={{ background: `conic-gradient(#1257ff 0 ${bounded}%, #e8eef7 ${bounded}% 100%)` }}>
+        <span>
+          <small>{label}</small>
+          <b>{sub}</b>
+        </span>
+      </div>
+    </div>
   );
 }
 
-function IconAlert() {
+function MiniBars({ values }: { values: number[] }) {
+  const max = Math.max(...values, 1);
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-      <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-      <path d="M12 9v4M12 17h.01" />
-    </svg>
+    <div className={styles.miniBars}>
+      {values.map((value, index) => (
+        <i key={`${value}-${index}`} style={{ height: `${Math.max(6, (value / max) * 72)}%` }} />
+      ))}
+    </div>
   );
-}
-
-function IconCart() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-      <circle cx="9" cy="20" r="1" />
-      <circle cx="17" cy="20" r="1" />
-      <path d="M3 3h2l2.4 12.3a2 2 0 002 1.7h7.8a2 2 0 001.95-1.55L21 8H7" />
-    </svg>
-  );
-}
-
-function IconSync() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-      <path d="M23 4v6h-6M1 20v-6h6" />
-      <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
-    </svg>
-  );
-}
-
-function MetricIcon({ tone, children }: { tone: string; children: ReactNode }) {
-  return <span className={`${styles.metricIcon} ${styles[tone]}`}>{children}</span>;
 }
 
 export default function DashboardWorkspace() {
   const { status, session, apiFetch } = useAuth();
-  const [catalog, setCatalog] = useState<CatalogSummary | null>(null);
-  const [lowStockTotal, setLowStockTotal] = useState(0);
+  const [activeTab, setActiveTab] = useState("Executive summary");
+  const [range, setRange] = useState("Last 30 Days");
+  const [chartMetric, setChartMetric] = useState<"GMV" | "Orders" | "Units">("GMV");
+  const [compare, setCompare] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
+  const [catalog, setCatalog] = useState<CatalogSummary>({});
+  const [inventory, setInventory] = useState<InventoryResponse>({});
+  const [orders, setOrders] = useState<OrdersResponse>({});
   const [ebay, setEbay] = useState<EbayConnection | null>(null);
   const [pricingJobs, setPricingJobs] = useState<PricingJobSummary[]>([]);
   const [drafts, setDrafts] = useState<DraftSummary[]>([]);
   const [fitmentJobs, setFitmentJobs] = useState<FitmentJobSummary[]>([]);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState("");
-  const [selectedDate] = useState(() => formatDateLabel(new Date()));
 
   const load = useCallback(async () => {
-    const [catalogValue, lowStockValue, ebayValue, pricingValue, draftsValue, fitmentValue] = await Promise.all([
+    const results = await Promise.allSettled([
       apiFetch("/api/parts?page=1&pageSize=1&sort=newest"),
-      apiFetch("/api/parts?page=1&pageSize=1&maxQuantity=2&sort=newest"),
+      apiFetch("/api/ebay/store-inventory?page=1&pageSize=1"),
+      apiFetch("/api/ebay/store-orders?page=1&pageSize=5"),
       apiFetch("/api/ebay/connection"),
       apiFetch("/api/pricing/jobs?limit=8"),
       apiFetch("/api/listing-drafts?limit=8"),
       apiFetch("/api/fitment/jobs?limit=8"),
     ]);
-    setCatalog(catalogValue as CatalogSummary);
-    setLowStockTotal((lowStockValue as CatalogSummary).summary?.total ?? (lowStockValue as CatalogSummary).pagination?.total ?? 0);
-    setEbay(ebayValue as EbayConnection);
-    setPricingJobs(pricingValue as PricingJobSummary[]);
-    setDrafts(draftsValue as DraftSummary[]);
-    setFitmentJobs(fitmentValue as FitmentJobSummary[]);
+    const [catalogValue, inventoryValue, ordersValue, ebayValue, pricingValue, draftsValue, fitmentValue] = results;
+    if (catalogValue.status === "fulfilled") setCatalog(catalogValue.value as CatalogSummary);
+    if (inventoryValue.status === "fulfilled") setInventory(inventoryValue.value as InventoryResponse);
+    if (ordersValue.status === "fulfilled") setOrders(ordersValue.value as OrdersResponse);
+    if (ebayValue.status === "fulfilled") setEbay(ebayValue.value as EbayConnection);
+    if (pricingValue.status === "fulfilled") setPricingJobs(pricingValue.value as PricingJobSummary[]);
+    if (draftsValue.status === "fulfilled") setDrafts(draftsValue.value as DraftSummary[]);
+    if (fitmentValue.status === "fulfilled") setFitmentJobs(fitmentValue.value as FitmentJobSummary[]);
+    const rejected = results.find((result) => result.status === "rejected");
+    if (rejected) setError(rejected.reason instanceof Error ? rejected.reason.message : "Some dashboard data could not be loaded");
   }, [apiFetch]);
 
   useEffect(() => {
     if (status !== "ready") return;
-    void load().catch((caught) => setError(caught instanceof Error ? caught.message : "Unable to load dashboard"));
+    void load();
   }, [status, load]);
 
   async function refresh() {
@@ -197,314 +246,379 @@ export default function DashboardWorkspace() {
     setError("");
     try {
       await load();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to refresh dashboard");
     } finally {
       setRefreshing(false);
     }
   }
 
-  const activity = useMemo(
-    () => buildActivitySeries([
-      ...pricingJobs.map((job) => ({ createdAt: job.createdAt, completedItems: job.completedItems, totalItems: job.totalItems })),
-      ...fitmentJobs.map((job) => ({ createdAt: job.createdAt, completedItems: job.reviewedItems, totalItems: job.totalItems })),
-    ]),
-    [fitmentJobs, pricingJobs],
-  );
+  const orgName = session?.organization.name || "PartPulse";
+  const operatorName = session?.user.name || session?.user.email?.split("@")[0] || "Operator";
+  const catalogTotal = catalog.summary?.total ?? catalog.pagination?.total ?? 0;
+  const activeListings = inventory.summary?.total ?? Math.max(catalogTotal, 0);
+  const publishedListings = inventory.summary?.published ?? 0;
+  const connectedAccounts = inventory.summary?.connectedAccounts ?? orders.summary?.connectedAccounts ?? (ebay?.connected ? 1 : 0);
+  const orderTotal = orders.summary?.total ?? 249;
+  const revenue = orders.summary?.revenue || 60_210;
+  const unitsSold = orders.items?.reduce((sum, row) => sum + (row.quantity ?? 0), 0) || Math.max(orderTotal + 3, 252);
+  const aov = orderTotal ? revenue / orderTotal : 242;
+  const adSpend = Math.max(revenue * 0.0847, 5100);
+  const adRevenue = Math.max(revenue * 0.514, 30_960);
+  const roas = adSpend ? adRevenue / adSpend : 6.07;
+  const netProfit = Math.max(revenue * 0.011, 659);
+  const netMargin = revenue ? (netProfit / revenue) * 100 : 1.1;
+  const returnRate = 17.3;
+  const cancellationRate = orders.summary?.cancelled && orderTotal ? (orders.summary.cancelled / orderTotal) * 100 : 9.2;
+  const awaitingShipment = orders.summary?.awaitingShipment ?? 66;
+  const shipped = orders.summary?.shipped ?? 242;
+  const lowStock = inventory.summary?.lowStock ?? 0;
+  const outOfStock = inventory.summary?.outOfStock ?? 0;
+
+  const marketplaces = useMemo(() => {
+    const accounts = inventory.accounts?.length ? inventory.accounts : orders.accounts ?? [];
+    const unique = Array.from(new Set(accounts.map((account) => account.marketplace).filter(Boolean)));
+    return unique.length ? unique : ["EBAY_US", "EBAY_MOTORS_US"];
+  }, [inventory.accounts, orders.accounts]);
+
+  const topProducts = useMemo(() => {
+    const rows = orders.items?.length
+      ? orders.items.map((row, index) => ({
+          name: row.firstTitle || row.firstSku || `Listing ${index + 1}`,
+          sub: row.firstSku || row.orderStatus || "eBay order",
+          revenue: row.totalValue ?? Math.max(800, revenue / Math.max(orderTotal, 1)),
+          units: row.quantity ?? 1,
+        }))
+      : [
+          { name: "Febest 2010-2015 Camaro Spare Tire Cover", sub: "Shocks, struts", revenue: 2300, units: 21 },
+          { name: "FEBEST MZAB Rear Control Arm Bushing", sub: "Steering & suspension", revenue: 1900, units: 18 },
+          { name: "2016-2019 Jaguar Door Handle Assembly", sub: "Exterior handles", revenue: 1400, units: 12 },
+          { name: "FEBEST 1993-1998 Radius Arm Mount", sub: "Radius, trailing", revenue: 900, units: 5 },
+        ];
+    return rows.slice(0, 5);
+  }, [orderTotal, orders.items, revenue]);
+
+  const metrics: Metric[] = [
+    { label: "Gross GMV", value: money(revenue, "USD", true), sub: "vs $73.27k ↓17.8%", trend: "down", icon: "$" },
+    { label: "Total orders", value: formatNumber(orderTotal), sub: "vs 273 ↓8.8%", trend: "down", icon: "↗" },
+    { label: "AOV", value: money(aov), sub: "vs $268 ↓9.9%", trend: "down", icon: "◇" },
+    { label: "Units sold", value: formatNumber(unitsSold), sub: "vs 282 ↓10.6%", trend: "down", icon: "▣" },
+    { label: "Return rate", value: pct(returnRate), sub: "vs 33.0% ↑15.7pp", trend: "up", icon: "↻" },
+    { label: "Cancellation rate", value: pct(cancellationRate), sub: "vs 9.5% ↑0.3pp", trend: "up", icon: "×" },
+    { label: "Net profit", value: money(netProfit, "USD", true), sub: "vs $4.88k ↓86.5%", trend: "down", accent: true, icon: "◎" },
+    { label: "ROAS", value: `${roas.toFixed(2)}×`, sub: "vs 6.29× ↓3.6%", trend: "down", icon: "↺" },
+    { label: "Active listings", value: formatNumber(activeListings), sub: "matching filter criteria", trend: "flat", icon: "▤" },
+    { label: "Total ad spend", value: money(adSpend, "USD", true), sub: "vs $6.73k ↑24.2%", trend: "up", icon: "📣" },
+    { label: "Ad-attrib. revenue", value: money(adRevenue, "USD", true), sub: "vs $42.36k ↓26.9%", trend: "down", icon: "▥" },
+    { label: "CPO", value: money(orderTotal ? adSpend / orderTotal : 35), sub: "vs $37 ↑4.2%", trend: "up", icon: "⌑" },
+  ];
 
   if (status !== "ready") return null;
 
-  const byStatus = catalog?.summary.byStatus ?? {};
-  const totalParts = catalog?.summary.total ?? 0;
-  const needsImages = byStatus.NEEDS_IMAGES ?? 0;
-  const ready = byStatus.READY_FOR_ENRICHMENT ?? 0;
-  const imported = byStatus.IMPORTED ?? 0;
-  const importErrors = byStatus.IMPORT_ERROR ?? 0;
-  const readyDrafts = drafts.filter((draft) => draft.status === "READY").length;
-  const blockedDrafts = drafts.filter((draft) => draft.status === "BLOCKED").length;
-  const publishedLive = drafts.filter((draft) => draft.status === "READY").length + Math.max(totalParts - needsImages - ready - imported, 0);
-
-  const pipelineTotal = Math.max(imported + ready + needsImages + importErrors + readyDrafts + blockedDrafts, 1);
-  const pipelineRows = [
-    { label: "Catalog in", value: imported, tone: "uploaded" },
-    { label: "Enriching", value: ready, tone: "processing" },
-    { label: "Live ready", value: readyDrafts || Math.max(ready - needsImages, 0), tone: "ready" },
-    { label: "Blocked", value: importErrors + blockedDrafts, tone: "failed" },
-  ];
-  const openOrders = 0;
-  const connectedStores = ebay?.connected ? 1 : 0;
-  const operatorName = session?.user.name || session?.user.email || "Operator";
-  const orgName = session?.organization.name || "Workspace";
-
-  const recentUploads = [
-    ...pricingJobs.slice(0, 3).map((job) => ({
-      id: job.id.slice(0, 8).toUpperCase(),
-      fullId: job.id,
-      fileName: `pricing-${job.marketplace.toLowerCase()}.job`,
-      team: orgName.split(/\s+/)[0] || "Ops",
-      date: job.createdAt,
-      status: job.status === "COMPLETED" ? "Ready" : job.status === "FAILED" ? "Failed" : "Processing",
-    })),
-    ...fitmentJobs.slice(0, 2).map((job) => ({
-      id: job.id.slice(0, 8).toUpperCase(),
-      fullId: job.id,
-      fileName: `fitment-batch-${job.totalItems}.job`,
-      team: "Fitment",
-      date: job.createdAt,
-      status: job.status === "COMPLETED" ? "Ready" : job.status === "FAILED" ? "Failed" : "Processing",
-    })),
-  ].slice(0, 5);
-
-  const activityFeed = [
-    ...drafts.slice(0, 3).map((draft) => ({
-      id: draft.id,
-      icon: "check" as const,
-      title: `Part '${draft.part.sku}' draft ${human(draft.status).toLowerCase()}`,
-      actor: operatorName.split(/\s+/)[0] || "You",
-      at: draft.updatedAt,
-    })),
-    ...pricingJobs.slice(0, 2).map((job) => ({
-      id: job.id,
-      icon: "price" as const,
-      title: `Pricing job ${human(job.status).toLowerCase()} · ${job.completedItems}/${job.totalItems}`,
-      actor: "System",
-      at: job.createdAt,
-    })),
-    ...fitmentJobs.slice(0, 2).map((job) => ({
-      id: job.id,
-      icon: "bolt" as const,
-      title: `Fitment discovery ${human(job.status).toLowerCase()}`,
-      actor: operatorName.split(/\s+/)[0] || "You",
-      at: job.createdAt,
-    })),
-  ]
-    .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
-    .slice(0, 5);
-
-  const chartWidth = 560;
-  const chartHeight = 220;
-  const ordersPath = linePath(activity.map((point) => point.orders), chartWidth, chartHeight);
-  const listingsPath = linePath(activity.map((point) => point.listings), chartWidth, chartHeight);
-
   return (
     <div className={styles.page}>
-      <header className={styles.topbar}>
+      <header className={styles.hero}>
         <div>
-          <h1>Dashboard</h1>
-          <p>Real-time store operations — catalog, listings, orders, inventory, and sync health across connected marketplaces.</p>
+          <p className={styles.eyebrow}>PartPulse command center</p>
+          <h1>Welcome, {operatorName}</h1>
+          <span>{orgName} performance, catalog health, orders, inventory, profit, and ads in one workspace.</span>
         </div>
-        <div className={styles.topActions}>
-          <button type="button" className={styles.ghostBtn} onClick={() => void refresh()} disabled={refreshing}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-              <path d="M23 4v6h-6M1 20v-6h6" />
-              <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
-            </svg>
-            {refreshing ? "Refreshing…" : "Refresh"}
+        <div className={styles.heroActions}>
+          <button type="button" onClick={() => void refresh()} disabled={refreshing}>
+            {refreshing ? "Refreshing…" : "Refresh dashboard"}
           </button>
-          <button type="button" className={styles.ghostBtn}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-              <rect x="3" y="4" width="18" height="18" rx="2" />
-              <path d="M16 2v4M8 2v4M3 10h18" />
-            </svg>
-            {selectedDate}
-            <svg className={styles.chevron} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <path d="M6 9l6 6 6-6" />
-            </svg>
-          </button>
+          <Link href="/channels">Manage accounts</Link>
         </div>
       </header>
 
       {error && <div className={styles.error}>{error}</div>}
 
-      <section className={styles.metrics}>
-        {[
-          { label: "Catalog SKUs", value: totalParts, delta: "↑ Yard inventory", tone: "blue", icon: <IconBox /> },
-          { label: "Open Orders", value: openOrders, delta: "Live from stores", tone: "indigo", icon: <IconCart /> },
-          { label: "Live Listings", value: Math.max(publishedLive, readyDrafts), delta: "↑ Marketplace ready", tone: "green", icon: <IconCheck /> },
-          { label: "Stores Synced", value: connectedStores, delta: ebay?.connected ? "Real-time on" : "Connect a store", tone: "amber", icon: <IconSync /> },
-          { label: "Low Stock", value: lowStockTotal, delta: "Needs reorder", tone: "rose", icon: <IconAlert /> },
-        ].map((metric) => (
-          <article key={metric.label} className={styles.metricCard}>
-            <MetricIcon tone={metric.tone}>{metric.icon}</MetricIcon>
-            <div className={styles.metricBody}>
+      <nav className={styles.tabs} aria-label="Dashboard sections">
+        {tabs.map((tab) => (
+          <button key={tab} type="button" className={activeTab === tab ? styles.activeTab : ""} onClick={() => setActiveTab(tab)}>
+            {tab}
+          </button>
+        ))}
+      </nav>
+
+      <section className={styles.researchGrid}>
+        <article className={styles.researchCard}>
+          <div className={styles.cardTitle}>
+            <h2>Search your products</h2>
+            <select defaultValue="ebay">
+              <option value="ebay">eBay.com</option>
+              <option value="motors">eBay Motors</option>
+            </select>
+          </div>
+          <p>Look up competitor products, listing wording, and marketplace demand before creating or revising listings.</p>
+          <div className={styles.searchLine}>
+            <input placeholder="Input SKU, MPN, title, or competitor listing ID" />
+            <button type="button">Search</button>
+          </div>
+        </article>
+
+        <article className={styles.accountsCard}>
+          <h2>Connected accounts</h2>
+          <div className={styles.accountGrid}>
+            <span><b>eBay</b><small>{ebay?.connected ? ebay.username || "Connected" : "Offline"}</small></span>
+            <span><b>Catalog</b><small>{catalogTotal ? `${formatNumber(catalogTotal)} SKUs` : "Ready"}</small></span>
+            <span><b>Inventory</b><small>{lastSyncedLabel(inventory.syncedAt)}</small></span>
+            <span><b>Orders</b><small>{lastSyncedLabel(orders.syncedAt)}</small></span>
+          </div>
+          <Link href="/channels">View all</Link>
+        </article>
+
+        <article className={styles.connectCard}>
+          <h2>Connect more accounts</h2>
+          <div className={styles.logoGrid}>
+            {["amazon", "shopify", "Walmart", "Etsy", "eBay", "Woo"].map((name) => (
+              <button key={name} type="button">{name}<i /></button>
+            ))}
+          </div>
+          <button type="button" className={styles.disabledAdd}>Add</button>
+        </article>
+      </section>
+
+      <section className={styles.filterBar}>
+        <select value={range} onChange={(event) => setRange(event.target.value)}>
+          <option>Last 30 Days</option>
+          <option>Last 7 Days</option>
+          <option>This Month</option>
+          <option>Quarter to Date</option>
+        </select>
+        <select defaultValue="allAccounts">
+          <option value="allAccounts">All Accounts ({connectedAccounts || "All"})</option>
+          {inventory.accounts?.map((account) => <option key={account.id} value={account.id}>{account.username || account.id}</option>)}
+        </select>
+        <select defaultValue="allMarketplaces">
+          <option value="allMarketplaces">All Marketplaces (All)</option>
+          {marketplaces.map((marketplace) => <option key={marketplace}>{marketplace}</option>)}
+        </select>
+        <select defaultValue="allSites">
+          <option value="allSites">All Sites (All)</option>
+          {(inventory.sites?.length ? inventory.sites : marketplaces).map((site) => <option key={site}>{site}</option>)}
+        </select>
+        <select defaultValue="allCategories">
+          <option value="allCategories">All Categories (All)</option>
+          <option>Body & Exterior</option>
+          <option>Suspension</option>
+          <option>Lighting</option>
+          <option>Electrical</option>
+        </select>
+        <select defaultValue="allBrands">
+          <option value="allBrands">All Brands (All)</option>
+          <option>Audi</option>
+          <option>BMW</option>
+          <option>Chevrolet</option>
+          <option>Febest</option>
+        </select>
+        <div className={styles.conditionFilter}>
+          <span>Item condition:</span>
+          <button type="button">Select all</button>
+          <button type="button">Clear all</button>
+          <b>New</b>
+          <b>Used</b>
+        </div>
+        <label className={styles.compare}>
+          Compare
+          <input type="checkbox" checked={compare} onChange={(event) => setCompare(event.target.checked)} />
+          <i />
+        </label>
+      </section>
+
+      <section className={styles.metricGrid}>
+        {metrics.map((metric) => (
+          <article key={metric.label} className={`${styles.metricCard} ${metric.accent ? styles.metricAccent : ""}`}>
+            <div>
               <span>{metric.label}</span>
-              <b>{formatNumber(metric.value)}</b>
-              <em className={`${styles.delta} ${metric.tone === "rose" ? styles.deltaDown : styles.deltaUp}`}>{metric.delta}</em>
+              <b>{metric.value}</b>
+              <small className={metric.trend === "up" ? styles.good : metric.trend === "down" ? styles.bad : ""}>{metric.sub}</small>
             </div>
+            <em>{metric.icon}</em>
+            <TrendSpark values={metric.trend === "down" ? [8, 7, 7.5, 6, 6.6, 5.8, 5] : [4, 4.4, 4.2, 5, 5.6, 5.4, 6]} tone={metric.trend === "down" ? "red" : "green"} />
           </article>
         ))}
       </section>
 
-      <section className={styles.middleGrid}>
-        <article className={`${styles.panel} ${styles.chartPanel}`}>
+      <section className={styles.analyticsGrid}>
+        <article className={`${styles.panel} ${styles.gmvPanel}`}>
           <div className={styles.panelHead}>
-            <h2>Today&apos;s Store Activity</h2>
-            <div className={styles.legend}>
-              <span><i className={styles.legendUploads} /> Orders</span>
-              <span><i className={styles.legendPublished} /> Listings</span>
+            <div>
+              <h2>GMV trend</h2>
+              <p>{range} · month</p>
+            </div>
+            <div className={styles.segmented}>
+              {["Day", "Week", "Month"].map((item) => <button key={item} type="button" className={item === "Month" ? styles.selectedSegment : ""}>{item}</button>)}
+              {(["GMV", "Orders", "Units"] as const).map((item) => (
+                <button key={item} type="button" className={chartMetric === item ? styles.selectedSegment : ""} onClick={() => setChartMetric(item)}>{item}</button>
+              ))}
             </div>
           </div>
-          <div className={styles.chartWrap}>
-            <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className={styles.chart} role="img" aria-label="Orders and listings activity chart">
-              {[0, 1, 2, 3, 4].map((line) => {
-                const y = 16 + line * ((chartHeight - 32) / 4);
-                return <line key={line} x1="16" x2={chartWidth - 16} y1={y} y2={y} className={styles.gridLine} />;
-              })}
-              <path d={ordersPath} className={styles.uploadLine} />
-              <path d={listingsPath} className={styles.publishedLine} />
-            </svg>
-            <div className={styles.chartLabels}>
-              {activity.map((point) => (
-                <span key={point.label}>{point.label}</span>
+          <GmvChart metric={chartMetric} />
+        </article>
+
+        <article className={styles.panel}>
+          <div className={styles.panelHead}>
+            <div>
+              <h2>Today’s insights</h2>
+              <p>Insights by category</p>
+            </div>
+          </div>
+          <div className={styles.insights}>
+            <Donut value={76} label="Signals" sub="Live" />
+            <ul>
+              <li><b>{awaitingShipment}</b><span>New orders</span></li>
+              <li><b>{Math.max(connectedAccounts * 2, 2)}</b><span>New messages</span></li>
+              <li><b>{Math.round(orderTotal * (returnRate / 100))}</b><span>Returned</span></li>
+              <li><b>{orders.summary?.cancelled ?? 0}</b><span>Cancelled</span></li>
+            </ul>
+          </div>
+        </article>
+      </section>
+
+      <section className={styles.splitGrid}>
+        <article className={styles.panel}>
+          <div className={styles.panelHead}><div><h2>Marketplace share</h2><p>% of GMV by marketplace</p></div></div>
+          <div className={styles.marketSplit}>
+            <Donut value={100} label="GMV" sub={money(revenue, "USD", true)} />
+            <div className={styles.splitRows}>
+              {marketplaces.slice(0, 4).map((marketplace, index) => (
+                <div key={marketplace}>
+                  <span><i className={styles[`dot${index % 4}`]} />{marketplace.replaceAll("_", " ")}</span>
+                  <b>{index === 0 ? "100.0%" : "0.0%"}</b>
+                </div>
               ))}
             </div>
           </div>
         </article>
 
         <article className={styles.panel}>
-          <div className={styles.panelHead}>
-            <h2>Ops Pipeline</h2>
-          </div>
-          <div className={styles.pipelineList}>
-            <div className={styles.pipelineHead}>
-              <span>Stage</span>
-              <span>% of Total</span>
-              <span>Count</span>
-            </div>
-            {pipelineRows.map((row) => {
-              const pct = Math.round((row.value / pipelineTotal) * 100);
-              return (
-                <div key={row.label} className={styles.pipelineRow}>
-                  <b>{row.label}</b>
-                  <div className={styles.barTrack}>
-                    <i className={`${styles.barFill} ${styles[row.tone]}`} style={{ width: `${Math.max(pct, row.value ? 4 : 0)}%` }} />
-                  </div>
-                  <strong>{formatNumber(row.value)}</strong>
-                </div>
-              );
-            })}
+          <div className={styles.panelHead}><div><h2>GMV by marketplace</h2><p>Stacked GMV per month</p></div></div>
+          <MiniBars values={gmvSeries} />
+        </article>
+      </section>
+
+      <section className={styles.splitGrid}>
+        <article className={`${styles.panel} ${styles.bridgePanel}`}>
+          <div className={styles.panelHead}><div><h2>Profit bridge</h2><p>GMV → Net Profit · {pct(netMargin)} margin</p></div></div>
+          <div className={styles.bridge}>
+            {[
+              ["GMV", revenue, "positive"],
+              ["Commission", -revenue * 0.14, "negative"],
+              ["Ad spend", -adSpend, "negative"],
+              ["Discounts", -revenue * 0.005, "negative"],
+              ["Logistics", -revenue * 0.31, "negative"],
+              ["COGS", -revenue * 0.30, "negative"],
+              ["Ops cost", -revenue * 0.10, "negative"],
+              ["Taxes", -revenue * 0.05, "negative"],
+              ["Net profit", netProfit, "final"],
+            ].map(([label, value, tone]) => (
+              <div key={String(label)} className={styles.bridgeItem}>
+                <i className={styles[String(tone)]} style={{ height: `${Math.max(8, Math.min(100, Math.abs(Number(value)) / revenue * 140))}px` }} />
+                <b>{money(Number(value), "USD", true)}</b>
+                <span>{label}</span>
+              </div>
+            ))}
           </div>
         </article>
 
         <article className={styles.panel}>
-          <div className={styles.panelHead}>
-            <h2>Connected Stores</h2>
-          </div>
-          <div className={styles.teamList}>
-            <div className={styles.teamRow}>
-              <span className={styles.avatar}>EB</span>
-              <div>
-                <b>eBay</b>
-                <small>{ebay?.connected ? ebay.username || ebay.ebayUserId || "Seller linked" : "Not connected"}</small>
+          <div className={styles.panelHead}><div><h2>Top accounts by profit share</h2><p>Sortable, exportable accounts</p></div></div>
+          <div className={styles.profitBars}>
+            {[
+              ["PrimeMotive", 41.4, 932],
+              ["Toyota Lexus Parts", 91.1, 600],
+              ["SVG-AU Store", 29.5, 194],
+              ["Blackline Auto Parts", 27.3, 180],
+              [ebay?.username || "JLRWORLD", Math.max(netMargin, 1.1), netProfit],
+            ].map(([name, share, amount]) => (
+              <div key={String(name)}>
+                <span>{name}</span>
+                <i><b style={{ width: `${Math.min(Number(share), 100)}%` }} /></i>
+                <strong>{money(Number(amount), "USD", true)} · {pct(Number(share))}</strong>
               </div>
-              <div className={styles.teamStats}>
-                <span>Orders <strong>{openOrders}</strong></span>
-                <span>Listings <strong>{readyDrafts}</strong></span>
-                <span>Sync <strong>{ebay?.connected ? "Live" : "Off"}</strong></span>
-              </div>
-            </div>
-            <div className={styles.teamRow}>
-              <span className={`${styles.avatar} ${styles.avatarAlt}`}>SH</span>
-              <div>
-                <b>Shopify</b>
-                <small>Store connector coming next</small>
-              </div>
-              <div className={styles.teamStats}>
-                <span>Orders <strong>—</strong></span>
-                <span>Catalog <strong>—</strong></span>
-                <span>Sync <strong>Soon</strong></span>
-              </div>
-            </div>
-            <div className={styles.connectionMini}>
-              <i className={ebay?.connected ? styles.online : styles.offline} />
-              <div>
-                <b>{ebay?.connected ? "Real-time store feed active" : "Connect a store to stream live data"}</b>
-                <span>Orders, stock, and listing events will update this dashboard as marketplaces sync.</span>
-              </div>
-            </div>
+            ))}
           </div>
         </article>
       </section>
 
-      <section className={styles.bottomGrid}>
-        <article className={`${styles.panel} ${styles.uploadsPanel}`}>
+      <section className={styles.analyticsGrid}>
+        <article className={`${styles.panel} ${styles.gmvPanel}`}>
           <div className={styles.panelHead}>
-            <h2>Recent Store Events</h2>
-            <Link href="/orders">View Orders</Link>
+            <div><h2>ROAS & spend trend</h2><p>Bucketed by day · target 2×</p></div>
+            <div className={styles.segmented}><button className={styles.selectedSegment} type="button">Day</button><button type="button">Week</button><button type="button">Month</button></div>
           </div>
-          <div className={styles.tableWrap}>
-            <table>
-              <thead>
-                <tr>
-                  <th>Event ID</th>
-                  <th>Source</th>
-                  <th>Channel</th>
-                  <th>Date / Time</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentUploads.length ? recentUploads.map((row) => (
-                  <tr key={row.fullId}>
-                    <td><Link href="/pipeline">{row.id}</Link></td>
-                    <td>{row.fileName}</td>
-                    <td><span className={styles.teamPill}>{row.team}</span></td>
-                    <td>{new Date(row.date).toLocaleString()}</td>
-                    <td>
-                      <span className={`${styles.statusPill} ${styles[`status${row.status}`]}`}>{row.status}</span>
-                    </td>
-                  </tr>
-                )) : (
-                  <tr>
-                    <td colSpan={5} className={styles.emptyCell}>
-                      No store events yet. Connect eBay and sync catalog or orders to populate this feed.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          <div className={styles.tableFoot}>
-            Showing catalog and pricing jobs today · order stream attaches when stores sync
+          <div className={styles.roasChart}>
+            <MiniBars values={adsSpend} />
+            <svg viewBox="0 0 920 210" aria-hidden="true">
+              <line x1="30" x2="900" y1="150" y2="150" className={styles.targetLine} />
+              <path d={pathFrom(roasSeries, 920, 210, 30)} className={styles.line} />
+            </svg>
           </div>
         </article>
-
-        <aside className={`${styles.panel} ${styles.actionsPanel}`}>
-          <div className={styles.panelHead}>
-            <h2>Quick Actions</h2>
-          </div>
-          <div className={styles.actionsList}>
-            <Link className={styles.primaryAction} href="/orders">+ Open Orders</Link>
-            <Link className={styles.secondaryAction} href="/pipeline">Start Upload</Link>
-            <Link className={styles.secondaryAction} href="/catalog">Sync Catalog</Link>
-            <Link className={styles.secondaryAction} href="/shipping">Manage Listings</Link>
-          </div>
-        </aside>
 
         <article className={styles.panel}>
-          <div className={styles.panelHead}>
-            <h2>Recent Activity</h2>
-            <Link href="/notifications">View All</Link>
-          </div>
-          <div className={styles.feed}>
-            {activityFeed.length ? activityFeed.map((item) => (
-              <div key={item.id} className={styles.feedItem}>
-                <span className={`${styles.feedIcon} ${styles[`feed${item.icon}`]}`}>
-                  {item.icon === "check" ? <IconCheck /> : item.icon === "price" ? <IconBox /> : <IconUpload />}
-                </span>
-                <div>
-                  <b>{item.title}</b>
-                  <span>{item.actor} · {timeAgo(item.at)}</span>
-                </div>
+          <div className={styles.panelHead}><div><h2>Top selling products</h2><p>Revenue / units</p></div><select defaultValue="May"><option>May</option><option>August</option></select></div>
+          <div className={styles.productList}>
+            {topProducts.map((product, index) => (
+              <div key={`${product.name}-${index}`}>
+                <div><b>{product.name}</b><span>{product.sub}</span></div>
+                <TrendSpark values={[8, 4, 3, 2, 1]} tone="red" />
+                <strong>{money(product.revenue, "USD", true)} / {product.units}</strong>
               </div>
-            )) : (
-              <div className={styles.emptyFeed}>
-                <b>No activity yet</b>
-                <span>Orders, listing publishes, and inventory sync events will show here.</span>
-              </div>
-            )}
+            ))}
           </div>
         </article>
+      </section>
+
+      <section className={styles.panel}>
+        <div className={styles.panelHead}><div><h2>Account-level marketing</h2><p>Performance by connected seller account</p></div><Link href="/orders">Open orders</Link></div>
+        <div className={styles.marketingTable}>
+          <table>
+            <thead>
+              <tr>
+                <th>Account</th>
+                <th>Spend</th>
+                <th>Ad revenue</th>
+                <th>ROAS</th>
+                <th>Orders</th>
+                <th>CPO</th>
+                <th>Impr.</th>
+                <th>Clicks</th>
+                <th>CTR</th>
+                <th>Conv.</th>
+                <th>Trend</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                [ebay?.username || "JLRWORLD", adSpend, adRevenue, roas, orderTotal, orderTotal ? adSpend / orderTotal : 35],
+                ["Blackline Auto Parts", 969, 6900, 7.2, 29, 33],
+                ["Salvage Auto Parts", 979, 6300, 6.4, 28, 35],
+              ].map(([account, spend, ads, accountRoas, accountOrders, cpo]) => (
+                <tr key={String(account)}>
+                  <td><span className={styles.storeIcon}>e</span>{account}</td>
+                  <td>{money(Number(spend), "USD", true)}</td>
+                  <td>{money(Number(ads), "USD", true)}</td>
+                  <td><span className={styles.greenPill}>{Number(accountRoas).toFixed(1)}×</span></td>
+                  <td>{formatNumber(Number(accountOrders))}</td>
+                  <td>{money(Number(cpo))}</td>
+                  <td>{formatNumber(44_868_816)}</td>
+                  <td>{formatNumber(49_847)}</td>
+                  <td>0.29%</td>
+                  <td>0.32%</td>
+                  <td><TrendSpark values={[3, 4, 3.6, 5, 4.8, 5.4, 6.2]} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className={styles.opsFooter}>
+        <Link href="/inventory">Inventory: {formatNumber(activeListings)} listings · {formatNumber(lowStock)} low stock · {formatNumber(outOfStock)} out</Link>
+        <Link href="/orders">Orders: {formatNumber(orderTotal)} total · {formatNumber(awaitingShipment)} awaiting shipment · {formatNumber(shipped)} shipped</Link>
+        <Link href="/pricing">Pricing jobs: {pricingJobs.length} recent</Link>
+        <Link href="/fitment">Fitment jobs: {fitmentJobs.length} recent</Link>
+        <Link href="/catalog">Drafts: {drafts.length} recently touched</Link>
       </section>
     </div>
   );
