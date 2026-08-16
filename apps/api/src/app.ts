@@ -58,6 +58,7 @@ import { createInventoryPreparationJob, getInventoryPreparationJob, getLatestInv
 import { createEbayInventorySyncJob, EbayInventorySyncError, getEbayInventorySyncJob, getLatestEbayInventorySyncJob, startEbayInventorySyncJob } from "./ebay-inventory-sync-service.js";
 import { EbayInventoryManagementError, getEbayStoreInventoryCacheRefreshProgress, listEbayStoreInventory, startEbayStoreInventoryCacheRefresh, updateEbayStoreInventoryItem, withdrawEbayStoreOffer } from "./ebay-inventory-management-service.js";
 import { getEbayStoreOrderCacheRefreshProgress, listEbayStoreOrders, startEbayStoreOrderCacheRefresh } from "./ebay-order-management-service.js";
+import { getDashboardAnalytics } from "./dashboard-analytics-service.js";
 import { createOfferPreparationJob, createOfferPublishJob, EbayOfferError, getOffer, getOfferByDraft, getOfferJob, startOfferJob } from "./ebay-offer-service.js";
 import { createReconciliationJob, createRevisionJob, createWithdrawalJob, EbayListingOperationError, getListingOperationJob, startListingOperationJob } from "./ebay-listing-operation-service.js";
 import { listAuditEvents } from "./audit-service.js";
@@ -132,6 +133,14 @@ const pipelineStartSchema = z.object({
   assignImages: z.boolean().default(false),
 });
 const pipelineListQuerySchema = z.object({ limit: z.coerce.number().int().min(1).max(100).default(30) });
+const dashboardAnalyticsQuerySchema = z.object({
+  range: z.enum(["7d", "30d", "month", "quarter"]).default("30d"),
+  connectionId: z.string().min(1).optional(),
+  marketplace: z.string().trim().min(1).max(40).optional(),
+  category: z.string().trim().min(1).max(80).optional(),
+  brand: z.string().trim().min(1).max(100).optional(),
+  condition: z.enum(["ALL", "NEW", "USED"]).default("ALL"),
+});
 const ebayInventoryQuerySchema = z.object({
   connectionId: z.string().min(1).optional(),
   marketplace: z.string().trim().min(1).max(40).optional(),
@@ -751,6 +760,15 @@ app.post("/api/invitations/accept", authRateLimit, async (req, res, next) => {
 app.get("/api/session", requireTenantContext, (_req, res) => {
   const tenant = getTenantContext(res);
   res.json(tenant);
+});
+
+app.get("/api/dashboard/analytics", requireTenantContext, requireOrganizationPermission("dashboard.view"), async (req, res, next) => {
+  try {
+    res.json(await getDashboardAnalytics({
+      organizationId: getTenantContext(res).organization.id,
+      ...dashboardAnalyticsQuerySchema.parse(req.query),
+    }));
+  } catch (error) { next(error); }
 });
 
 app.get("/api/auth/security", requireTenantContext, async (_req, res, next) => {

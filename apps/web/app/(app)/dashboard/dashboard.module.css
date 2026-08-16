@@ -40,13 +40,27 @@
   letter-spacing: -1.4px;
 }
 
-.hero span {
-  display: block;
+.hero p {
   max-width: 760px;
-  margin-top: 10px;
+  margin: 10px 0 0;
   color: var(--muted);
   font-size: 15px;
   line-height: 1.45;
+}
+
+.syncPill {
+  display: block;
+  width: fit-content;
+  max-width: 760px;
+  margin-top: 12px;
+  border: 1px solid #d8e6f8;
+  border-radius: 999px;
+  background: #f8fbff;
+  color: var(--muted);
+  padding: 7px 11px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.2;
 }
 
 .heroActions {
@@ -59,6 +73,7 @@
 .heroActions button,
 .heroActions a,
 .researchCard button,
+.searchLine a,
 .accountsCard a,
 .disabledAdd,
 .segmented button {
@@ -74,7 +89,8 @@
 }
 
 .heroActions button:first-child,
-.researchCard button {
+.researchCard button,
+.searchLine a {
   background: var(--blue);
   color: #fff;
   border-color: var(--blue);
@@ -201,7 +217,8 @@
 }
 
 .accountGrid span,
-.logoGrid button {
+.logoGrid button,
+.logoGrid span {
   display: grid;
   gap: 3px;
   border: 1px solid var(--line-soft);
@@ -240,7 +257,8 @@
   margin: 14px 0 10px;
 }
 
-.logoGrid button {
+.logoGrid button,
+.logoGrid span {
   position: relative;
   border-color: var(--line-soft);
   color: var(--ink);
@@ -250,7 +268,9 @@
   cursor: default;
 }
 
-.logoGrid button i {
+.logoGrid button i,
+.logoGrid span::after {
+  content: "";
   position: absolute;
   top: 15px;
   right: 12px;
@@ -296,6 +316,7 @@
   cursor: pointer;
 }
 
+.conditionFilter .selectedSegment,
 .conditionFilter b {
   border-radius: 999px;
   background: var(--blue);
@@ -417,6 +438,25 @@
 
 .bad {
   color: var(--red) !important;
+}
+
+.neutral,
+.metricUnavailable {
+  color: var(--muted) !important;
+}
+
+.emptyState {
+  display: grid;
+  min-height: 170px;
+  place-items: center;
+  border: 1px dashed #d4e0ef;
+  border-radius: 14px;
+  background: #f8fbff;
+  color: var(--muted);
+  padding: 24px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .spark {
