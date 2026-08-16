@@ -25,6 +25,7 @@ type InventoryRow = {
 
 type InventoryResponse = {
   accounts: Array<{ id: string; username: string | null; isDefault: boolean; marketplace: string }>;
+  sites: string[];
   items: InventoryRow[];
   pagination: { page: number; pageSize: number; total: number; totalPages: number };
   summary: {
@@ -60,6 +61,7 @@ type InventorySyncProgress = {
 
 const emptyInventory: InventoryResponse = {
   accounts: [],
+  sites: [],
   items: [],
   pagination: { page: 1, pageSize: 50, total: 0, totalPages: 1 },
   summary: { total: 0, filtered: 0, connectedAccounts: 0, published: 0, unpublished: 0, lowStock: 0, outOfStock: 0 },
@@ -132,6 +134,7 @@ export default function InventoryWorkspace() {
   const [notice, setNotice] = useState("");
   const [search, setSearch] = useState("");
   const [connectionId, setConnectionId] = useState("");
+  const [marketplace, setMarketplace] = useState("");
   const [stock, setStock] = useState("ALL");
   const [offerStatus, setOfferStatus] = useState("ALL");
   const [page, setPage] = useState(1);
@@ -142,8 +145,14 @@ export default function InventoryWorkspace() {
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), stock, offerStatus });
     if (search.trim()) params.set("q", search.trim());
     if (connectionId) params.set("connectionId", connectionId);
+    if (marketplace) params.set("marketplace", marketplace);
     return params.toString();
-  }, [connectionId, offerStatus, page, pageSize, search, stock]);
+  }, [connectionId, marketplace, offerStatus, page, pageSize, search, stock]);
+
+  const siteOptions = useMemo(
+    () => Array.from(new Set([...(inventory.sites ?? []), ...(marketplace ? [marketplace] : [])])).sort((a, b) => a.localeCompare(b)),
+    [inventory.sites, marketplace],
+  );
 
   const load = useCallback(async () => {
     if (authStatus !== "ready" || demo) return;
@@ -213,7 +222,15 @@ export default function InventoryWorkspace() {
       const response = await apiFetch("/api/ebay/store-inventory/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ page, pageSize, stock, offerStatus, ...(search.trim() ? { q: search.trim() } : {}), ...(connectionId ? { connectionId } : {}) }),
+        body: JSON.stringify({
+          page,
+          pageSize,
+          stock,
+          offerStatus,
+          ...(search.trim() ? { q: search.trim() } : {}),
+          ...(connectionId ? { connectionId } : {}),
+          ...(marketplace ? { marketplace } : {}),
+        }),
       }) as InventoryResponse;
       setInventory(response);
       const progress = response.sync?.progress;
@@ -377,6 +394,15 @@ export default function InventoryWorkspace() {
                 <option key={account.id} value={account.id}>
                   {account.username ?? "eBay account"}{account.isDefault ? " (default)" : ""}
                 </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>SITE</span>
+            <select value={marketplace} onChange={(event) => { setMarketplace(event.target.value); setPage(1); }}>
+              <option value="">All sites</option>
+              {siteOptions.map((site) => (
+                <option key={site} value={site}>{site}</option>
               ))}
             </select>
           </label>

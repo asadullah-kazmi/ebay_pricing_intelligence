@@ -134,6 +134,7 @@ const pipelineStartSchema = z.object({
 const pipelineListQuerySchema = z.object({ limit: z.coerce.number().int().min(1).max(100).default(30) });
 const ebayInventoryQuerySchema = z.object({
   connectionId: z.string().min(1).optional(),
+  marketplace: z.string().trim().min(1).max(40).optional(),
   q: z.string().trim().max(120).optional(),
   stock: z.enum(["ALL", "IN_STOCK", "LOW_STOCK", "OUT_OF_STOCK"]).default("ALL"),
   offerStatus: z.enum(["ALL", "PUBLISHED", "UNPUBLISHED", "ENDED"]).default("ALL"),

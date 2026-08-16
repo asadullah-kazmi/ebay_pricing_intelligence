@@ -576,13 +576,16 @@ async function listActiveConnections(input: { organizationId: string; connection
 
 function applyInventoryFilters(rows: EbayInventoryRow[], input: {
   q?: string;
+  marketplace?: string;
   stock?: EbayInventoryStockFilter;
   offerStatus?: EbayInventoryOfferFilter;
 }) {
   const query = input.q?.trim().toLowerCase() ?? "";
+  const marketplace = input.marketplace?.trim();
   const stock = input.stock ?? "ALL";
   const offerStatus = input.offerStatus ?? "ALL";
   return rows.filter((row) => {
+    if (marketplace && row.account.marketplace !== marketplace) return false;
     if (query && ![row.sku, row.title, row.condition, row.listingId, row.account.username].some((value) => value?.toLowerCase().includes(query))) return false;
     if (stock === "IN_STOCK" && (row.quantity ?? 0) <= 5) return false;
     if (stock === "LOW_STOCK" && !((row.quantity ?? 0) > 0 && (row.quantity ?? 0) <= 5)) return false;
@@ -598,6 +601,7 @@ function applyInventoryFilters(rows: EbayInventoryRow[], input: {
 function inventoryCacheWhere(input: {
   organizationId: string;
   connectionId?: string;
+  marketplace?: string;
   q?: string;
   stock?: EbayInventoryStockFilter;
   offerStatus?: EbayInventoryOfferFilter;
@@ -609,6 +613,7 @@ function inventoryCacheWhere(input: {
     organizationId: input.organizationId,
     sourceKey: { startsWith: "TRADING:" },
     ...(input.connectionId ? { ebaySellerConnectionId: input.connectionId } : {}),
+    ...(input.marketplace ? { marketplace: input.marketplace } : {}),
   };
   const and: Prisma.EbayInventoryCacheItemWhereInput[] = [];
   if (query) {
@@ -652,12 +657,19 @@ async function shapeCachedInventoryResponse(input: {
   page?: number;
   pageSize?: number;
   q?: string;
+  marketplace?: string;
   stock?: EbayInventoryStockFilter;
   offerStatus?: EbayInventoryOfferFilter;
 }) {
   const page = input.page ?? 1;
   const pageSize = input.pageSize ?? 50;
   const whereBase: Prisma.EbayInventoryCacheItemWhereInput = {
+    organizationId: input.organizationId,
+    sourceKey: { startsWith: "TRADING:" },
+    ...(input.connectionId ? { ebaySellerConnectionId: input.connectionId } : {}),
+    ...(input.marketplace ? { marketplace: input.marketplace } : {}),
+  };
+  const whereForSites: Prisma.EbayInventoryCacheItemWhereInput = {
     organizationId: input.organizationId,
     sourceKey: { startsWith: "TRADING:" },
     ...(input.connectionId ? { ebaySellerConnectionId: input.connectionId } : {}),
@@ -670,7 +682,7 @@ async function shapeCachedInventoryResponse(input: {
   const lowStockWhere: Prisma.EbayInventoryCacheItemWhereInput = { ...whereBase, quantity: { gt: 0, lte: 5 } };
   const outOfStockWhere: Prisma.EbayInventoryCacheItemWhereInput = { ...whereBase, OR: [{ quantity: { lte: 0 } }, { quantity: null }] };
 
-  const [rows, total, filtered, published, lowStock, outOfStock, lastSynced] = await Promise.all([
+  const [rows, total, filtered, published, lowStock, outOfStock, lastSynced, cachedSites] = await Promise.all([
     prisma.ebayInventoryCacheItem.findMany({
       where: whereFiltered,
       select: inventoryCacheRowSelect,
@@ -684,7 +696,17 @@ async function shapeCachedInventoryResponse(input: {
     prisma.ebayInventoryCacheItem.count({ where: lowStockWhere }),
     prisma.ebayInventoryCacheItem.count({ where: outOfStockWhere }),
     prisma.ebayInventoryCacheItem.aggregate({ where: whereBase, _max: { syncedAt: true } }),
+    prisma.ebayInventoryCacheItem.findMany({
+      where: whereForSites,
+      select: { marketplace: true },
+      distinct: ["marketplace"],
+    }),
   ]);
+  const sites = Array.from(new Set([
+    ...cachedSites.map((site) => asInventoryMarketplace(site.marketplace)),
+    ...input.connections.map((connection) => asInventoryMarketplace(connection.defaultMarketplace)),
+    ...(input.marketplace ? [input.marketplace] : []),
+  ])).sort((a, b) => a.localeCompare(b));
 
   const summary = {
     total,
@@ -702,6 +724,7 @@ async function shapeCachedInventoryResponse(input: {
       isDefault: connection.isDefault,
       marketplace: asInventoryMarketplace(connection.defaultMarketplace),
     })),
+    sites,
     items: rows.map(cachedRowToInventoryRow),
     pagination: { page, pageSize, total: filtered, totalPages: Math.max(1, Math.ceil(filtered / pageSize)) },
     summary,
@@ -717,6 +740,7 @@ function shapeInventoryResponse(input: {
   page?: number;
   pageSize?: number;
   q?: string;
+  marketplace?: string;
   stock?: EbayInventoryStockFilter;
   offerStatus?: EbayInventoryOfferFilter;
 }) {
@@ -740,6 +764,11 @@ function shapeInventoryResponse(input: {
     lowStock: input.rows.filter((row) => (row.quantity ?? 0) > 0 && (row.quantity ?? 0) <= 5).length,
     outOfStock: input.rows.filter((row) => (row.quantity ?? 0) <= 0).length,
   };
+  const sites = Array.from(new Set([
+    ...input.rows.map((row) => asInventoryMarketplace(row.account.marketplace)),
+    ...input.connections.map((connection) => asInventoryMarketplace(connection.defaultMarketplace)),
+    ...(input.marketplace ? [input.marketplace] : []),
+  ])).sort((a, b) => a.localeCompare(b));
   return {
     accounts: input.connections.map((connection) => ({
       id: connection.id,
@@ -747,6 +776,7 @@ function shapeInventoryResponse(input: {
       isDefault: connection.isDefault,
       marketplace: asInventoryMarketplace(connection.defaultMarketplace),
     })),
+    sites,
     items: pageRows,
     pagination: { page, pageSize, total: filtered.length, totalPages: Math.max(1, Math.ceil(filtered.length / pageSize)) },
     summary,
@@ -758,6 +788,7 @@ function shapeInventoryResponse(input: {
 export async function listEbayStoreInventory(input: {
   organizationId: string;
   connectionId?: string;
+  marketplace?: string;
   q?: string;
   stock?: EbayInventoryStockFilter;
   offerStatus?: EbayInventoryOfferFilter;
@@ -771,6 +802,7 @@ export async function listEbayStoreInventory(input: {
 export async function syncEbayStoreInventory(input: {
   organizationId: string;
   connectionId?: string;
+  marketplace?: string;
   q?: string;
   stock?: EbayInventoryStockFilter;
   offerStatus?: EbayInventoryOfferFilter;
