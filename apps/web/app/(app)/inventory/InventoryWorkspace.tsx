@@ -145,7 +145,7 @@ export default function InventoryWorkspace() {
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), stock, offerStatus });
     if (search.trim()) params.set("q", search.trim());
     if (connectionId) params.set("connectionId", connectionId);
-    if (marketplace) params.set("marketplace", marketplace);
+    if (marketplace.trim()) params.set("marketplace", marketplace.trim().toUpperCase());
     return params.toString();
   }, [connectionId, marketplace, offerStatus, page, pageSize, search, stock]);
 
@@ -229,7 +229,7 @@ export default function InventoryWorkspace() {
           offerStatus,
           ...(search.trim() ? { q: search.trim() } : {}),
           ...(connectionId ? { connectionId } : {}),
-          ...(marketplace ? { marketplace } : {}),
+          ...(marketplace.trim() ? { marketplace: marketplace.trim().toUpperCase() } : {}),
         }),
       }) as InventoryResponse;
       setInventory(response);

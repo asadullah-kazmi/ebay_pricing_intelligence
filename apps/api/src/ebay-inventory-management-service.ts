@@ -130,7 +130,7 @@ function asMarketplace(value: string | null | undefined): Marketplace {
 
 function asInventoryMarketplace(value: string | null | undefined): string {
   const trimmed = value?.trim();
-  return trimmed || "EBAY_US";
+  return trimmed ? trimmed.toUpperCase() : "EBAY_US";
 }
 
 function syncMarketplacesForConnection(connection: ActiveConnection): string[] {
@@ -139,6 +139,20 @@ function syncMarketplacesForConnection(connection: ActiveConnection): string[] {
     defaultMarketplace,
     ...EBAY_TRADING_SYNC_MARKETPLACES.filter((marketplace) => marketplace !== defaultMarketplace),
   ];
+}
+
+function normalizeInventoryMarketplaceFilter(value: string | null | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed.toUpperCase() : undefined;
+}
+
+function inventorySiteOptions(connections: ActiveConnection[], extraSites: Array<string | null | undefined> = []): string[] {
+  return Array.from(new Set([
+    ...connections.flatMap((connection) => syncMarketplacesForConnection(connection)),
+    ...extraSites
+      .filter((site): site is string => Boolean(site?.trim()))
+      .map((site) => asInventoryMarketplace(site)),
+  ])).sort((a, b) => a.localeCompare(b));
 }
 
 function firstImage(product: Record<string, unknown>): string | null {
@@ -581,11 +595,11 @@ function applyInventoryFilters(rows: EbayInventoryRow[], input: {
   offerStatus?: EbayInventoryOfferFilter;
 }) {
   const query = input.q?.trim().toLowerCase() ?? "";
-  const marketplace = input.marketplace?.trim();
+  const marketplace = normalizeInventoryMarketplaceFilter(input.marketplace);
   const stock = input.stock ?? "ALL";
   const offerStatus = input.offerStatus ?? "ALL";
   return rows.filter((row) => {
-    if (marketplace && row.account.marketplace !== marketplace) return false;
+    if (marketplace && asInventoryMarketplace(row.account.marketplace) !== marketplace) return false;
     if (query && ![row.sku, row.title, row.condition, row.listingId, row.account.username].some((value) => value?.toLowerCase().includes(query))) return false;
     if (stock === "IN_STOCK" && (row.quantity ?? 0) <= 5) return false;
     if (stock === "LOW_STOCK" && !((row.quantity ?? 0) > 0 && (row.quantity ?? 0) <= 5)) return false;
@@ -607,13 +621,14 @@ function inventoryCacheWhere(input: {
   offerStatus?: EbayInventoryOfferFilter;
 }): Prisma.EbayInventoryCacheItemWhereInput {
   const query = input.q?.trim();
+  const marketplace = normalizeInventoryMarketplaceFilter(input.marketplace);
   const stock = input.stock ?? "ALL";
   const offerStatus = input.offerStatus ?? "ALL";
   const where: Prisma.EbayInventoryCacheItemWhereInput = {
     organizationId: input.organizationId,
     sourceKey: { startsWith: "TRADING:" },
     ...(input.connectionId ? { ebaySellerConnectionId: input.connectionId } : {}),
-    ...(input.marketplace ? { marketplace: input.marketplace } : {}),
+    ...(marketplace ? { marketplace } : {}),
   };
   const and: Prisma.EbayInventoryCacheItemWhereInput[] = [];
   if (query) {
@@ -663,11 +678,12 @@ async function shapeCachedInventoryResponse(input: {
 }) {
   const page = input.page ?? 1;
   const pageSize = input.pageSize ?? 50;
+  const marketplace = normalizeInventoryMarketplaceFilter(input.marketplace);
   const whereBase: Prisma.EbayInventoryCacheItemWhereInput = {
     organizationId: input.organizationId,
     sourceKey: { startsWith: "TRADING:" },
     ...(input.connectionId ? { ebaySellerConnectionId: input.connectionId } : {}),
-    ...(input.marketplace ? { marketplace: input.marketplace } : {}),
+    ...(marketplace ? { marketplace } : {}),
   };
   const whereForSites: Prisma.EbayInventoryCacheItemWhereInput = {
     organizationId: input.organizationId,
@@ -702,11 +718,10 @@ async function shapeCachedInventoryResponse(input: {
       distinct: ["marketplace"],
     }),
   ]);
-  const sites = Array.from(new Set([
-    ...cachedSites.map((site) => asInventoryMarketplace(site.marketplace)),
-    ...input.connections.map((connection) => asInventoryMarketplace(connection.defaultMarketplace)),
-    ...(input.marketplace ? [input.marketplace] : []),
-  ])).sort((a, b) => a.localeCompare(b));
+  const sites = inventorySiteOptions(input.connections, [
+    ...cachedSites.map((site) => site.marketplace),
+    marketplace,
+  ]);
 
   const summary = {
     total,
@@ -744,6 +759,7 @@ function shapeInventoryResponse(input: {
   stock?: EbayInventoryStockFilter;
   offerStatus?: EbayInventoryOfferFilter;
 }) {
+  const selectedMarketplace = normalizeInventoryMarketplaceFilter(input.marketplace);
   const filtered = applyInventoryFilters(input.rows, input);
   filtered.sort((a, b) => Number(Boolean(b.listingId)) - Number(Boolean(a.listingId)) || a.sku.localeCompare(b.sku));
   const page = input.page ?? 1;
@@ -764,11 +780,10 @@ function shapeInventoryResponse(input: {
     lowStock: input.rows.filter((row) => (row.quantity ?? 0) > 0 && (row.quantity ?? 0) <= 5).length,
     outOfStock: input.rows.filter((row) => (row.quantity ?? 0) <= 0).length,
   };
-  const sites = Array.from(new Set([
-    ...input.rows.map((row) => asInventoryMarketplace(row.account.marketplace)),
-    ...input.connections.map((connection) => asInventoryMarketplace(connection.defaultMarketplace)),
-    ...(input.marketplace ? [input.marketplace] : []),
-  ])).sort((a, b) => a.localeCompare(b));
+  const sites = inventorySiteOptions(input.connections, [
+    ...input.rows.map((row) => row.account.marketplace),
+    selectedMarketplace,
+  ]);
   return {
     accounts: input.connections.map((connection) => ({
       id: connection.id,
