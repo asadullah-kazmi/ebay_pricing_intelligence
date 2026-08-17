@@ -887,6 +887,219 @@
   font-weight: 900;
 }
 
+.marketingStack {
+  display: grid;
+  gap: 14px;
+}
+
+.marketingNotice {
+  padding: 16px 20px;
+}
+
+.marketingNotice a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  border: 1px solid #b9d1ff;
+  border-radius: 12px;
+  background: #eef5ff;
+  color: var(--blue);
+  padding: 0 16px;
+  font-size: 13px;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.marketingTrend {
+  min-height: 300px;
+}
+
+.adSpendBar {
+  fill: #c8dafd;
+}
+
+.quadrantChart {
+  position: relative;
+  min-height: 300px;
+  border: 1px solid var(--line-soft);
+  border-radius: 18px;
+  background:
+    linear-gradient(90deg, rgba(34, 197, 94, 0.08) 0 50%, rgba(18, 87, 255, 0.06) 50% 100%),
+    linear-gradient(0deg, rgba(239, 68, 68, 0.06) 0 50%, transparent 50% 100%),
+    #fbfdff;
+  overflow: hidden;
+}
+
+.quadrantChart::before,
+.quadrantChart::after {
+  content: "";
+  position: absolute;
+  background: #dce6f3;
+}
+
+.quadrantChart::before {
+  left: 50%;
+  top: 22px;
+  bottom: 22px;
+  width: 1px;
+}
+
+.quadrantChart::after {
+  left: 22px;
+  right: 22px;
+  top: 50%;
+  height: 1px;
+}
+
+.quadrantPoint {
+  position: absolute;
+  z-index: 2;
+  display: block;
+  border: 3px solid #ffffff;
+  border-radius: 999px;
+  background: var(--green);
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.16);
+}
+
+.quadrantLabelTopLeft,
+.quadrantLabelTopRight,
+.quadrantLabelBottomLeft,
+.quadrantLabelBottomRight {
+  position: absolute;
+  z-index: 1;
+  color: #7a8aa4;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.quadrantLabelTopLeft {
+  left: 18px;
+  top: 16px;
+  color: var(--green);
+}
+
+.quadrantLabelTopRight {
+  right: 18px;
+  top: 16px;
+  color: var(--blue);
+}
+
+.quadrantLabelBottomLeft {
+  left: 18px;
+  bottom: 16px;
+}
+
+.quadrantLabelBottomRight {
+  right: 18px;
+  bottom: 16px;
+  color: #ef4444;
+}
+
+.heatmap {
+  overflow-x: auto;
+}
+
+.heatmapGrid {
+  display: grid;
+  min-width: 660px;
+  gap: 4px;
+  align-items: center;
+}
+
+.heatmapGrid > b,
+.heatmapRow > strong {
+  color: #6b7c95;
+  font-size: 11px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.heatmapRow {
+  display: contents;
+}
+
+.heatmapRow > strong {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.heatmapCell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  border-radius: 7px;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.marketplaceAdCards {
+  display: grid;
+  gap: 10px;
+}
+
+.marketplaceAdCards article {
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  background: #fbfdff;
+  padding: 13px;
+}
+
+.marketplaceAdCards article > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.marketplaceAdCards b {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.marketplaceAdCards span,
+.roasBadge {
+  border-radius: 999px;
+  background: #e8f9ef;
+  color: var(--green);
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.marketplaceAdCards dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.marketplaceAdCards dt {
+  color: #7a8aa4;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.marketplaceAdCards dd {
+  margin: 3px 0 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.marketingTable small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-weight: 650;
+}
+
 .opsFooter {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));

@@ -15,6 +15,58 @@ type DashboardAnalyticsInput = {
 
 type MetricFormat = "money" | "number" | "percent" | "multiple";
 
+type MarketingAnalytics = {
+  configured: boolean;
+  message: string;
+  metrics: {
+    roas: ReturnType<typeof metric>;
+    adSpend: ReturnType<typeof metric>;
+    adRevenue: ReturnType<typeof metric>;
+    cpo: ReturnType<typeof metric>;
+    ctr: ReturnType<typeof metric>;
+    impressions: ReturnType<typeof metric>;
+    clicks: ReturnType<typeof metric>;
+    conversionRate: ReturnType<typeof metric>;
+    adSpendToGmv: ReturnType<typeof metric>;
+  };
+  trend: Array<{ date: string; adSpend: number; roas: number | null; adRevenue: number; orders: number }>;
+  quadrants: Array<{
+    account: string;
+    marketplace: string;
+    spend: number;
+    roas: number;
+    orders: number;
+    recommendation: "INVEST_MORE" | "SCALE" | "OPTIMIZE" | "PAUSE_RESTRUCTURE";
+  }>;
+  heatmap: Array<{
+    day: string;
+    hours: Array<{ hour: string; roas: number | null; spend: number; revenue: number; orders: number }>;
+  }>;
+  marketplaceComparison: Array<{
+    marketplace: string;
+    spend: number;
+    revenue: number;
+    roas: number;
+    ctr: number;
+    conversionRate: number;
+  }>;
+  accounts: Array<{
+    account: string;
+    marketplace: string;
+    spend: number;
+    adRevenue: number;
+    roas: number;
+    orders: number;
+    cpo: number;
+    impressions: number;
+    clicks: number;
+    ctr: number;
+    conversionRate: number;
+    spendTrend: number[];
+    roasTrend: number[];
+  }>;
+};
+
 function isAll(value: string | undefined | null) {
   return !value || value === "ALL" || value.toLowerCase().startsWith("all ");
 }
@@ -238,6 +290,29 @@ function buildTrend(
   return Array.from(buckets.values());
 }
 
+function hasMarketingScope(scopes: string[]) {
+  return scopes.some((scope) => scope.includes("/sell.marketing"));
+}
+
+function buildEmptyMarketingTrend(start: Date, end: Date) {
+  const points: MarketingAnalytics["trend"] = [];
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    points.push({ date: dayKey(cursor), adSpend: 0, roas: null, adRevenue: 0, orders: 0 });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return points;
+}
+
+function buildEmptyDayPartHeatmap(): MarketingAnalytics["heatmap"] {
+  const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const hours = ["00", "03", "06", "09", "12", "15", "18", "21"];
+  return days.map((day) => ({
+    day,
+    hours: hours.map((hour) => ({ hour, roas: null, spend: 0, revenue: 0, orders: 0 })),
+  }));
+}
+
 export async function getDashboardAnalytics(input: DashboardAnalyticsInput) {
   const rangeValue = input.range ?? "30d";
   const { start, end, previousStart, previousEnd, label } = resolveRange(rangeValue);
@@ -254,6 +329,7 @@ export async function getDashboardAnalytics(input: DashboardAnalyticsInput) {
       isDefault: true,
       defaultMarketplace: true,
       registrationMarketplace: true,
+      scopes: true,
       updatedAt: true,
     },
     orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
@@ -493,6 +569,61 @@ export async function getDashboardAnalytics(input: DashboardAnalyticsInput) {
   )
     .sort((a, b) => a.localeCompare(b))
     .slice(0, 120);
+  const marketingScopeConnections = connections.filter((connection) => hasMarketingScope(connection.scopes));
+  const marketingConfigured = marketingScopeConnections.length > 0;
+  const marketingMessage = marketingConfigured
+    ? "eBay Marketing access is connected. Ad report sync can populate spend, ROAS, day-part, and campaign efficiency data."
+    : "Advertising metrics require eBay Marketing API access. Reconnect the eBay account with sell.marketing scope to populate this section.";
+  const marketing: MarketingAnalytics = {
+    configured: marketingConfigured,
+    message: marketingMessage,
+    metrics: {
+      roas: metric(null, null, "multiple", {
+        available: false,
+        note: marketingConfigured ? "No synced advertising report rows yet." : "eBay Marketing API is not connected.",
+      }),
+      adSpend: metric(null, null, "money", {
+        currency,
+        available: false,
+        note: marketingConfigured ? "No synced advertising spend yet." : "eBay Marketing API is not connected.",
+      }),
+      adRevenue: metric(null, null, "money", {
+        currency,
+        available: false,
+        note: marketingConfigured ? "No synced attributed revenue yet." : "eBay Marketing API is not connected.",
+      }),
+      cpo: metric(null, null, "money", {
+        currency,
+        available: false,
+        note: marketingConfigured ? "No synced advertising orders yet." : "eBay Marketing API is not connected.",
+      }),
+      ctr: metric(null, null, "percent", {
+        available: false,
+        note: marketingConfigured ? "No synced impressions/clicks yet." : "eBay Marketing API is not connected.",
+      }),
+      impressions: metric(null, null, "number", {
+        available: false,
+        note: marketingConfigured ? "No synced advertising impressions yet." : "eBay Marketing API is not connected.",
+      }),
+      clicks: metric(null, null, "number", {
+        available: false,
+        note: marketingConfigured ? "No synced advertising clicks yet." : "eBay Marketing API is not connected.",
+      }),
+      conversionRate: metric(null, null, "percent", {
+        available: false,
+        note: marketingConfigured ? "No synced advertising conversions yet." : "eBay Marketing API is not connected.",
+      }),
+      adSpendToGmv: metric(null, null, "percent", {
+        available: false,
+        note: marketingConfigured ? "No synced advertising spend yet." : "eBay Marketing API is not connected.",
+      }),
+    },
+    trend: buildEmptyMarketingTrend(start, end),
+    quadrants: [],
+    heatmap: buildEmptyDayPartHeatmap(),
+    marketplaceComparison: [],
+    accounts: [],
+  };
 
   return {
     range: {
@@ -551,22 +682,22 @@ export async function getDashboardAnalytics(input: DashboardAnalyticsInput) {
       }),
       roas: metric(null, null, "multiple", {
         available: false,
-        note: "Advertising API data is not connected yet.",
+        note: marketing.metrics.roas.note ?? "Advertising API data is not connected yet.",
       }),
       adSpend: metric(null, null, "money", {
         currency,
         available: false,
-        note: "Advertising API data is not connected yet.",
+        note: marketing.metrics.adSpend.note ?? "Advertising API data is not connected yet.",
       }),
       adRevenue: metric(null, null, "money", {
         currency,
         available: false,
-        note: "Advertising API data is not connected yet.",
+        note: marketing.metrics.adRevenue.note ?? "Advertising API data is not connected yet.",
       }),
       cpo: metric(null, null, "money", {
         currency,
         available: false,
-        note: "Advertising API data is not connected yet.",
+        note: marketing.metrics.cpo.note ?? "Advertising API data is not connected yet.",
       }),
     },
     insights: {
@@ -617,11 +748,7 @@ export async function getDashboardAnalytics(input: DashboardAnalyticsInput) {
       })),
       drafts: listingDrafts,
     },
-    marketing: {
-      configured: false,
-      message: "Advertising metrics will appear after eBay marketing/ad reporting is connected.",
-      accounts: [],
-    },
+    marketing,
     profit: {
       configured: false,
       message: "Profit analysis needs COGS, shipping, platform fees, payment fees, ad spend, and taxes.",

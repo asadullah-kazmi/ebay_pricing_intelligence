@@ -63,7 +63,47 @@ type DashboardAnalytics = {
       part: { sku: string; brand: string | null; primaryPartNumber: string | null };
     }>;
   };
-  marketing: { configured: boolean; message: string; accounts: unknown[] };
+  marketing: {
+    configured: boolean;
+    message: string;
+    metrics: {
+      roas: ApiMetric;
+      adSpend: ApiMetric;
+      adRevenue: ApiMetric;
+      cpo: ApiMetric;
+      ctr: ApiMetric;
+      impressions: ApiMetric;
+      clicks: ApiMetric;
+      conversionRate: ApiMetric;
+      adSpendToGmv: ApiMetric;
+    };
+    trend: Array<{ date: string; adSpend: number; roas: number | null; adRevenue: number; orders: number }>;
+    quadrants: Array<{
+      account: string;
+      marketplace: string;
+      spend: number;
+      roas: number;
+      orders: number;
+      recommendation: "INVEST_MORE" | "SCALE" | "OPTIMIZE" | "PAUSE_RESTRUCTURE";
+    }>;
+    heatmap: Array<{ day: string; hours: Array<{ hour: string; roas: number | null; spend: number; revenue: number; orders: number }> }>;
+    marketplaceComparison: Array<{ marketplace: string; spend: number; revenue: number; roas: number; ctr: number; conversionRate: number }>;
+    accounts: Array<{
+      account: string;
+      marketplace: string;
+      spend: number;
+      adRevenue: number;
+      roas: number;
+      orders: number;
+      cpo: number;
+      impressions: number;
+      clicks: number;
+      ctr: number;
+      conversionRate: number;
+      spendTrend: number[];
+      roasTrend: number[];
+    }>;
+  };
   profit: { configured: boolean; message: string; bridge: Array<{ label: string; value: number; type: string }> };
 };
 
@@ -178,6 +218,179 @@ function GmvChart({ points, metric }: { points: DashboardAnalytics["charts"]["gm
   );
 }
 
+function MarketingTrendChart({ points, currency }: { points: DashboardAnalytics["marketing"]["trend"]; currency: string }) {
+  const spendValues = points.map((point) => point.adSpend);
+  const roasValues = points.map((point) => point.roas ?? 0);
+  const hasData = points.some((point) => point.adSpend > 0 || point.adRevenue > 0 || point.orders > 0 || point.roas != null);
+  const maxSpend = Math.max(...spendValues, 1);
+
+  if (!hasData) {
+    return <EmptyPanel>No synced ad trend data yet. Once Marketing API reports are available, spend, ROAS, and ad revenue will render here.</EmptyPanel>;
+  }
+
+  return (
+    <div className={styles.marketingTrend}>
+      <svg viewBox="0 0 920 280" className={styles.mainChart} role="img" aria-label="ROAS and ad spend trend">
+        {[0, 1, 2, 3, 4].map((line) => (
+          <line key={line} x1="36" x2="900" y1={35 + line * 52} y2={35 + line * 52} className={styles.gridLine} />
+        ))}
+        {spendValues.map((value, index) => {
+          const width = 14;
+          const x = 40 + (index * 850) / Math.max(spendValues.length - 1, 1) - width / 2;
+          const height = (value / maxSpend) * 190;
+          return <rect key={`${points[index]?.date}-${index}`} x={x} y={244 - height} width={width} height={height} rx="5" className={styles.adSpendBar} />;
+        })}
+        <path d={pathFrom(roasValues, 920, 280, 36)} className={styles.line} />
+      </svg>
+      <div className={styles.axisLabels}>
+        <span>{points[0] ? compactDate(points[0].date) : ""}</span>
+        <span>Spend bars · ROAS line · {currency}</span>
+        <span>{points[points.length - 1] ? compactDate(points[points.length - 1].date) : ""}</span>
+      </div>
+    </div>
+  );
+}
+
+function MarketingQuadrants({ rows, currency }: { rows: DashboardAnalytics["marketing"]["quadrants"]; currency: string }) {
+  if (rows.length === 0) {
+    return <EmptyPanel>No campaign/account efficiency data yet. This will compare ad spend against ROAS and order volume.</EmptyPanel>;
+  }
+
+  const maxSpend = Math.max(...rows.map((row) => row.spend), 1);
+  const maxRoas = Math.max(...rows.map((row) => row.roas), 1);
+
+  return (
+    <div className={styles.quadrantChart}>
+      <span className={styles.quadrantLabelTopLeft}>Invest more</span>
+      <span className={styles.quadrantLabelTopRight}>Scale</span>
+      <span className={styles.quadrantLabelBottomLeft}>Pause / restructure</span>
+      <span className={styles.quadrantLabelBottomRight}>Optimize</span>
+      {rows.map((row) => {
+        const left = 8 + (row.spend / maxSpend) * 84;
+        const top = 88 - (row.roas / maxRoas) * 78;
+        const size = Math.max(12, Math.min(34, 12 + row.orders));
+        return (
+          <span
+            key={`${row.account}-${row.marketplace}`}
+            className={styles.quadrantPoint}
+            style={{ left: `${left}%`, top: `${top}%`, width: size, height: size }}
+            title={`${row.account}: ${money(row.spend, currency)} spend, ${row.roas.toFixed(2)}x ROAS`}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function DayPartHeatmap({ rows }: { rows: DashboardAnalytics["marketing"]["heatmap"] }) {
+  const hasData = rows.some((row) => row.hours.some((hour) => hour.roas != null));
+  if (!hasData) {
+    return <EmptyPanel>No day-part ROAS data yet. Hour/day performance will appear here after ad reports are synced.</EmptyPanel>;
+  }
+
+  const hours = rows[0]?.hours.map((hour) => hour.hour) ?? [];
+  const max = Math.max(...rows.flatMap((row) => row.hours.map((hour) => hour.roas ?? 0)), 1);
+
+  return (
+    <div className={styles.heatmap}>
+      <div className={styles.heatmapGrid} style={{ gridTemplateColumns: `64px repeat(${hours.length}, 1fr)` }}>
+        <span />
+        {hours.map((hour) => <b key={hour}>{hour}</b>)}
+        {rows.map((row) => (
+          <div className={styles.heatmapRow} key={row.day}>
+            <strong>{row.day}</strong>
+            {row.hours.map((hour) => {
+              const intensity = hour.roas == null ? 0 : Math.max(0.12, hour.roas / max);
+              return (
+                <span
+                  key={`${row.day}-${hour.hour}`}
+                  className={styles.heatmapCell}
+                  style={{ backgroundColor: hour.roas == null ? "#f4f7fb" : `rgba(18, 87, 255, ${Math.min(0.85, intensity)})` }}
+                  title={`${row.day} ${hour.hour}: ${hour.roas == null ? "No data" : `${hour.roas.toFixed(1)}x ROAS`}`}
+                >
+                  {hour.roas == null ? "-" : hour.roas.toFixed(1)}
+                </span>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MarketplaceAdComparison({ rows, currency }: { rows: DashboardAnalytics["marketing"]["marketplaceComparison"]; currency: string }) {
+  if (rows.length === 0) {
+    return <EmptyPanel>No marketplace ad comparison data yet.</EmptyPanel>;
+  }
+
+  return (
+    <div className={styles.marketplaceAdCards}>
+      {rows.map((row) => (
+        <article key={row.marketplace}>
+          <div>
+            <b>{row.marketplace}</b>
+            <span>{row.roas.toFixed(2)}x</span>
+          </div>
+          <dl>
+            <dt>Spend</dt><dd>{money(row.spend, currency, true)}</dd>
+            <dt>Ad revenue</dt><dd>{money(row.revenue, currency, true)}</dd>
+            <dt>CTR</dt><dd>{pct(row.ctr)}</dd>
+            <dt>Conv.</dt><dd>{pct(row.conversionRate)}</dd>
+          </dl>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function AccountMarketingTable({ rows, currency }: { rows: DashboardAnalytics["marketing"]["accounts"]; currency: string }) {
+  if (rows.length === 0) {
+    return <EmptyPanel>No account-level marketing data connected yet. Sync ad reports to make this table sortable and exportable.</EmptyPanel>;
+  }
+
+  return (
+    <div className={styles.marketingTable}>
+      <table>
+        <thead>
+          <tr>
+            <th>Account</th>
+            <th>Spend</th>
+            <th>Ad revenue</th>
+            <th>ROAS</th>
+            <th>Orders</th>
+            <th>CPO</th>
+            <th>Impr.</th>
+            <th>Clicks</th>
+            <th>CTR</th>
+            <th>Conv.</th>
+            <th>Spend trend</th>
+            <th>ROAS trend</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={`${row.account}-${row.marketplace}`}>
+              <td><b>{row.account}</b><small>{row.marketplace}</small></td>
+              <td>{money(row.spend, currency, true)}</td>
+              <td>{money(row.adRevenue, currency, true)}</td>
+              <td><span className={styles.roasBadge}>{row.roas.toFixed(1)}x</span></td>
+              <td>{formatNumber(row.orders)}</td>
+              <td>{money(row.cpo, currency)}</td>
+              <td>{formatNumber(row.impressions)}</td>
+              <td>{formatNumber(row.clicks)}</td>
+              <td>{pct(row.ctr)}</td>
+              <td>{pct(row.conversionRate)}</td>
+              <td><TrendSpark values={row.spendTrend} tone="green" /></td>
+              <td><TrendSpark values={row.roasTrend} tone="blue" /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function Donut({ value, label, sub }: { value: number; label: string; sub: string }) {
   const bounded = Math.max(0, Math.min(100, value));
   return (
@@ -254,6 +467,11 @@ export default function DashboardWorkspace() {
     { label: "Ad spend", key: "adSpend", icon: "$", accent: false },
     { label: "Ad-attrib. revenue", key: "adRevenue", icon: "▥", accent: false },
     { label: "CPO", key: "cpo", icon: "⌑", accent: false },
+    { label: "CTR", key: "ctr", icon: "%", accent: false },
+    { label: "Impressions", key: "impressions", icon: "i", accent: false },
+    { label: "Clicks", key: "clicks", icon: "+", accent: false },
+    { label: "Conversion rate", key: "conversionRate", icon: "%", accent: false },
+    { label: "Ad spend / GMV", key: "adSpendToGmv", icon: "%", accent: false },
   ] : [];
 
   const visibleMetricCards = [
@@ -268,7 +486,7 @@ export default function DashboardWorkspace() {
     if (activeTab === "Operations") return ["totalOrders", "unitsSold", "activeListings", "lowStock", "outOfStock", "blockedDrafts"].includes(card.key);
     if (activeTab === "Sales analytics") return ["grossGmv", "totalOrders", "aov", "unitsSold", "returnRate", "cancellationRate"].includes(card.key);
     if (activeTab === "Profit analysis") return ["grossGmv", "netProfit", "netMargin", "aov", "totalOrders", "unitsSold"].includes(card.key);
-    if (activeTab === "Marketing / Ads") return ["roas", "adSpend", "adRevenue", "cpo"].includes(card.key);
+    if (activeTab === "Marketing / Ads") return ["roas", "adSpend", "adRevenue", "cpo", "ctr", "impressions", "clicks", "conversionRate", "adSpendToGmv"].includes(card.key);
     return false;
   });
   const showFilters = activeTab !== "Product research";
@@ -403,7 +621,8 @@ export default function DashboardWorkspace() {
         <>
           {visibleMetricCards.length ? <section className={styles.metricGrid}>
             {visibleMetricCards.map((card) => {
-              const metricValue = analytics.metrics[card.key];
+              const marketingMetric = showMarketing ? analytics.marketing.metrics[card.key as keyof DashboardAnalytics["marketing"]["metrics"]] : undefined;
+              const metricValue = marketingMetric ?? analytics.metrics[card.key];
               const change = formatChange(metricValue);
               return (
                 <article key={card.key} className={`${styles.metricCard} ${card.accent ? styles.metricAccent : ""}`}>
@@ -545,25 +764,75 @@ export default function DashboardWorkspace() {
             </article>
           </section> : null}
 
-          {showMarketing ? <section className={styles.panel}>
-            <div className={styles.panelHead}>
-              <div>
-                <h2>Marketing / Ads</h2>
-                <p>{analytics.marketing.message}</p>
+          {showMarketing ? <section className={styles.marketingStack}>
+            <article className={`${styles.panel} ${styles.marketingNotice}`}>
+              <div className={styles.panelHead}>
+                <div>
+                  <h2>Marketing / Ads</h2>
+                  <p>{analytics.marketing.message}</p>
+                </div>
+                <Link href="/channels">Manage ad access</Link>
               </div>
-            </div>
-            <div className={styles.marketingTable}>
-              <table>
-                <thead>
-                  <tr><th>Account</th><th>Spend</th><th>Ad revenue</th><th>ROAS</th><th>Orders</th><th>Clicks</th><th>CTR</th></tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td colSpan={7}>No advertising data connected yet. This section is ready for real eBay marketing data when available.</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+            </article>
+
+            <section className={styles.analyticsGrid}>
+              <article className={styles.panel}>
+                <div className={styles.panelHead}>
+                  <div>
+                    <h2>ROAS & spend trend</h2>
+                    <p>Ad spend bars with ROAS line for the selected period.</p>
+                  </div>
+                  <div className={styles.segmented}>
+                    <button type="button" className={styles.selectedSegment}>Day</button>
+                    <button type="button">Week</button>
+                    <button type="button">Month</button>
+                  </div>
+                </div>
+                <MarketingTrendChart points={analytics.marketing.trend} currency={dashboardCurrency} />
+              </article>
+
+              <article className={styles.panel}>
+                <div className={styles.panelHead}>
+                  <div>
+                    <h2>Marketplace ad comparison</h2>
+                    <p>Spend, revenue, and efficiency across marketplaces.</p>
+                  </div>
+                </div>
+                <MarketplaceAdComparison rows={analytics.marketing.marketplaceComparison} currency={dashboardCurrency} />
+              </article>
+            </section>
+
+            <section className={styles.splitGrid}>
+              <article className={styles.panel}>
+                <div className={styles.panelHead}>
+                  <div>
+                    <h2>Ad efficiency quadrants</h2>
+                    <p>Each bubble is one account-marketplace segment sized by orders.</p>
+                  </div>
+                </div>
+                <MarketingQuadrants rows={analytics.marketing.quadrants} currency={dashboardCurrency} />
+              </article>
+
+              <article className={styles.panel}>
+                <div className={styles.panelHead}>
+                  <div>
+                    <h2>Day-part ROAS heatmap</h2>
+                    <p>Hour of day by weekday for the selected period.</p>
+                  </div>
+                </div>
+                <DayPartHeatmap rows={analytics.marketing.heatmap} />
+              </article>
+            </section>
+
+            <article className={styles.panel}>
+              <div className={styles.panelHead}>
+                <div>
+                  <h2>Account-level marketing</h2>
+                  <p>Sortable, export-ready advertising performance by connected account.</p>
+                </div>
+              </div>
+              <AccountMarketingTable rows={analytics.marketing.accounts} currency={dashboardCurrency} />
+            </article>
           </section> : null}
 
           {showExecutive || showOperations ? <section className={styles.opsFooter}>
