@@ -415,6 +415,7 @@ export default function CatalogWorkspace() {
   const [imageUploadProgress, setImageUploadProgress] = useState<{ completed: number; total: number; filename: string } | null>(null);
   const [draggedImageId, setDraggedImageId] = useState<string | null>(null);
   const [dragOverImageId, setDragOverImageId] = useState<string | null>(null);
+  const [imagePreview, setImagePreview] = useState<{ media: CatalogPartDetail["media"]; index: number; title: string } | null>(null);
 
   useEffect(() => {
     if (authStatus !== "ready") return;
@@ -438,6 +439,25 @@ export default function CatalogWorkspace() {
       .then((value) => setDrafts(value as ListingDraft[]))
       .catch(() => undefined);
   }, [authStatus, demo, request]);
+
+  useEffect(() => {
+    if (!imagePreview) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setImagePreview(null);
+        return;
+      }
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      setImagePreview((current) => {
+        if (!current || current.media.length < 2) return current;
+        const direction = event.key === "ArrowLeft" ? -1 : 1;
+        const nextIndex = (current.index + direction + current.media.length) % current.media.length;
+        return { ...current, index: nextIndex };
+      });
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [imagePreview]);
 
   useEffect(() => {
     if (authStatus !== "ready" || demo) return;
@@ -1555,6 +1575,19 @@ export default function CatalogWorkspace() {
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to export catalog"); }
   }
 
+  function openImagePreview(part: CatalogPartDetail, index: number) {
+    if (!part.media[index]) return;
+    setImagePreview({ media: part.media, index, title: detailTitle(part) });
+  }
+
+  function stepImagePreview(direction: -1 | 1) {
+    setImagePreview((current) => {
+      if (!current || current.media.length < 2) return current;
+      const index = (current.index + direction + current.media.length) % current.media.length;
+      return { ...current, index };
+    });
+  }
+
   function listingImagesSection(part: CatalogPartDetail | null, editable: boolean) {
     const media = part?.media ?? [];
     const busy = imageUploading || imageManagerSaving;
@@ -1613,7 +1646,19 @@ export default function CatalogWorkspace() {
           title={editable ? `Drag image ${index + 1} to change its position` : undefined}
         >
           <div className={styles.inlineImagePreview}>
-            <CatalogImage mediaId={mediaId} token={token} demo={demo} eager priority={index === 0}/>
+            <button
+              type="button"
+              className={styles.inlineImageOpenButton}
+              draggable={false}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (part) openImagePreview(part, index);
+              }}
+              onMouseDown={(event) => event.stopPropagation()}
+              aria-label={`Open image ${index + 1} in large view`}
+            >
+              <CatalogImage mediaId={mediaId} token={token} demo={demo} eager priority={index === 0}/>
+            </button>
             {index === 0 && <span>Primary</span>}
             {editable && <i className={styles.inlineDragHandle} aria-hidden="true">⋮⋮</i>}
           </div>
@@ -1640,6 +1685,7 @@ export default function CatalogWorkspace() {
   const allPageSelected = catalog.parts.length > 0 && catalog.parts.every(({ id }) => selected.has(id));
   const readyDraftCount = drafts.filter(({ status: draftStatus }) => draftStatus === "READY").length;
   const blockedDraftCount = drafts.filter(({ status: draftStatus }) => draftStatus === "BLOCKED").length;
+  const previewImage = imagePreview?.media[imagePreview.index] ?? null;
 
   return <>
     <section className={styles.workspace}>
@@ -2392,6 +2438,24 @@ export default function CatalogWorkspace() {
             <button className={styles.primary} disabled={draftBusy}>{draftBusy ? "Saving..." : "Save changes"}</button>
           </div>
         </form>}
+      </section>
+    </div>}
+    {imagePreview && previewImage && <div className={styles.imagePreviewBackdrop} role="presentation" onClick={(event) => { if (event.target === event.currentTarget) setImagePreview(null); }}>
+      <section className={styles.imagePreviewModal} role="dialog" aria-modal="true" aria-label="Product image preview">
+        <header className={styles.imagePreviewHeader}>
+          <div>
+            <span>Image {imagePreview.index + 1} of {imagePreview.media.length}</span>
+            <h3>{imagePreview.title}</h3>
+          </div>
+          <button type="button" className={styles.imagePreviewClose} onClick={() => setImagePreview(null)} aria-label="Close image preview">Close</button>
+        </header>
+        <div className={styles.imagePreviewStage}>
+          {imagePreview.media.length > 1 && <button type="button" className={styles.imagePreviewNav} onClick={() => stepImagePreview(-1)} aria-label="Previous image">Previous</button>}
+          <div className={styles.imagePreviewCanvas}>
+            <CatalogImage mediaId={previewImage.mediaAsset.id} token={token} demo={demo} eager priority/>
+          </div>
+          {imagePreview.media.length > 1 && <button type="button" className={styles.imagePreviewNav} onClick={() => stepImagePreview(1)} aria-label="Next image">Next</button>}
+        </div>
       </section>
     </div>}
   </>;
