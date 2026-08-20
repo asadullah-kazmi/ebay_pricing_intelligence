@@ -557,117 +557,245 @@
   }
 }
 
-/* Modal */
+/* Redesigned Inventory Item Update Modal */
 .modalBackdrop {
   position: fixed;
   inset: 0;
-  z-index: 90;
+  z-index: 999;
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(15, 23, 42, 0.5);
-  backdrop-filter: blur(3px);
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(6px);
 }
 
-.modal {
-  width: min(440px, 100%);
-  border-radius: 12px;
+.editModalCard {
+  width: min(500px, 94vw);
+  border-radius: 16px;
   background: #ffffff;
   border: 1px solid #e2e8f0;
-  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.2);
+  box-shadow: 0 25px 65px rgba(15, 23, 42, 0.22);
   overflow: hidden;
 }
 
-.modal header {
+.modalHeader {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  padding: 16px 18px;
-  border-bottom: 1px solid #e2e8f0;
+  padding: 18px 20px;
+  border-bottom: 1px solid #f1f5f9;
 }
 
-.eyebrow {
+.modalEyebrow {
+  display: block;
   color: #2563eb;
   font-size: 10px;
   font-weight: 800;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
 }
 
-.modal h2 {
-  margin: 2px 0 0;
-  font-size: 16px;
+.modalTitle {
+  margin: 3px 0 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.2;
 }
 
-.modal p {
-  margin: 4px 0 0;
-  color: #64748b;
-  font-size: 11.5px;
-}
-
-.closeBtn {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
+.modalCloseBtn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
   border: 1px solid #e2e8f0;
   background: #ffffff;
-  cursor: pointer;
-}
-
-.modalBody {
+  color: #64748b;
+  font-size: 14px;
   display: grid;
-  gap: 12px;
-  padding: 16px 18px;
+  place-items: center;
+  cursor: pointer;
+  transition: all 140ms ease;
 }
 
-.modalBody label {
+.modalCloseBtn:hover {
+  background: #f8fafc;
+  color: #0f172a;
+  border-color: #cbd5e1;
+}
+
+/* Product Hero Info Box inside Modal */
+.modalHeroCard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 20px 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.modalHeroCard img,
+.modalHeroCard .noImage {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  object-fit: cover;
+  background: #ffffff;
+}
+
+.modalHeroCopy {
   display: grid;
   gap: 4px;
+  min-width: 0;
 }
 
-.modalBody label span {
-  font-size: 11px;
+.modalHeroCopy b {
+  font-size: 13px;
   font-weight: 700;
+  color: #0f172a;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modalMetaPills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.skuBadge {
+  font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #2563eb;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  padding: 2px 7px;
+  border-radius: 5px;
+}
+
+.accountBadge {
+  font-size: 11px;
+  font-weight: 600;
   color: #475569;
 }
 
-.modalBody input {
-  height: 36px;
-  border: 1px solid #cbd5e1;
-  border-radius: 7px;
-  padding: 0 10px;
-  outline: none;
-  font-size: 12px;
+.marketBadge {
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  background: #e2e8f0;
+  padding: 2px 6px;
+  border-radius: 4px;
 }
 
-.modal footer {
+.modalFormBody {
+  padding: 16px 20px 20px;
+}
+
+.inputGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.inputLabel {
+  display: grid;
+  gap: 6px;
+}
+
+.inputLabel span {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.inputWithIcon input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 40px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  background: #ffffff;
+  padding: 0 12px;
+  font: 600 13px/1 "Plus Jakarta Sans", sans-serif;
+  color: #0f172a;
+  outline: none;
+  transition: all 140ms ease;
+}
+
+.inputWithIcon input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.inputWithIcon input:disabled {
+  background: #f1f5f9;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+.modalHelpText {
+  margin: 12px 0 0;
+  font-size: 11.5px;
+  color: #64748b;
+  line-height: 1.4;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+
+.modalFooter {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
-  gap: 8px;
-  padding: 12px 18px;
-  border-top: 1px solid #e2e8f0;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid #f1f5f9;
   background: #f8fafc;
 }
 
-.primaryBtn,
-.secondaryBtn {
-  height: 34px;
-  padding: 0 12px;
-  border-radius: 7px;
-  font-weight: 700;
-  font-size: 12px;
+.modalCancelBtn,
+.modalSaveBtn {
+  height: 38px;
+  padding: 0 16px;
+  border-radius: 9px;
+  font: 700 12.5px/1 "Plus Jakarta Sans", sans-serif;
   cursor: pointer;
+  transition: all 140ms ease;
 }
 
-.primaryBtn {
-  background: #2563eb;
-  color: #ffffff;
-  border: none;
-}
-
-.secondaryBtn {
+.modalCancelBtn {
   background: #ffffff;
   color: #475569;
   border: 1px solid #cbd5e1;
+}
+
+.modalCancelBtn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.modalSaveBtn {
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 3px 10px rgba(37, 99, 235, 0.25);
+}
+
+.modalSaveBtn:hover {
+  background: #1d4ed8;
+}
+
+.modalSaveBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 @media (max-width: 900px) {

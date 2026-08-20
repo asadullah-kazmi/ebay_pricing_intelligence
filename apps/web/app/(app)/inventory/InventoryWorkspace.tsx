@@ -491,29 +491,84 @@ export default function InventoryWorkspace() {
       </section>
 
       {editing && (
-        <div className={styles.modalBackdrop} role="presentation">
-          <form className={styles.modal} onSubmit={(event) => void saveInventory(event)}>
-            <header>
+        <div
+          className={styles.modalBackdrop}
+          role="presentation"
+          onClick={(event) => { if (event.target === event.currentTarget) setEditing(null); }}
+        >
+          <form className={styles.editModalCard} onSubmit={(event) => void saveInventory(event)}>
+            <header className={styles.modalHeader}>
               <div>
-                <span className={styles.eyebrow}>UPDATE EBAY INVENTORY</span>
-                <h2>{editing.sku}</h2>
-                <p>{editing.account.username ?? "eBay"} · {editing.offerId ? `Offer #${editing.offerId}` : "Inventory Quantity Only"}</p>
+                <span className={styles.modalEyebrow}>UPDATE EBAY INVENTORY</span>
+                <h2 className={styles.modalTitle}>Update Inventory Details</h2>
               </div>
-              <button type="button" className={styles.closeBtn} onClick={() => setEditing(null)} aria-label="Close">✕</button>
+              <button
+                type="button"
+                className={styles.modalCloseBtn}
+                onClick={() => setEditing(null)}
+                aria-label="Close modal"
+              >
+                ✕
+              </button>
             </header>
-            <div className={styles.modalBody}>
-              <label>
-                <span>Stock Quantity</span>
-                <input name="quantity" type="number" min="0" defaultValue={editing.quantity ?? 0} required />
-              </label>
-              <label>
-                <span>Selling Price ({editing.currency || "USD"})</span>
-                <input name="price" type="number" min="0" step="0.01" defaultValue={editing.price ?? ""} disabled={!editing.offerId} />
-              </label>
+
+            {/* Product Hero Info Card */}
+            <div className={styles.modalHeroCard}>
+              <InventoryImage src={editing.imageUrl} alt={editing.title ?? editing.sku} />
+              <div className={styles.modalHeroCopy}>
+                <b title={editing.title || editing.sku}>{editing.title || "Untitled Inventory Item"}</b>
+                <div className={styles.modalMetaPills}>
+                  <code className={styles.skuBadge}>{editing.sku}</code>
+                  <span className={styles.accountBadge}>{editing.account.username ?? "eBay Store"}</span>
+                  <span className={styles.marketBadge}>{editing.account.marketplace}</span>
+                </div>
+              </div>
             </div>
-            <footer>
-              <button type="button" className={styles.secondaryBtn} onClick={() => setEditing(null)}>Cancel</button>
-              <button type="submit" className={styles.primaryBtn} disabled={savingKey === editing.key}>
+
+            <div className={styles.modalFormBody}>
+              <div className={styles.inputGrid}>
+                <label className={styles.inputLabel}>
+                  <span>Stock Quantity</span>
+                  <div className={styles.inputWithIcon}>
+                    <input
+                      name="quantity"
+                      type="number"
+                      min="0"
+                      defaultValue={editing.quantity ?? 0}
+                      required
+                      placeholder="0"
+                    />
+                  </div>
+                </label>
+
+                <label className={styles.inputLabel}>
+                  <span>Selling Price ({editing.currency || "USD"})</span>
+                  <div className={styles.inputWithIcon}>
+                    <input
+                      name="price"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      defaultValue={editing.price ?? ""}
+                      disabled={!editing.offerId}
+                      placeholder="0.00"
+                    />
+                  </div>
+                </label>
+              </div>
+
+              {!editing.offerId && (
+                <p className={styles.modalHelpText}>
+                  ℹ️ This item has no published eBay offer ID yet. You can update local stock quantity.
+                </p>
+              )}
+            </div>
+
+            <footer className={styles.modalFooter}>
+              <button type="button" className={styles.modalCancelBtn} onClick={() => setEditing(null)}>
+                Cancel
+              </button>
+              <button type="submit" className={styles.modalSaveBtn} disabled={savingKey === editing.key}>
                 {savingKey === editing.key ? "Saving..." : "Save to eBay"}
               </button>
             </footer>
