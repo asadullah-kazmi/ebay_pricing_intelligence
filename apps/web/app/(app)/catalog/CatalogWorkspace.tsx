@@ -416,6 +416,11 @@ export default function CatalogWorkspace() {
   const [draggedImageId, setDraggedImageId] = useState<string | null>(null);
   const [dragOverImageId, setDragOverImageId] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<{ media: CatalogPartDetail["media"]; index: number; title: string } | null>(null);
+  const [zoomScale, setZoomScale] = useState(1);
+
+  useEffect(() => {
+    setZoomScale(1);
+  }, [imagePreview?.index]);
 
   useEffect(() => {
     if (authStatus !== "ready") return;
@@ -2095,7 +2100,14 @@ export default function CatalogWorkspace() {
 
           {detailMode === "view" ? <div className={styles.inventoryBody}>
             <div className={styles.inventoryHero}>
-              <div className={styles.inventoryHeroMedia}><CatalogImage mediaId={detail.media[0]?.mediaAsset.id} token={token} demo={demo}/>{detail.media.length > 1 && <span className={styles.mediaCount}>{detail.media.length}</span>}</div>
+              <div
+                className={`${styles.inventoryHeroMedia} ${detail.media.length ? styles.clickableHeroMedia : ""}`}
+                onClick={() => { if (detail.media.length) openImagePreview(detail, 0); }}
+                title={detail.media.length ? "Click to view full image" : undefined}
+              >
+                <CatalogImage mediaId={detail.media[0]?.mediaAsset.id} token={token} demo={demo}/>
+                {detail.media.length > 1 && <span className={styles.mediaCount}>{detail.media.length}</span>}
+              </div>
               <div className={styles.inventoryHeroCopy}><h3>{detailTitle(detail)}</h3><button type="button" className={styles.skuCopy} onClick={() => void copySku(detail.sku)}><span>SKU</span><code>{detail.sku}</code><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
             </div>
             <div className={styles.detailMatrix}>{detailRows.map((row) => <div key={row.label} className={styles.detailDatum}><DetailIcon name={row.icon}/><div><span>{row.label}</span><b>{row.value}</b></div></div>)}</div>
@@ -2111,7 +2123,16 @@ export default function CatalogWorkspace() {
             <section className={styles.detailSection}><h4>Donor vehicle</h4><p>{donorLabel}</p></section>
             <section className={styles.detailSection}><h4>HTML description</h4>{htmlDescription ? <div className={styles.compactDescription} dangerouslySetInnerHTML={{ __html: htmlDescription }}/> : <p className={styles.emptyFitment}>No description added.</p>}</section>
           </div> : <form onSubmit={savePart} className={styles.inventoryEditForm}>
-            <div className={styles.editHero}><div className={styles.inventoryHeroMedia}><CatalogImage mediaId={detail.media[0]?.mediaAsset.id} token={token} demo={demo}/></div><div><label><span>Listing title</span><input name="title" maxLength={120} defaultValue={detailTitle(detail)} required/></label><label className={styles.inlineSku}><span>SKU</span><input name="sku" defaultValue={detail.sku} required/></label></div></div>
+            <div className={styles.editHero}>
+              <div
+                className={`${styles.inventoryHeroMedia} ${detail.media.length ? styles.clickableHeroMedia : ""}`}
+                onClick={() => { if (detail.media.length) openImagePreview(detail, 0); }}
+                title={detail.media.length ? "Click to view full image" : undefined}
+              >
+                <CatalogImage mediaId={detail.media[0]?.mediaAsset.id} token={token} demo={demo}/>
+              </div>
+              <div><label><span>Listing title</span><input name="title" maxLength={120} defaultValue={detailTitle(detail)} required/></label><label className={styles.inlineSku}><span>SKU</span><input name="sku" defaultValue={detail.sku} required/></label></div>
+            </div>
             <input type="hidden" name="primaryPartNumber" value={detail.primaryPartNumber}/>
             <div className={styles.editDetailGrid}>
               <label><span><DetailIcon name="brand"/> Brand</span><input name="brand" defaultValue={detail.brand ?? ""}/></label>
@@ -2165,7 +2186,14 @@ export default function CatalogWorkspace() {
 
         {draftMode === "view" ? <div className={`${styles.inventoryBody} ${styles.draftReviewBody}`}>
           <div className={styles.inventoryHero}>
-            <div className={styles.inventoryHeroMedia}><CatalogImage mediaId={draftPartDetail?.media[0]?.mediaAsset.id} token={token} demo={demo}/>{draftPartDetail && draftPartDetail.media.length > 1 && <span className={styles.mediaCount}>{draftPartDetail.media.length}</span>}</div>
+            <div
+              className={`${styles.inventoryHeroMedia} ${draftPartDetail?.media.length ? styles.clickableHeroMedia : ""}`}
+              onClick={() => { if (draftPartDetail?.media.length) openImagePreview(draftPartDetail, 0); }}
+              title={draftPartDetail?.media.length ? "Click to view full image" : undefined}
+            >
+              <CatalogImage mediaId={draftPartDetail?.media[0]?.mediaAsset.id} token={token} demo={demo}/>
+              {draftPartDetail && draftPartDetail.media.length > 1 && <span className={styles.mediaCount}>{draftPartDetail.media.length}</span>}
+            </div>
             <div className={styles.inventoryHeroCopy}>
               <div className={styles.draftReviewTitleLine}><h3>{draftDetail.title}</h3><span className={`${styles.readinessStatus} ${draftDetail.status === "READY" ? styles.readinessStatusReady : styles.readinessStatusBlocked}`}>{humanStatus(draftDetail.status)}</span></div>
               <button type="button" className={styles.skuCopy} onClick={() => void copySku(draftDetail.part.sku)}><span>SKU</span><code>{draftDetail.part.sku}</code><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
@@ -2440,23 +2468,102 @@ export default function CatalogWorkspace() {
         </form>}
       </section>
     </div>}
-    {imagePreview && previewImage && <div className={styles.imagePreviewBackdrop} role="presentation" onClick={(event) => { if (event.target === event.currentTarget) setImagePreview(null); }}>
-      <section className={styles.imagePreviewModal} role="dialog" aria-modal="true" aria-label="Product image preview">
-        <header className={styles.imagePreviewHeader}>
-          <div>
-            <span>Image {imagePreview.index + 1} of {imagePreview.media.length}</span>
-            <h3>{imagePreview.title}</h3>
-          </div>
-          <button type="button" className={styles.imagePreviewClose} onClick={() => setImagePreview(null)} aria-label="Close image preview">Close</button>
-        </header>
-        <div className={styles.imagePreviewStage}>
-          {imagePreview.media.length > 1 && <button type="button" className={styles.imagePreviewNav} onClick={() => stepImagePreview(-1)} aria-label="Previous image">Previous</button>}
-          <div className={styles.imagePreviewCanvas}>
-            <CatalogImage mediaId={previewImage.mediaAsset.id} token={token} demo={demo} eager priority/>
-          </div>
-          {imagePreview.media.length > 1 && <button type="button" className={styles.imagePreviewNav} onClick={() => stepImagePreview(1)} aria-label="Next image">Next</button>}
+    {imagePreview && previewImage && (
+      <div
+        className={styles.lightboxBackdrop}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Product image lightbox"
+        onClick={(event) => { if (event.target === event.currentTarget) setImagePreview(null); }}
+      >
+        {/* Top Floating Counter Pill */}
+        <div className={styles.lightboxCounterPill}>
+          {imagePreview.index + 1} / {imagePreview.media.length}
         </div>
-      </section>
-    </div>}
+
+        {/* Top Right Close Button */}
+        <button
+          type="button"
+          className={styles.lightboxCloseBtn}
+          onClick={() => setImagePreview(null)}
+          aria-label="Close image preview"
+        >
+          ✕
+        </button>
+
+        {/* Left Arrow Navigation Button */}
+        {imagePreview.media.length > 1 && (
+          <button
+            type="button"
+            className={`${styles.lightboxNavBtn} ${styles.lightboxNavLeft}`}
+            onClick={() => stepImagePreview(-1)}
+            aria-label="Previous image"
+          >
+            ‹
+          </button>
+        )}
+
+        {/* Center Image Stage */}
+        <div className={styles.lightboxStage}>
+          <div
+            className={styles.lightboxImageWrapper}
+            style={{ transform: `scale(${zoomScale})` }}
+          >
+            <CatalogImage mediaId={previewImage.mediaAsset.id} token={token} demo={demo} eager priority />
+          </div>
+        </div>
+
+        {/* Right Arrow Navigation Button */}
+        {imagePreview.media.length > 1 && (
+          <button
+            type="button"
+            className={`${styles.lightboxNavBtn} ${styles.lightboxNavRight}`}
+            onClick={() => stepImagePreview(1)}
+            aria-label="Next image"
+          >
+            ›
+          </button>
+        )}
+
+        {/* Bottom Zoom Controls Toolbar */}
+        <div className={styles.lightboxZoomToolbar}>
+          <button
+            type="button"
+            onClick={() => setZoomScale((z) => Math.max(0.5, Math.round((z - 0.25) * 100) / 100))}
+            disabled={zoomScale <= 0.5}
+            title="Zoom Out"
+            aria-label="Zoom Out"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="7" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              <line x1="8" y1="11" x2="14" y2="11" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className={styles.lightboxZoomReset}
+            onClick={() => setZoomScale(1)}
+            title="Reset Zoom"
+          >
+            {Math.round(zoomScale * 100)}%
+          </button>
+          <button
+            type="button"
+            onClick={() => setZoomScale((z) => Math.min(3, Math.round((z + 0.25) * 100) / 100))}
+            disabled={zoomScale >= 3}
+            title="Zoom In"
+            aria-label="Zoom In"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="7" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              <line x1="11" y1="8" x2="11" y2="14" />
+              <line x1="8" y1="11" x2="14" y2="11" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    )}
   </>;
 }

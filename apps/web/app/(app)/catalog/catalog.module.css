@@ -3673,6 +3673,7 @@
   position: relative;
   height: 112px;
   background: #f3f6fa;
+  cursor: pointer !important;
 }
 
 .inlineImagePreview > .thumb,
@@ -3680,14 +3681,43 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  cursor: pointer !important;
 }
 
 .inlineImageOpenButton {
-  all: unset;
   display: block;
   width: 100%;
   height: 100%;
-  cursor: zoom-in;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer !important;
+  text-align: left;
+  outline: none;
+}
+
+.inlineImageOpenButton .thumb {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer !important;
+}
+
+.inlineImageOpenButton:hover img {
+  transform: scale(1.04);
+  transition: transform 200ms ease;
+}
+
+.clickableHeroMedia {
+  cursor: pointer !important;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.clickableHeroMedia:hover {
+  transform: scale(1.03);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.14);
 }
 
 .inlineImageOpenButton:focus-visible {
@@ -3932,6 +3962,7 @@
 .imagePreviewModal {
   display: flex;
   width: min(1120px, calc(100vw - 48px));
+  height: min(860px, calc(100vh - 48px));
   max-height: calc(100vh - 48px);
   flex-direction: column;
   overflow: hidden;
@@ -3982,7 +4013,8 @@
 
 .imagePreviewStage {
   display: grid;
-  min-height: min(68vh, 720px);
+  flex: 1;
+  min-height: 0;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 14px;
@@ -3993,26 +4025,204 @@
 .imagePreviewCanvas {
   display: grid;
   min-width: 0;
-  height: min(68vh, 720px);
+  height: 100%;
+  min-height: 0;
   place-items: center;
+  overflow: hidden;
 }
 
 .imagePreviewCanvas .thumb {
   width: 100%;
   height: 100%;
   border: 0;
+  border-radius: 14px;
   background: transparent;
+  overflow: hidden;
 }
 
 .imagePreviewCanvas :global(img) {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain !important;
+  background: #fff;
 }
 
 .imagePreviewNav {
   min-width: 86px;
   padding: 12px 14px;
+}
+
+/* New Sleek Image Lightbox Modal matching User Reference */
+.lightboxBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.88);
+  backdrop-filter: blur(8px);
+  user-select: none;
+}
+
+.lightboxCounterPill {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  font: 700 12.5px/1 "Plus Jakarta Sans", sans-serif;
+  letter-spacing: 0.5px;
+  backdrop-filter: blur(4px);
+  z-index: 10;
+}
+
+.lightboxCloseBtn {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  font-size: 16px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: all 160ms ease;
+  z-index: 10;
+}
+
+.lightboxCloseBtn:hover {
+  background: rgba(255, 255, 255, 0.28);
+  transform: scale(1.05);
+}
+
+.lightboxNavBtn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  font-size: 22px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: all 160ms ease;
+  z-index: 10;
+}
+
+.lightboxNavLeft {
+  left: 24px;
+}
+
+.lightboxNavRight {
+  right: 24px;
+}
+
+.lightboxNavBtn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: translateY(-50%) scale(1.08);
+}
+
+.lightboxStage {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100vw;
+  height: 100vh;
+  padding: 60px 80px;
+  overflow: hidden;
+}
+
+.lightboxImageWrapper {
+  max-width: 82vw;
+  max-height: 78vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: transform 180ms ease-out;
+}
+
+.lightboxImageWrapper .thumb,
+.lightboxImageWrapper :global(img) {
+  max-width: 82vw !important;
+  max-height: 78vh !important;
+  width: auto !important;
+  height: auto !important;
+  object-fit: contain !important;
+  border-radius: 6px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  background: transparent !important;
+}
+
+.lightboxZoomToolbar {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+  z-index: 10;
+}
+
+.lightboxZoomToolbar button {
+  background: transparent;
+  border: none;
+  color: #ffffff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 6px;
+  border-radius: 6px;
+  transition: background 140ms ease;
+}
+
+.lightboxZoomToolbar button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.lightboxZoomToolbar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.lightboxZoomReset {
+  font: 700 12px/1 "Plus Jakarta Sans", sans-serif;
+  color: #ffffff;
+  padding: 4px 8px !important;
+}
+
+@media (max-width: 720px) {
+  .lightboxNavLeft {
+    left: 10px;
+  }
+  .lightboxNavRight {
+    right: 10px;
+  }
+  .lightboxStage {
+    padding: 60px 48px;
+  }
 }
 
 .imagePreviewClose:hover,
