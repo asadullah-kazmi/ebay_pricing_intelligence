@@ -960,72 +960,65 @@
   border-color: #0052ff;
 }
 
-/* Deep Navy Footer */
-.footer {
+/* Minimalistic Light Footer */
+.minimalFooter {
   position: relative;
   z-index: 10;
-  background: #0b1329;
-  color: #94a3b8;
-  padding: 56px 24px 32px;
+  background: #ffffff;
+  border-top: 1px solid #e2e8f0;
+  padding: 24px;
 }
 
-.footerInner {
+.minimalFooterInner {
   max-width: 1280px;
   margin: 0 auto;
-  display: grid;
-  grid-template-columns: 1.4fr 2fr;
-  gap: 48px;
-  margin-bottom: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
 }
 
-.footerBrandCol p {
+.minimalFooterBrand {
+  display: flex;
+  align-items: center;
+}
+
+.minimalFooterNav {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.minimalFooterNav a {
   color: #64748b;
   font-size: 13px;
-  line-height: 1.6;
-  max-width: 320px;
-  margin-top: 14px;
-}
-
-.footerNavCols {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 24px;
-}
-
-.footerNavCols div {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.footerNavCols b {
-  font: 800 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  color: #38bdf8;
-  letter-spacing: 0.5px;
-  margin-bottom: 4px;
-}
-
-.footerNavCols a {
-  color: #cbd5e1;
-  font-size: 13px;
+  font-weight: 600;
   text-decoration: none;
   transition: color 140ms ease;
 }
 
-.footerNavCols a:hover {
-  color: #ffffff;
+.minimalFooterNav a:hover {
+  color: #0052ff;
 }
 
-.footerBottom {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding-top: 24px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+.minimalFooterMeta {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  color: #64748b;
+  gap: 12px;
+  color: #94a3b8;
   font-size: 12px;
+  font-weight: 500;
+}
+
+.minimalVersionTag {
+  font: 700 10.5px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #0052ff;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  padding: 3px 8px;
+  border-radius: 999px;
 }
 
 /* Responsive Media Queries */

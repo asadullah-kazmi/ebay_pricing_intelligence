@@ -555,39 +555,26 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Deep Navy Footer */}
-      <footer className={styles.footer}>
-        <div className={styles.footerInner}>
-          <div className={styles.footerBrandCol}>
-            <BrandMark inverse tagline="Automotive Operational Systems" />
-            <p>High-yield inventory intelligence for professional auto dismantlers, recyclers, and motors sellers.</p>
+      {/* Minimalistic Light Footer */}
+      <footer className={styles.minimalFooter}>
+        <div className={styles.minimalFooterInner}>
+          <div className={styles.minimalFooterBrand}>
+            <BrandMark tagline="Automotive Operational Systems" />
           </div>
 
-          <div className={styles.footerNavCols}>
-            <div>
-              <b>SYSTEMS</b>
-              <Link href="/login">Catalog Workspace</Link>
-              <Link href="/login">Inventory Engine</Link>
-              <Link href="/login">Pricing Telemetry</Link>
-            </div>
-            <div>
-              <b>PLATFORM</b>
-              <Link href="/login">Channels &amp; Stores</Link>
-              <Link href="/login">Media Drive</Link>
-              <Link href="/login">Fitment Engine</Link>
-            </div>
-            <div>
-              <b>COMPANY</b>
-              <Link href="/about">About PartPulse</Link>
-              <Link href="/privacy">Privacy Policy</Link>
-              <Link href="/login">Sign In</Link>
-            </div>
+          <div className={styles.minimalFooterNav}>
+            <Link href="/login">Catalog</Link>
+            <Link href="/login">Inventory</Link>
+            <Link href="/login">Pricing</Link>
+            <Link href="/login">Channels</Link>
+            <Link href="/about">About</Link>
+            <Link href="/privacy">Privacy</Link>
           </div>
-        </div>
 
-        <div className={styles.footerBottom}>
-          <span>PartPulse Inc. © 2026. All rights reserved.</span>
-          <span>SYSTEM BUILD: v2.4.0-prod · SECURE ACCESS</span>
+          <div className={styles.minimalFooterMeta}>
+            <span>© 2026 PartPulse Inc.</span>
+            <span className={styles.minimalVersionTag}>v2.4.0-prod</span>
+          </div>
         </div>
       </footer>
     </div>
