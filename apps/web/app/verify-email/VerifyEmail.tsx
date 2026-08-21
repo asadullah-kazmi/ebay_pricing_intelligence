@@ -63,7 +63,7 @@ export default function VerifyEmail() {
               <h1>You&apos;re all set</h1>
               <p>Your email is confirmed. Sign in to open your PartPulse workspace.</p>
               <a className={styles.primary} href="/login">
-                Continue to sign in
+                Continue to Sign In →
               </a>
             </>
           )}
@@ -79,7 +79,7 @@ export default function VerifyEmail() {
               <div className={styles.error}>{error}</div>
               <p>Request a fresh verification email from the sign-in page, then try again.</p>
               <a className={styles.primary} href="/login">
-                Back to sign in
+                Back to Sign In →
               </a>
             </>
           )}
