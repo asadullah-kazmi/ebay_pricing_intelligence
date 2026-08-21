@@ -121,14 +121,9 @@ export default function Home() {
                   </Link>
                 </>
               ) : (
-                <>
-                  <Link className={styles.heroPrimaryBtn} href="/login">
-                    Access Engineering Workspace <span className={styles.btnArrow}>→</span>
-                  </Link>
-                  <Link className={styles.heroSecondaryBtn} href="/login">
-                    Sign In to Continue
-                  </Link>
-                </>
+                <Link className={styles.heroPrimaryBtn} href="/login">
+                  Access Engineering Workspace <span className={styles.btnArrow}>→</span>
+                </Link>
               )}
             </div>
 
