@@ -370,8 +370,28 @@ export default function InventoryWorkspace() {
           </div>
         ) : inventory.items.length === 0 ? (
           <div className={styles.emptyState}>
-            <b>No synced inventory records</b>
-            <span>Click <strong>Sync Stores</strong> above to pull listings and stock quantities directly from your connected eBay seller accounts.</span>
+            <div className={styles.emptyStateIcon} aria-hidden="true">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                <line x1="12" y1="22.08" x2="12" y2="12" />
+              </svg>
+            </div>
+            <h3>No synced inventory records</h3>
+            <p>
+              Click <strong>Sync Stores</strong> to pull active marketplace listings and real-time stock quantities directly from your connected eBay seller accounts.
+            </p>
+            <button
+              type="button"
+              className={styles.emptyStateBtn}
+              onClick={() => void syncStores()}
+              disabled={syncing}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 11-.57-8.38l5.67-5.67" />
+              </svg>
+              {syncing ? "Syncing Stores..." : "Sync Stores Now"}
+            </button>
           </div>
         ) : (
           <div className={styles.tableWrap}>

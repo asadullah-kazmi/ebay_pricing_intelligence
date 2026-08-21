@@ -798,6 +798,71 @@
   cursor: not-allowed;
 }
 
+/* Empty State Styling */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 56px 24px;
+  text-align: center;
+  background: #ffffff;
+  border-bottom: 1px solid #edf2f7;
+}
+
+.emptyStateIcon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #0052ff;
+  display: grid;
+  place-items: center;
+  margin-bottom: 16px;
+}
+
+.emptyState h3 {
+  margin: 0 0 8px;
+  font: 700 16px/1.2 "Plus Jakarta Sans", sans-serif;
+  color: #0f172a;
+}
+
+.emptyState p {
+  margin: 0 0 22px;
+  max-width: 440px;
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.55;
+}
+
+.emptyStateBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 20px;
+  border-radius: 8px;
+  background: #0052ff;
+  border: 0;
+  color: #ffffff;
+  font: 700 13px/1 "Plus Jakarta Sans", sans-serif;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 82, 255, 0.22);
+  transition: all 160ms ease;
+}
+
+.emptyStateBtn:hover:not(:disabled) {
+  background: #0046db;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(0, 82, 255, 0.32);
+}
+
+.emptyStateBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 @media (max-width: 900px) {
   .filterRow {
     flex-wrap: wrap;
