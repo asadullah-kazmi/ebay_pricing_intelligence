@@ -6,67 +6,10 @@ import BrandMark from "./components/BrandMark";
 import { refreshAccessSession } from "./lib/auth-session";
 import styles from "./landing.module.css";
 
-type SamplePart = {
-  id: string;
-  sku: string;
-  mpn: string;
-  title: string;
-  brand: string;
-  category: string;
-  condition: string;
-  price: number;
-  marketPrice: number;
-  fitment: string[];
-  matchRate: number;
-};
-
-const SAMPLE_PARTS: SamplePart[] = [
-  {
-    id: "p1",
-    sku: "BLA-1035",
-    mpn: "FDAB-035",
-    title: "Febest Suspension Shock Absorber Bushing - Front Lower",
-    brand: "Febest",
-    category: "Suspension & Steering",
-    condition: "NEW",
-    price: 99.00,
-    marketPrice: 114.50,
-    fitment: ["2004-2011 Ford F-150", "2006-2008 Lincoln Mark LT"],
-    matchRate: 99.8,
-  },
-  {
-    id: "p2",
-    sku: "BLA-1034",
-    mpn: "0217-C24",
-    title: "Febest C24 CV Joint Boot Outer - 4WD Std Trans",
-    brand: "Febest",
-    category: "Drivetrain & Transmission",
-    condition: "NEW",
-    price: 39.50,
-    marketPrice: 48.00,
-    fitment: ["2015-2022 Chevrolet Suburban", "2015-2022 GMC Yukon XL"],
-    matchRate: 100.0,
-  },
-  {
-    id: "p3",
-    sku: "BLA-1021",
-    mpn: "11000422941",
-    title: "N52 Engine Longblock Assembly 525i N52B30A",
-    brand: "BMW OEM",
-    category: "Engines & Components",
-    condition: "USED (68k mi)",
-    price: 2200.00,
-    marketPrice: 2445.10,
-    fitment: ["2004-2010 BMW 5-Series E60 525i", "2006-2010 BMW 3-Series E90 325i"],
-    matchRate: 99.4,
-  },
-];
-
 export default function Home() {
   const [authState, setAuthState] = useState<"loading" | "signedOut" | "signedIn">("loading");
-  const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"fitment" | "pricing" | "sync" | "vision">("fitment");
-  const [activePart, setActivePart] = useState<SamplePart>(SAMPLE_PARTS[0]);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -76,285 +19,185 @@ export default function Home() {
     return () => { cancelled = true; };
   }, []);
 
-  const filteredParts = SAMPLE_PARTS.filter(
-    (p) =>
-      p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.mpn.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.brand.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
   return (
     <div className={styles.page}>
-      {/* Background Cyber Blueprint Overlay */}
-      <div className={styles.gridOverlay} aria-hidden="true" />
-      <div className={styles.glowOrb1} aria-hidden="true" />
-      <div className={styles.glowOrb2} aria-hidden="true" />
+      {/* Blueprint Grid & Architectural Background Lines */}
+      <div className={styles.blueprintGrid} aria-hidden="true" />
+      <div className={styles.radialGlow} aria-hidden="true" />
 
-      {/* Top Engineering Status Bar */}
-      <div className={styles.topBanner}>
-        <div className={styles.topBannerInner}>
-          <div className={styles.statusGroup}>
-            <span className={styles.statusDot} />
-            <span className={styles.statusText}>ENGINEERING & TELEMETRY PLATFORM v2.4</span>
-            <span className={styles.divider}>|</span>
-            <span className={styles.statusSub}>ACES/PIES MATRICES ONLINE</span>
+      {/* Top Telemetry & Status Strip (Light Theme) */}
+      <div className={styles.topTelemetryBar}>
+        <div className={styles.topTelemetryInner}>
+          <div className={styles.statusCluster}>
+            <span className={styles.pulseIndicator} />
+            <span className={styles.systemTag}>ENGINEERING &amp; TELEMETRY PLATFORM v2.4</span>
+            <span className={styles.stripDivider}>|</span>
+            <span className={styles.matrixTag}>ACES/PIES MATRICES ONLINE</span>
           </div>
-          <div className={styles.telemetryMini}>
+          <div className={styles.telemetryMetrics}>
             <span>QUERY LATENCY: <strong>11.4ms</strong></span>
+            <span className={styles.stripDivider}>|</span>
             <span>MATCH RATE: <strong>99.98%</strong></span>
           </div>
         </div>
       </div>
 
-      {/* Main Navigation */}
-      <header className={styles.header}>
-        <div className={styles.brandWrapper}>
-          <BrandMark inverse tagline="AUTOMOTIVE OPERATIONAL SYSTEMS" />
-        </div>
-        <nav className={styles.navLinks}>
-          <a href="#schematics">Schematics & Fitment</a>
-          <a href="#telemetry">Telemetry Engine</a>
-          <a href="#pricing">Algorithmic Pricing</a>
-          <a href="#architecture">Architecture</a>
-        </nav>
-        <div className={styles.headerRight}>
-          {authState !== "loading" && (
-            authState === "signedIn" ? (
-              <Link className={styles.primaryCta} href="/dashboard">
-                Launch Workspace <span className={styles.ctaArrow}>→</span>
-              </Link>
-            ) : (
-              <div className={styles.authGroup}>
-                <Link className={styles.loginBtn} href="/login">Sign In</Link>
-                <Link className={styles.primaryCta} href="/login">
-                  Get Started <span className={styles.ctaArrow}>→</span>
+      {/* Sticky Navigation Header */}
+      <header className={styles.navHeader}>
+        <div className={styles.navInner}>
+          <div className={styles.brandContainer}>
+            <BrandMark tagline="Automotive Operational Systems" />
+          </div>
+
+          <nav className={`${styles.navLinks} ${mobileMenuOpen ? styles.navLinksMobileOpen : ""}`}>
+            <a href="#workflow" onClick={() => setMobileMenuOpen(false)}>Workflow</a>
+            <a href="#architecture" onClick={() => setMobileMenuOpen(false)}>Architecture</a>
+            <a href="#metrics" onClick={() => setMobileMenuOpen(false)}>Performance</a>
+            <a href="#use-cases" onClick={() => setMobileMenuOpen(false)}>Solutions</a>
+          </nav>
+
+          <div className={styles.navActions}>
+            {authState !== "loading" && (
+              authState === "signedIn" ? (
+                <Link className={styles.navPrimaryBtn} href="/dashboard">
+                  Access Workspace <span className={styles.arrowIcon}>→</span>
                 </Link>
-              </div>
-            )
-          )}
+              ) : (
+                <div className={styles.authCluster}>
+                  <Link className={styles.navLoginBtn} href="/login">Sign In</Link>
+                  <Link className={styles.navPrimaryBtn} href="/login">
+                    Get Started <span className={styles.arrowIcon}>→</span>
+                  </Link>
+                </div>
+              )
+            )}
+            <button
+              type="button"
+              className={styles.mobileMenuToggle}
+              onClick={() => setMobileMenuOpen((open) => !open)}
+              aria-label="Toggle navigation menu"
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                {mobileMenuOpen ? (
+                  <path d="M18 6L6 18M6 6l12 12" />
+                ) : (
+                  <path d="M4 6h16M4 12h16M4 18h16" />
+                )}
+              </svg>
+            </button>
+          </div>
         </div>
       </header>
 
       {/* Hero Section */}
       <section className={styles.heroSection}>
-        <div className={styles.heroContent}>
-          <div className={styles.kickerBadge}>
-            <span className={styles.kickerPulse} />
-            AUTOMOTIVE FITMENT & OPERATIONAL TELEMETRY PLATFORM
-          </div>
-
-          <h1 className={styles.heroTitle}>
-            Precision Engineering for Modern <br />
-            <span className={styles.gradientText}>Automotive Parts Commerce</span>
-          </h1>
-
-          <p className={styles.heroSubtitle}>
-            Transform salvage teardowns, OEM part numbers, and yard inventory into verified, high-margin marketplace listings with real-time fitment resolution and automated price optimization.
-          </p>
-
-          <div className={styles.heroActions}>
-            {authState === "signedIn" ? (
-              <>
-                <Link className={styles.heroPrimaryBtn} href="/pricing">
-                  Open Pricing Telemetry <span className={styles.btnIcon}>⚡</span>
-                </Link>
-                <Link className={styles.heroSecondaryBtn} href="/dashboard">
-                  Launch Engineering Dashboard
-                </Link>
-              </>
-            ) : (
-              <>
-                <Link className={styles.heroPrimaryBtn} href="/login">
-                  Access Engineering Workspace <span className={styles.btnIcon}>→</span>
-                </Link>
-                <a className={styles.heroSecondaryBtn} href="#sandbox">
-                  Test Fitment Sandbox
-                </a>
-              </>
-            )}
-          </div>
-
-          {/* Telemetry Quick Bar */}
-          <div className={styles.telemetryBar}>
-            <div className={styles.telemetryItem}>
-              <span className={styles.telemetryVal}>1.8M+</span>
-              <span className={styles.telemetryLbl}>OEM Cross-References</span>
-            </div>
-            <div className={styles.telemetryDivider} />
-            <div className={styles.telemetryItem}>
-              <span className={styles.telemetryVal}>&lt; 12ms</span>
-              <span className={styles.telemetryLbl}>Fitment Query Latency</span>
-            </div>
-            <div className={styles.telemetryDivider} />
-            <div className={styles.telemetryItem}>
-              <span className={styles.telemetryVal}>$68.4M</span>
-              <span className={styles.telemetryLbl}>Synced Asset Inventory</span>
-            </div>
-            <div className={styles.telemetryDivider} />
-            <div className={styles.telemetryItem}>
-              <span className={styles.telemetryVal}>99.98%</span>
-              <span className={styles.telemetryLbl}>Listing Policy Compliance</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Hero Interactive Engineering Showcase Card */}
-        <div className={styles.heroShowcaseWrapper}>
-          <div className={styles.heroShowcaseCard}>
-            <div className={styles.showcaseTopBar}>
-              <div className={styles.windowDots}>
-                <span /> <span /> <span />
-              </div>
-              <div className={styles.showcaseTitle}>
-                VEHICLE DIAGNOSTICS & TELEMETRY ENGINE // REV 14.3
-              </div>
-              <div className={styles.showcaseBadge}>LIVE TELEMETRY</div>
+        <div className={styles.heroInner}>
+          <div className={styles.heroTextCol}>
+            <div className={styles.technicalBadge}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 6v6l4 2" />
+              </svg>
+              AUTOMOTIVE FITMENT &amp; OPERATIONAL TELEMETRY PLATFORM
             </div>
 
-            <div className={styles.showcaseMediaStage}>
-              {/* Generated Automotive Engineering 3D Chassis Image */}
-              <img
-                src="/partpulse_hero_schematic.jpg"
-                alt="PartPulse Vehicle Engineering & Telemetry Dashboard Schematic"
-                className={styles.schematicImg}
-              />
+            <h1 className={styles.heroTitle}>
+              Precision Engineering for Modern <br />
+              <span className={styles.heroGradientText}>Automotive Parts Commerce</span>
+            </h1>
 
-              {/* Floating Engineering Pins */}
-              <div className={`${styles.pin} ${styles.pin1}`}>
-                <div className={styles.pinDot} />
-                <div className={styles.pinTooltip}>
-                  <b>SUSPENSION BUSHING</b>
-                  <span>MPN: FDAB-035 · FITMENT 99.8%</span>
-                </div>
-              </div>
+            <p className={styles.heroSubtitle}>
+              Transform salvage teardowns, OEM part numbers, and yard inventory into accurate, high-margin marketplace listings through fitment resolution and price optimization.
+            </p>
 
-              <div className={`${styles.pin} ${styles.pin2}`}>
-                <div className={styles.pinDot} />
-                <div className={styles.pinTooltip}>
-                  <b>CV JOINT BOOT</b>
-                  <span>OEM: 0217-C24 · IN STOCK (14 QTY)</span>
-                </div>
-              </div>
-
-              <div className={`${styles.pin} ${styles.pin3}`}>
-                <div className={styles.pinDot} />
-                <div className={styles.pinTooltip}>
-                  <b>ENGINE N52B30A</b>
-                  <span>MARGIN DELTA: +18.4%</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Live Fitment & OEM Search Sandbox Section */}
-      <section id="sandbox" className={styles.sandboxSection}>
-        <div className={styles.sectionHeader}>
-          <span className={styles.sectionTag}>INTERACTIVE ENGINE DEMO</span>
-          <h2>Automotive Fitment &amp; Cross-Reference Resolver</h2>
-          <p>Test real-time OEM part compatibility mapping and market pricing indexes.</p>
-        </div>
-
-        <div className={styles.sandboxCard}>
-          <div className={styles.sandboxSearchBar}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="7" />
-              <path d="M21 21l-4.35-4.35" />
-            </svg>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by MPN, OEM part number, or vehicle model (e.g. FDAB-035, Febest, BMW N52)..."
-            />
-            {searchQuery && (
-              <button type="button" className={styles.clearSearch} onClick={() => setSearchQuery("")}>
-                Clear
-              </button>
-            )}
-          </div>
-
-          <div className={styles.sandboxGrid}>
-            <div className={styles.partsList}>
-              <div className={styles.listHeader}>SELECT SAMPLE PART</div>
-              {filteredParts.length === 0 ? (
-                <div className={styles.noResults}>No parts match "{searchQuery}"</div>
+            <div className={styles.heroActionGroup}>
+              {authState === "signedIn" ? (
+                <>
+                  <Link className={styles.heroPrimaryBtn} href="/dashboard">
+                    Access Engineering Workspace <span className={styles.btnArrow}>→</span>
+                  </Link>
+                  <Link className={styles.heroSecondaryBtn} href="/pricing">
+                    Pricing Telemetry
+                  </Link>
+                </>
               ) : (
-                filteredParts.map((part) => (
-                  <article
-                    key={part.id}
-                    className={`${styles.partCardItem} ${activePart.id === part.id ? styles.activePartItem : ""}`}
-                    onClick={() => setActivePart(part)}
-                  >
-                    <div className={styles.partItemTop}>
-                      <b>{part.sku}</b>
-                      <span className={styles.mpnBadge}>MPN: {part.mpn}</span>
-                    </div>
-                    <h3>{part.title}</h3>
-                    <div className={styles.partItemMeta}>
-                      <span>{part.brand}</span>
-                      <span>•</span>
-                      <span>${part.price.toFixed(2)}</span>
-                      <span className={styles.matchBadge}>{part.matchRate}% MATCH</span>
-                    </div>
-                  </article>
-                ))
+                <>
+                  <Link className={styles.heroPrimaryBtn} href="/login">
+                    Access Engineering Workspace <span className={styles.btnArrow}>→</span>
+                  </Link>
+                  <Link className={styles.heroSecondaryBtn} href="/login">
+                    Sign In to Continue
+                  </Link>
+                </>
               )}
             </div>
 
-            {/* Part Telemetry Detail Inspector Pane */}
-            <div className={styles.inspectorPane}>
-              <div className={styles.inspectorHeader}>
-                <div>
-                  <span className={styles.inspectorEyebrow}>FITMENT DIAGNOSTICS &amp; PRICING</span>
-                  <h3>{activePart.title}</h3>
+            {/* Quick Hero Metrics Bar */}
+            <div className={styles.heroMetricsRow}>
+              <div className={styles.heroMetricItem}>
+                <span className={styles.heroMetricVal}>99.98%</span>
+                <span className={styles.heroMetricLbl}>Fitment Match</span>
+              </div>
+              <div className={styles.heroMetricItem}>
+                <span className={styles.heroMetricVal}>&lt; 12ms</span>
+                <span className={styles.heroMetricLbl}>Real-Time Sync</span>
+              </div>
+              <div className={styles.heroMetricItem}>
+                <span className={styles.heroMetricVal}>Algorithmic</span>
+                <span className={styles.heroMetricLbl}>Pricing Telemetry</span>
+              </div>
+              <div className={styles.heroMetricItem}>
+                <span className={styles.heroMetricVal}>Zero-Drift</span>
+                <span className={styles.heroMetricLbl}>Inventory Control</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Hero Visual Console Card */}
+          <div className={styles.heroConsoleWrapper}>
+            <div className={styles.consoleCard}>
+              <div className={styles.consoleHeader}>
+                <div className={styles.consoleControls}>
+                  <span className={styles.dotRed} />
+                  <span className={styles.dotYellow} />
+                  <span className={styles.dotGreen} />
                 </div>
-                <code className={styles.inspectorSku}>{activePart.sku}</code>
+                <div className={styles.consoleTitle}>
+                  VEHICLE INTELLIGENCE CONSOLE // DIAGNOSTICS &amp; FITMENT
+                </div>
+                <span className={styles.consoleBadge}>CAD VERIFIED</span>
               </div>
 
-              <div className={styles.specGrid}>
-                <div className={styles.specItem}>
-                  <span>BRAND</span>
-                  <b>{activePart.brand}</b>
-                </div>
-                <div className={styles.specItem}>
-                  <span>PART NUMBER (MPN)</span>
-                  <b>{activePart.mpn}</b>
-                </div>
-                <div className={styles.specItem}>
-                  <span>CONDITION</span>
-                  <b>{activePart.condition}</b>
-                </div>
-                <div className={styles.specItem}>
-                  <span>CATEGORY</span>
-                  <b>{activePart.category}</b>
-                </div>
-                <div className={styles.specItem}>
-                  <span>LISTING PRICE</span>
-                  <b>${activePart.price.toFixed(2)}</b>
-                </div>
-                <div className={styles.specItem}>
-                  <span>ESTIMATED MARKET VALUE</span>
-                  <b className={styles.marketHighlight}>${activePart.marketPrice.toFixed(2)}</b>
-                </div>
-              </div>
+              <div className={styles.consoleViewport}>
+                <img
+                  src="/partpulse_cad_console_light.jpg"
+                  alt="PartPulse Vehicle Intelligence Console CAD Workstation Preview"
+                  className={styles.consoleImg}
+                />
 
-              <div className={styles.fitmentBox}>
-                <div className={styles.fitmentBoxHeader}>
-                  <span>VERIFIED VEHICLE COMPATIBILITY (ACES/PIES)</span>
-                  <span className={styles.verifiedTag}>VERIFIED 100%</span>
+                {/* Layered Floating Callout Panels */}
+                <div className={`${styles.calloutCard} ${styles.callout1}`}>
+                  <div className={styles.calloutStatusDot} />
+                  <div>
+                    <b>Suspension Bushing</b>
+                    <span>Fitment Verified · 99.8%</span>
+                  </div>
                 </div>
-                <div className={styles.fitmentChips}>
-                  {activePart.fitment.map((vehicle) => (
-                    <span key={vehicle} className={styles.fitmentChip}>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                      {vehicle}
-                    </span>
-                  ))}
+
+                <div className={`${styles.calloutCard} ${styles.callout2}`}>
+                  <div className={styles.calloutStatusDotBlue} />
+                  <div>
+                    <b>CV Joint Boot Outer</b>
+                    <span>In Stock · 14 Qty</span>
+                  </div>
+                </div>
+
+                <div className={`${styles.calloutCard} ${styles.callout3}`}>
+                  <div className={styles.calloutStatusDotOrange} />
+                  <div>
+                    <b>Engine N52B30A</b>
+                    <span>Margin Delta +18.4%</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -362,15 +205,94 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Core Systems Architectural Matrix */}
-      <section id="schematics" className={styles.matrixSection}>
+      {/* Visual Storytelling Section: Workflow Pipeline */}
+      <section id="workflow" className={styles.workflowSection}>
         <div className={styles.sectionHeader}>
-          <span className={styles.sectionTag}>CORE ARCHITECTURE</span>
-          <h2>Four Pillar Engineering Architecture</h2>
-          <p>Built explicitly for auto recyclers, teardown yards, and high-volume eBay motors operations.</p>
+          <span className={styles.sectionKicker}>OPERATIONAL FLOW</span>
+          <h2>Streamlined Dismantle-to-Marketplace Workflow</h2>
+          <p>From vehicle intake to live multi-store listing dispatch in five automated stages.</p>
         </div>
 
-        <div className={styles.systemTabsNav}>
+        <div className={styles.workflowGrid}>
+          <div className={styles.workflowStep}>
+            <div className={styles.stepBadge}>01</div>
+            <div className={styles.stepIcon}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="1" y="3" width="22" height="18" rx="2" />
+                <path d="M7 8h10M7 12h10M7 16h6" />
+              </svg>
+            </div>
+            <h3>Vehicle Teardown</h3>
+            <p>Salvage intake, VIN scanning, and component harvesting.</p>
+          </div>
+
+          <div className={styles.workflowConnector}>→</div>
+
+          <div className={styles.workflowStep}>
+            <div className={styles.stepBadge}>02</div>
+            <div className={styles.stepIcon}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
+                <circle cx="12" cy="13" r="4" />
+              </svg>
+            </div>
+            <h3>Part Identification</h3>
+            <p>Automated OCR badge scanning and OEM interchange lookup.</p>
+          </div>
+
+          <div className={styles.workflowConnector}>→</div>
+
+          <div className={styles.workflowStep}>
+            <div className={styles.stepBadge}>03</div>
+            <div className={styles.stepIcon}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="9 11 12 14 22 4" />
+                <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
+              </svg>
+            </div>
+            <h3>Fitment Verification</h3>
+            <p>ACES/PIES compatibility injection and vehicle cross-matching.</p>
+          </div>
+
+          <div className={styles.workflowConnector}>→</div>
+
+          <div className={styles.workflowStep}>
+            <div className={styles.stepBadge}>04</div>
+            <div className={styles.stepIcon}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="12" y1="1" x2="12" y2="23" />
+                <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
+              </svg>
+            </div>
+            <h3>Price Optimization</h3>
+            <p>Competitor price telemetry and profit margin protection locks.</p>
+          </div>
+
+          <div className={styles.workflowConnector}>→</div>
+
+          <div className={styles.workflowStep}>
+            <div className={styles.stepBadge}>05</div>
+            <div className={styles.stepIcon}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
+              </svg>
+            </div>
+            <h3>Marketplace Publishing</h3>
+            <p>Multi-store eBay US/UK/DE listing dispatch with zero inventory drift.</p>
+          </div>
+        </div>
+      </section>
+
+      {/* Four-Pillar Engineering Platform */}
+      <section id="architecture" className={styles.matrixSection}>
+        <div className={styles.sectionHeader}>
+          <span className={styles.sectionKicker}>CORE ARCHITECTURE</span>
+          <h2>Four-Pillar Engineering Platform</h2>
+          <p>Built explicitly for auto recyclers, teardown yards, and high-volume eBay Motors operations.</p>
+        </div>
+
+        <div className={styles.tabNavRow}>
           <button
             type="button"
             className={activeTab === "fitment" ? styles.activeTabBtn : styles.tabBtn}
@@ -401,70 +323,75 @@ export default function Home() {
           </button>
         </div>
 
-        <div className={styles.systemDisplayCard}>
+        <div className={styles.pillarDisplayCard}>
           {activeTab === "fitment" && (
-            <div className={styles.systemTabContent}>
-              <div className={styles.tabText}>
-                <span className={styles.tabNumber}>MODULE // 01</span>
+            <div className={styles.pillarLayout}>
+              <div className={styles.pillarTextCol}>
+                <span className={styles.pillarBadge}>MODULE // 01</span>
                 <h3>ACES &amp; PIES Compatibility Matrix Resolver</h3>
                 <p>
                   Eliminate manual year/make/model entry. PartPulse cross-indexes manufacturer part numbers (MPNs), interchange numbers, and OEM superseded numbers against full vehicle application databases.
                 </p>
-                <ul className={styles.featureList}>
+                <ul className={styles.pillarList}>
                   <li>Instant VIN-to-Part interchange decoding</li>
                   <li>Automated eBay Motors compatibility table injection</li>
-                  <li>Zero return rate due to incorrect fitment specifications</li>
+                  <li>Reduced returns caused by incorrect fitment specifications</li>
                 </ul>
               </div>
-              <div className={styles.tabGraphic}>
-                <div className={styles.codeBlock}>
-                  <div className={styles.codeHeader}>
-                    <span>fitment_resolver.py</span>
-                    <span>PYTHON SCHEMATIC</span>
+              <div className={styles.pillarVisualCol}>
+                <div className={styles.resolverCard}>
+                  <div className={styles.resolverRow}>
+                    <span>INPUT OEM / MPN</span>
+                    <code>FDAB-035</code>
                   </div>
-                  <pre>{`def resolve_fitment(mpn="FDAB-035"):
-    part = oem_index.lookup(mpn)
-    vehicles = aces_engine.match(
-        chassis=part.chassis_code,
-        year_range=(2004, 2011)
-    )
-    return {
-        "status": "VERIFIED_100",
-        "compatibilities": len(vehicles),
-        "ebay_motors_ktype": part.ktype_list
-    }`}</pre>
+                  <div className={styles.resolverRow}>
+                    <span>MATCHED VEHICLES</span>
+                    <b>142 Applications</b>
+                  </div>
+                  <div className={styles.resolverRow}>
+                    <span>COMPATIBILITY STATUS</span>
+                    <span className={styles.statusVerified}>VERIFIED 100%</span>
+                  </div>
+                  <div className={styles.resolverRow}>
+                    <span>EBAY MOTORS K-TYPE</span>
+                    <span className={styles.ktypeBadge}>K-TYPE READY</span>
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
           {activeTab === "pricing" && (
-            <div className={styles.systemTabContent}>
-              <div className={styles.tabText}>
-                <span className={styles.tabNumber}>MODULE // 02</span>
+            <div className={styles.pillarLayout}>
+              <div className={styles.pillarTextCol}>
+                <span className={styles.pillarBadge}>MODULE // 02</span>
                 <h3>Real-Time Algorithmic Pricing Telemetry</h3>
                 <p>
                   Dynamically track sold eBay listings, active competitor prices, and shipping rate matrices. Maintain optimal margin thresholds automatically.
                 </p>
-                <ul className={styles.featureList}>
+                <ul className={styles.pillarList}>
                   <li>Live competitor price delta monitoring</li>
                   <li>Automated fee reconciliation &amp; target profit floor locks</li>
                   <li>Bulk repricing across thousands of automotive SKUs</li>
                 </ul>
               </div>
-              <div className={styles.tabGraphic}>
-                <div className={styles.telemetryCardSample}>
-                  <div className={styles.sampleMetric}>
+              <div className={styles.pillarVisualCol}>
+                <div className={styles.pricingCard}>
+                  <div className={styles.pricingMetric}>
+                    <span>COMPETITOR LOWEST</span>
+                    <b className={styles.blueMetric}>$84.50</b>
+                  </div>
+                  <div className={styles.pricingMetric}>
+                    <span>SHIPPING &amp; FEES</span>
+                    <b>$23.50</b>
+                  </div>
+                  <div className={styles.pricingMetric}>
                     <span>TARGET MARGIN</span>
-                    <b>34.2%</b>
+                    <b className={styles.greenMetric}>34.2%</b>
                   </div>
-                  <div className={styles.sampleMetric}>
-                    <span>COMPETITOR LOW</span>
-                    <b className={styles.blueVal}>$84.50</b>
-                  </div>
-                  <div className={styles.sampleMetric}>
-                    <span>OPTIMIZED PRICE</span>
-                    <b className={styles.greenVal}>$99.00</b>
+                  <div className={styles.pricingMetricHighlight}>
+                    <span>OPTIMIZED SELLING PRICE</span>
+                    <b>$99.00</b>
                   </div>
                 </div>
               </div>
@@ -472,48 +399,48 @@ export default function Home() {
           )}
 
           {activeTab === "sync" && (
-            <div className={styles.systemTabContent}>
-              <div className={styles.tabText}>
-                <span className={styles.tabNumber}>MODULE // 03</span>
+            <div className={styles.pillarLayout}>
+              <div className={styles.pillarTextCol}>
+                <span className={styles.pillarBadge}>MODULE // 03</span>
                 <h3>Multi-Store Zero-Drift Inventory Synchronization</h3>
                 <p>
                   Connect multiple eBay seller accounts, US/DE/UK marketplaces, and yard management tools in real-time. When a part sells, stock updates globally in milliseconds.
                 </p>
-                <ul className={styles.featureList}>
+                <ul className={styles.pillarList}>
                   <li>Instant multi-store inventory lock on checkout</li>
                   <li>Automated stock status tracking (In stock, Low stock, Out of stock)</li>
                   <li>Controlled revision logs with rollback safety</li>
                 </ul>
               </div>
-              <div className={styles.tabGraphic}>
-                <div className={styles.syncGraphicBox}>
-                  <div className={styles.syncNode}>eBay Store #1 (US)</div>
-                  <div className={styles.syncCore}>PartPulse Core Engine</div>
-                  <div className={styles.syncNode}>eBay Store #2 (UK)</div>
+              <div className={styles.pillarVisualCol}>
+                <div className={styles.syncNodesCard}>
+                  <div className={styles.nodeItem}>eBay Store #1 (US) — Active</div>
+                  <div className={styles.nodeCore}>Central Inventory Engine</div>
+                  <div className={styles.nodeItem}>eBay Store #2 (UK) — Active</div>
                 </div>
               </div>
             </div>
           )}
 
           {activeTab === "vision" && (
-            <div className={styles.systemTabContent}>
-              <div className={styles.tabText}>
-                <span className={styles.tabNumber}>MODULE // 04</span>
+            <div className={styles.pillarLayout}>
+              <div className={styles.pillarTextCol}>
+                <span className={styles.pillarBadge}>MODULE // 04</span>
                 <h3>Automated Vision &amp; Media Drive Pipeline</h3>
                 <p>
                   Upload teardown photos straight from your smartphone or yard tablet. Backgrounds are automatically cleaned, OCR extracts part badge numbers, and listing slots are assigned.
                 </p>
-                <ul className={styles.featureList}>
+                <ul className={styles.pillarList}>
                   <li>Automatic studio-clean white background isolation</li>
                   <li>OCR text detection on physical part labels &amp; tags</li>
                   <li>Up to 24 high-res slot uploads per listing with drag reorder</li>
                 </ul>
               </div>
-              <div className={styles.tabGraphic}>
-                <div className={styles.visionDemoBox}>
-                  <div className={styles.rawBox}>RAW YARD PHOTO</div>
-                  <div className={styles.arrowAnim}>➔</div>
-                  <div className={styles.cleanBox}>STUDIO CLEAN // OEM READY</div>
+              <div className={styles.pillarVisualCol}>
+                <div className={styles.visionCard}>
+                  <div className={styles.visionBefore}>RAW YARD PHOTO</div>
+                  <div className={styles.visionArrow}>➔</div>
+                  <div className={styles.visionAfter}>STUDIO CLEAN // OCR READY</div>
                 </div>
               </div>
             </div>
@@ -521,27 +448,133 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Footer */}
+      {/* Results & Measurable Benefits Section */}
+      <section id="metrics" className={styles.resultsSection}>
+        <div className={styles.sectionHeader}>
+          <span className={styles.sectionKicker}>MEASURABLE OUTCOMES</span>
+          <h2>Enterprise Benchmark Results</h2>
+          <p>Engineered to maximize efficiency, eliminate returns, and protect profit margins.</p>
+        </div>
+
+        <div className={styles.resultsGrid}>
+          <div className={styles.resultCard}>
+            <div className={styles.resultValue}>99.98%</div>
+            <h3>Fitment Match Rate</h3>
+            <p>Virtually eliminates expensive returns caused by fitment &amp; application errors.</p>
+          </div>
+
+          <div className={styles.resultCard}>
+            <div className={styles.resultValue}>70%</div>
+            <h3>Less Manual Catalog Work</h3>
+            <p>Automates vehicle compatibility table creation and technical spec filling.</p>
+          </div>
+
+          <div className={styles.resultCard}>
+            <div className={styles.resultValue}>40%</div>
+            <h3>Faster Listing Speed</h3>
+            <p>Streamlines image uploading, background cleanup, and multi-channel publishing.</p>
+          </div>
+
+          <div className={styles.resultCard}>
+            <div className={styles.resultValue}>Zero</div>
+            <h3>Inventory Drift Errors</h3>
+            <p>Real-time quantity sync prevents out-of-stock cancellations across stores.</p>
+          </div>
+        </div>
+      </section>
+
+      {/* Audience / Use Cases Section */}
+      <section id="use-cases" className={styles.useCaseSection}>
+        <div className={styles.sectionHeader}>
+          <span className={styles.sectionKicker}>TARGET AUDIENCE</span>
+          <h2>Built for Automotive Parts Operations</h2>
+          <p>Tailored workflows for recycling yards, dismantle teams, and motors e-commerce sellers.</p>
+        </div>
+
+        <div className={styles.useCaseGrid}>
+          <div className={styles.useCaseCard}>
+            <div className={styles.useCaseIcon}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C1.4 11.3 1 12.1 1 13v3c0 .6.4 1 1 1h2" />
+                <circle cx="7" cy="17" r="2" />
+                <circle cx="17" cy="17" r="2" />
+              </svg>
+            </div>
+            <h3>Auto Dismantlers</h3>
+            <p>Direct vehicle teardown cataloging with OEM part number cross-referencing.</p>
+          </div>
+
+          <div className={styles.useCaseCard}>
+            <div className={styles.useCaseIcon}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 11-.57-8.38l5.67-5.67" />
+              </svg>
+            </div>
+            <h3>Vehicle Recyclers</h3>
+            <p>Maximize recovery value per vehicle with automated market price indexing.</p>
+          </div>
+
+          <div className={styles.useCaseCard}>
+            <div className={styles.useCaseIcon}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+              </svg>
+            </div>
+            <h3>Salvage &amp; Teardown Yards</h3>
+            <p>Unified warehouse location tracking and physical stock audit control.</p>
+          </div>
+
+          <div className={styles.useCaseCard}>
+            <div className={styles.useCaseIcon}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 2a14.5 14.5 0 000 20M2 12h20" />
+              </svg>
+            </div>
+            <h3>eBay Motors Power Sellers</h3>
+            <p>Multi-account listing management with automated policy template injection.</p>
+          </div>
+        </div>
+      </section>
+
+      {/* Final Action CTA Section */}
+      <section className={styles.finalCtaSection}>
+        <div className={styles.finalCtaCard}>
+          <h2>Turn Every Vehicle Into Marketplace-Ready Inventory</h2>
+          <p>
+            Connect vehicle teardown data, fitment intelligence, pricing automation, media, and marketplace operations in one platform.
+          </p>
+          <div className={styles.finalCtaButtons}>
+            <Link className={styles.finalPrimaryBtn} href="/login">
+              Start With PartPulse <span className={styles.arrowIcon}>→</span>
+            </Link>
+            <Link className={styles.finalSecondaryBtn} href="/login">
+              Sign In to Account
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Deep Navy Footer */}
       <footer className={styles.footer}>
         <div className={styles.footerInner}>
-          <div className={styles.footerBrand}>
-            <BrandMark inverse tagline="AUTOMOTIVE OPERATIONAL SYSTEMS" />
+          <div className={styles.footerBrandCol}>
+            <BrandMark inverse tagline="Automotive Operational Systems" />
             <p>High-yield inventory intelligence for professional auto dismantlers, recyclers, and motors sellers.</p>
           </div>
-          <div className={styles.footerCols}>
+
+          <div className={styles.footerNavCols}>
             <div>
               <b>SYSTEMS</b>
-              <Link href="/catalog">Catalog Workspace</Link>
-              <Link href="/inventory">Inventory Engine</Link>
-              <Link href="/pricing">Pricing Telemetry</Link>
-              <Link href="/quick-sku">Quick SKU</Link>
+              <Link href="/login">Catalog Workspace</Link>
+              <Link href="/login">Inventory Engine</Link>
+              <Link href="/login">Pricing Telemetry</Link>
             </div>
             <div>
               <b>PLATFORM</b>
-              <Link href="/channels">Channels &amp; Stores</Link>
-              <Link href="/pipeline">Teardown Pipeline</Link>
-              <Link href="/media-drive">Media Drive</Link>
-              <Link href="/fitment">Fitment Engine</Link>
+              <Link href="/login">Channels &amp; Stores</Link>
+              <Link href="/login">Media Drive</Link>
+              <Link href="/login">Fitment Engine</Link>
             </div>
             <div>
               <b>COMPANY</b>
@@ -551,9 +584,10 @@ export default function Home() {
             </div>
           </div>
         </div>
+
         <div className={styles.footerBottom}>
           <span>PartPulse Inc. © 2026. All rights reserved.</span>
-          <span>SYSTEM BUILD: v2.4.0-prod · LATENCY: 11.4ms</span>
+          <span>SYSTEM BUILD: v2.4.0-prod · SECURE ACCESS</span>
         </div>
       </footer>
     </div>
